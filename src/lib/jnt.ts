@@ -351,7 +351,8 @@ interface RawSheet { kpis: RawKpi[]; rows: RawRow[]; totalRow: RawRow | null }
 
 const IDENTITY_RE = /^(kode|code|kd\.?|id|no\.?|nomor|nama|name|agen|agent|area|region|wilayah|provinsi|pulau|cabang|outlet|hub|dc|drop\s*point|branch)\b/i
 
-function parseOneSheet(ws: XLSX.WorkSheet, sheetName: string, sheetIdx: number): RawSheet {
+/** Errors thrown here are plain phrases — `parseWorkbook` prefixes the sheet name. */
+function parseOneSheet(ws: XLSX.WorkSheet, sheetIdx: number): RawSheet {
   const { m, lastC, hadMerges } = sheetMatrix(ws)
   if (!m.length) throw new Error('the sheet is empty')
 
@@ -527,7 +528,7 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
   wb.SheetNames.forEach((sheetName, sheetIdx) => {
     let raw: RawSheet
     try {
-      raw = parseOneSheet(wb.Sheets[sheetName], sheetName, sheetIdx)
+      raw = parseOneSheet(wb.Sheets[sheetName], sheetIdx)
     } catch (e) {
       sheets.push({ name: sheetName, ok: false, reason: (e as Error).message, kpiCount: 0, agentCount: 0 })
       return
