@@ -1,0 +1,251 @@
+/* J&T Daily Agent Performance Dashboard */
+
+:root{
+  --jt-red:#E2231A;
+  --jt-red-dark:#B81810;
+  --green:#00A650;
+  --amber:#F5A623;
+  --red-soft:#FDECEB;
+  --ink:#1F2430;
+  --ink-2:#5A6474;
+  --ink-3:#8A94A6;
+  --line:#E6E9EF;
+  --bg:#F4F6FA;
+  --card:#FFFFFF;
+  --radius:12px;
+  --shadow:0 1px 3px rgba(16,24,40,.06), 0 4px 14px rgba(16,24,40,.05);
+}
+
+*{box-sizing:border-box}
+html,body,#root{margin:0;padding:0;min-height:100%}
+body{
+  font-family:"Segoe UI",Inter,-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
+  background:var(--bg);color:var(--ink);font-size:13px;-webkit-font-smoothing:antialiased;
+}
+.wrap{max-width:1480px;margin:0 auto;padding:14px 16px 40px}
+
+/* ---------- Top bar ---------- */
+.topbar{
+  display:flex;align-items:center;gap:18px;
+  background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  overflow:hidden;margin-bottom:12px;
+}
+.logo{
+  background:var(--jt-red);color:#fff;padding:16px 22px;align-self:stretch;
+  display:flex;align-items:center;min-width:150px;
+}
+.logo .jt{font-size:26px;font-weight:800;letter-spacing:-1px;line-height:1}
+.logo .ex{font-size:10px;font-weight:700;letter-spacing:3px;opacity:.95;margin-top:3px}
+.titleblock{flex:1;padding:12px 0;text-align:center}
+.titleblock h1{margin:0;font-size:23px;font-weight:800;letter-spacing:.3px;color:#141821}
+.titleblock .meta{margin-top:4px;color:var(--ink-2);font-size:12px}
+.titleblock .meta b{color:var(--ink)}
+.agentpick{padding:10px 16px;min-width:240px}
+.agentpick label{display:block;font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px}
+.agentpick select{
+  width:100%;font-size:14px;font-weight:700;color:var(--ink);font-family:inherit;
+  border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:#fff;
+}
+
+/* ---------- Toolbar ---------- */
+.toolbar{
+  display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;
+  background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  padding:10px 14px;margin-bottom:12px;
+}
+.field{display:flex;flex-direction:column;gap:3px}
+.field label{font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.6px}
+.field select,.field input[type=text]{
+  border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;
+  background:#fff;color:var(--ink);min-width:150px;font-family:inherit;
+}
+.btn{
+  border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;
+  padding:7px 13px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;
+}
+.btn:hover{background:#F7F8FB}
+.btn.primary{background:var(--jt-red);border-color:var(--jt-red);color:#fff}
+.btn.primary:hover{background:var(--jt-red-dark)}
+.spacer{flex:1}
+.filechip{font-size:11.5px;color:var(--ink-2);background:#F1F3F8;border-radius:99px;padding:5px 11px;white-space:nowrap}
+
+/* ---------- Drop zone ---------- */
+.dropzone{
+  border:2px dashed #CBD3E1;border-radius:16px;background:var(--card);
+  padding:56px 24px;text-align:center;margin-bottom:14px;transition:.15s;
+}
+.dropzone.hot{border-color:var(--jt-red);background:#FFF6F5}
+.dropzone h2{margin:0 0 6px;font-size:19px}
+.dropzone p{margin:0 auto 16px;color:var(--ink-2);max-width:640px;line-height:1.6}
+.dropzone .lock{margin-top:16px;font-size:11.5px;color:var(--ink-3)}
+
+/* ---------- KPI cards ---------- */
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:12px;margin-bottom:12px}
+.kcard{
+  background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  padding:12px 13px 8px;position:relative;border-top:3px solid transparent;
+  transition:transform .16s ease, box-shadow .16s ease;
+}
+/* z-index is required: the hover transform creates a stacking context, and without
+   it the tooltip would be painted underneath the panels further down the page. */
+.kcard:hover{transform:translateY(-2px);box-shadow:0 3px 8px rgba(16,24,40,.08),0 12px 26px rgba(16,24,40,.10);z-index:50}
+/* below target — tint the whole card so it reads as a problem at a glance */
+.kcard.st-bad{background:#FFF7F6}
+.kcard.st-bad .dot{animation:pulse 1.8s ease-in-out infinite}
+@keyframes pulse{
+  0%,100%{box-shadow:0 0 0 0 rgba(226,35,26,.45)}
+  50%    {box-shadow:0 0 0 5px rgba(226,35,26,0)}
+}
+@media (prefers-reduced-motion:reduce){
+  .kcard,.kcard.st-bad .dot,.tipbox{transition:none;animation:none}
+}
+.kcard .dot{position:absolute;top:12px;right:12px;width:10px;height:10px;border-radius:50%}
+.kcard .kname{
+  font-size:10.5px;font-weight:800;letter-spacing:.5px;color:var(--ink-2);
+  text-transform:uppercase;padding-right:16px;line-height:1.35;min-height:28px;
+}
+.kcard .krow{display:flex;align-items:center;gap:9px;margin-top:6px}
+.kcard .kicon{font-size:20px;line-height:1}
+.kcard .kval{font-size:29px;font-weight:800;letter-spacing:-.8px;line-height:1}
+.kcard .ktgt{font-size:11px;color:var(--ink-3);margin-top:3px}
+.kcard .kmtd{font-size:10.5px;color:var(--ink-3);margin-top:2px;min-height:14px}
+.kcard .kcmp{
+  display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--ink-2);
+  border-top:1px solid var(--line);margin-top:8px;padding-top:6px;
+}
+.up{color:var(--green);font-weight:700}
+.down{color:var(--jt-red);font-weight:700}
+.flat{color:var(--ink-3);font-weight:700}
+.spark{display:block;width:100%;height:30px;margin-top:4px}
+
+/* ---------- Panels ---------- */
+.panel{
+  background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  display:flex;flex-direction:column;
+  overflow:visible;               /* tooltips must be able to escape the panel */
+}
+.panel > h3{
+  margin:0;padding:11px 14px;font-size:12.5px;font-weight:800;letter-spacing:.5px;
+  text-transform:uppercase;color:var(--ink);border-bottom:1px solid var(--line);
+  border-radius:var(--radius) var(--radius) 0 0;
+}
+/* re-round the bottom corners now that the panel no longer clips */
+.panel .body table tbody tr:last-child td:first-child{border-bottom-left-radius:var(--radius)}
+.panel .body table tbody tr:last-child td:last-child{border-bottom-right-radius:var(--radius)}
+.panel.red > h3{background:var(--jt-red);color:#fff;border-bottom:none}
+.panel .body{padding:12px 14px;flex:1;min-height:0}
+
+.row-mid{display:grid;grid-template-columns:1.25fr .9fr 1fr;gap:12px;margin-bottom:12px}
+.row-bot{display:grid;grid-template-columns:1.3fr 1fr;gap:12px}
+@media (max-width:1180px){
+  .row-mid{grid-template-columns:1fr 1fr}
+  .row-bot{grid-template-columns:1fr}
+}
+@media (max-width:760px){ .row-mid{grid-template-columns:1fr} }
+
+/* ---------- Tables ---------- */
+table{width:100%;border-collapse:collapse;font-size:12px}
+thead th{
+  background:var(--jt-red);color:#fff;text-align:left;padding:8px 10px;font-size:10.5px;
+  letter-spacing:.6px;text-transform:uppercase;font-weight:700;
+}
+tbody td{padding:8px 10px;border-bottom:1px solid var(--line)}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:nth-child(even){background:#FAFBFD}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
+td.ctr,th.ctr{text-align:center}
+.kpiname{font-weight:600}
+.badge{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:19px;height:19px;border-radius:50%;font-size:11px;font-weight:900;color:#fff;
+}
+.badge.ok{background:var(--green)}
+.badge.warn{background:var(--amber)}
+.badge.bad{background:var(--jt-red)}
+
+/* ---------- Legend ---------- */
+.legend{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:6px}
+.legend button{
+  display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;
+  font-size:11px;color:var(--ink-2);padding:2px 0;font-family:inherit;
+}
+.legend button.off{opacity:.35;text-decoration:line-through}
+.legend .sw{width:16px;height:3px;border-radius:2px}
+
+/* ---------- Summary list ---------- */
+.sumlist{display:flex;flex-direction:column}
+.sumitem{display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--line)}
+.sumitem:last-child{border-bottom:none}
+.sumitem .ico{font-size:19px;width:26px;text-align:center;flex:none;line-height:1.2}
+.sumitem .lab{width:150px;flex:none;font-weight:700;font-size:12px}
+.sumitem .val{flex:1;font-size:12px;color:var(--ink-2);line-height:1.5}
+.sumitem .val .strong{font-weight:700;display:block;margin-bottom:1px}
+.val.good .strong{color:var(--green)}
+.val.fair .strong{color:var(--amber)}
+.val.poor .strong{color:var(--jt-red)}
+
+/* ---------- Mapping ---------- */
+.panel.mapping{margin-top:12px}
+.panel.mapping table{font-size:11.5px}
+.panel.mapping thead th{background:#3B4453}
+.panel.mapping input[type=text]{border:1px solid var(--line);border-radius:6px;padding:4px 7px;font-size:11.5px;width:100%;font-family:inherit}
+.panel.mapping input[type=number]{border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-size:11.5px;width:82px;text-align:right;font-family:inherit}
+.panel.mapping select{border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-size:11.5px;font-family:inherit}
+
+.panel.mapping input[type=number]::placeholder{color:#B6BECC;font-style:italic}
+.maphint{padding:9px 14px;font-size:11px;color:var(--ink-3);border-top:1px solid var(--line);background:#FAFBFD}
+.warnbox{
+  background:#FEF4E4;border:1px solid #F3D8A6;color:#8A5A08;
+  border-radius:10px;padding:9px 14px;margin-bottom:12px;font-size:12px;line-height:1.5;
+}
+
+/* ---------- Hover tooltips ---------- */
+.tip{position:relative}
+span.tip{display:inline-block}
+.tipbox{
+  position:absolute;z-index:60;width:238px;
+  background:#1F2430;color:#EDF0F5;border-radius:10px;padding:9px 11px;
+  font-size:11px;line-height:1.55;font-weight:400;text-transform:none;letter-spacing:0;
+  text-align:left;white-space:normal;
+  box-shadow:0 10px 28px rgba(16,24,40,.26);
+  opacity:0;pointer-events:none;
+  transition:opacity .16s ease, transform .2s cubic-bezier(.2,.9,.3,1.4);
+}
+.tipbox::after{content:"";position:absolute;width:9px;height:9px;background:#1F2430;transform:rotate(45deg)}
+
+.tipbox.tip-below{top:calc(100% - 4px);left:14px;transform:translateY(5px) scale(.96);transform-origin:top left}
+.tipbox.tip-below::after{top:-4px;left:16px}
+.kcard:hover .tipbox.tip-below{opacity:1;transform:translateY(0) scale(1)}
+/* right-most cards: flip the anchor so the tooltip can't run off the page */
+.cards .kcard:nth-last-child(-n+2) .tipbox.tip-below{left:auto;right:0;transform-origin:top right}
+.cards .kcard:nth-last-child(-n+2) .tipbox.tip-below::after{left:auto;right:16px}
+
+.tipbox.tip-left{right:calc(100% + 11px);top:50%;transform:translateY(-50%) translateX(7px) scale(.96);transform-origin:right center}
+.tipbox.tip-left::after{right:-4px;top:calc(50% - 4px)}
+.tip:hover > .tipbox.tip-left{opacity:1;transform:translateY(-50%) translateX(0) scale(1)}
+
+.tiptitle{display:block;font-weight:800;margin-bottom:4px;font-size:11.5px}
+.tiptitle.ok{color:#4ADE80}
+.tiptitle.bad{color:#FF9A90}
+.tiptitle.na{color:#C6CCD8}
+.tipline{display:block;color:#C3CAD6}
+.tipline:first-of-type{color:#fff;font-weight:600}
+
+/* below-target rows */
+tbody tr.st-bad td{background:#FFF7F6}
+tbody tr.st-bad .kpiname{color:var(--jt-red)}
+
+.muted{color:var(--ink-3)}
+.note{font-size:11px;color:var(--ink-3);margin-top:14px;line-height:1.6}
+.err{
+  background:var(--red-soft);border:1px solid #F6C6C3;color:#9B1C15;
+  border-radius:10px;padding:11px 14px;margin-bottom:12px;font-size:12.5px;line-height:1.55;
+}
+.empty-mini{color:var(--ink-3);font-size:12px;padding:26px 0;text-align:center}
+
+@media print{
+  body{background:#fff}
+  .toolbar,.dropzone,.panel.mapping,.legend button{display:none !important}
+  .panel,.kcard,.topbar{box-shadow:none;border:1px solid var(--line)}
+  .wrap{max-width:none;padding:0}
+}
