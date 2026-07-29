@@ -202,13 +202,20 @@ function snapDay(d: Date): Date {
 }
 
 /** Cell → Date, if it plausibly is one. */
-export function cellDate(cell: Cell): Date | null {
+/**
+ * `loose` relaxes the number-format check and is passed ONLY for header cells.
+ * A bare serial in a header row is always a date — readings are percentages, so
+ * nothing in the data can reach the 20000-80000 window. In the data area the
+ * format check stays on, so a genuine reading of 46231 is never read as a day.
+ */
+export function cellDate(cell: Cell, loose = false): Date | null {
   if (!cell || cell.v == null) return null
   if (cell.v instanceof Date) return snapDay(cell.v)
   const v = cell.v
   if (typeof v === 'number') {
     const z = String(cell.z || '').toLowerCase()
-    if (v > 20000 && v < 80000 && (z.includes('y') || z.includes('d') || z.includes('m'))) {
+    const formatted = z.includes('y') || z.includes('d') || z.includes('m')
+    if (v > 20000 && v < 80000 && (formatted || loose)) {
       const d = serialToDate(v)
       return Number.isNaN(d.getTime()) ? null : d
     }
@@ -303,6 +310,9 @@ export function isLowerBetter(text: string): boolean {
 
 interface Matrix { m: Cell[][]; lastC: number; hadMerges: boolean }
 
+/** A cell Excel wrote but left without a value is still empty for our purposes. */
+const isBlank = (c: Cell): boolean => c == null || c.v == null || String(c.v).trim() === ''
+
 function sheetMatrix(ws: XLSX.WorkSheet): Matrix {
   if (!ws || !ws['!ref']) return { m: [], lastC: 0, hadMerges: false }
   const r = XLSX.utils.decode_range(ws['!ref'])
@@ -318,12 +328,12 @@ function sheetMatrix(ws: XLSX.WorkSheet): Matrix {
   }
   const merges = ws['!merges'] || []
   for (const g of merges) {
-    const src = m[g.s.r]?.[g.s.c]
-    if (!src) continue
+    const src = m[g.s.r]?.[g.s.c] ?? null
+    if (isBlank(src)) continue
     for (let R = g.s.r; R <= g.e.r; R++) {
       if (!m[R]) continue
       for (let C = g.s.c; C <= Math.min(g.e.c, lastC); C++) {
-        if (m[R][C] == null) m[R][C] = src
+        if (isBlank(m[R][C])) m[R][C] = src
       }
     }
   }
@@ -353,7 +363,7 @@ const IDENTITY_RE = /^(kode|code|kd\.?|id|no\.?|nomor|nama|name|agen|agent|area|
 
 /** Errors thrown here are plain phrases — `parseWorkbook` prefixes the sheet name. */
 function parseOneSheet(ws: XLSX.WorkSheet, sheetIdx: number): RawSheet {
-  const { m, lastC, hadMerges } = sheetMatrix(ws)
+  const { m, lastC } = sheetMatrix(ws)
   if (!m.length) throw new Error('the sheet is empty')
 
   const cid = (C: number): ColId => `${sheetIdx}:${C}`
@@ -405,8 +415,13 @@ function parseOneSheet(ws: XLSX.WorkSheet, sheetIdx: number): RawSheet {
 
   const nHdr = dataStart - headerRow
 
-  /* 2b — if merge metadata was lost on export, forward-fill the group rows */
-  if (!hadMerges && nHdr > 1) {
+  /* 2b — close every hole in the header block.
+     Each header row is forward-filled to the right, so a column whose group or
+     KPI-name cell is empty inherits the label of the column to its left. Merge
+     metadata does this when the exporter writes it; this repairs the rows where
+     it did not. Runs unconditionally — a workbook can carry merges for some
+     header rows and not others. */
+  if (nHdr > 1) {
     for (let R = headerRow; R < dataStart - 1; R++) {
       let last: Cell = null
       for (let C = kpiStart; C <= lastC; C++) {
@@ -425,15 +440,19 @@ function parseOneSheet(ws: XLSX.WorkSheet, sheetIdx: number): RawSheet {
     for (let k = 0; k < nHdr; k++) labels.push(txt(m[headerRow + k]?.[C] ?? null))
     const subCell = m[headerRow + nHdr - 1]?.[C] ?? null
     const sub = labels[nHdr - 1] || ''
+    /* Positional read. Never collapse the upper rows with filter(Boolean): a
+       hole in one row would shift the others and hand the column a different
+       identity from its siblings — which is exactly how a single day goes
+       missing from one KPI. Step 2b guarantees there are no holes left. */
     const upper = labels.slice(0, nHdr - 1)
- 
+
     let group = upper[0] || ''
     let name = upper.length ? (upper[upper.length - 1] || group) : ''
     let kind: SubKind = 'value'
     let date: Date | null = null
- 
+
     if (upper.length) {
-      const d = cellDate(subCell)
+      const d = cellDate(subCell, true)     // header row: unformatted serials count
       if (/^target|目标|标准|standar|kpi\s*target/i.test(sub)) kind = 'target'
       else if (/bulanan|monthly|月度|\bmtd\b|pencapaian|akumulasi/i.test(sub)) kind = 'monthly'
       else if (d) { kind = 'date'; date = d }
@@ -598,7 +617,11 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
       if (!seen.has(key)) { seen.add(key); dates.push({ key, date: d.date, seq: i }) }
     })
   }
-  dates.sort((a, b) => (a.date && b.date ? +a.date - +b.date : a.seq - b.seq))
+  dates.sort((a, b) => {
+    if (a.date && b.date) return +a.date - +b.date
+    if (!a.date && !b.date) return a.seq - b.seq
+    return a.date ? 1 : -1        // undated slots sort before any real day
+  })
 
   for (const k of kpis) {
     k.byDateKey = {}
