@@ -8,7 +8,7 @@ const EMPTY = <div className="empty-mini">No data for this selection</div>
 /* ------------------------------------------------------------ line chart */
 
 export function LineChart({
-  series, labels, targetLine, clamp01 = true, w = 640, h = 262,
+  series, labels, targetLine, clamp01 = true, w = 1100, h = 400,
 }: {
   series: Series[]
   labels: AxisLabel[]
@@ -17,7 +17,7 @@ export function LineChart({
   w?: number
   h?: number
 }) {
-  const P = { t: 26, r: 16, b: 44, l: 46 }
+  const P = { t: 30, r: 54, b: 52, l: 54 }
   const all = series.flatMap((s) => s.values.filter((v): v is number => v != null))
   if (!all.length || !labels.length) return EMPTY
 
@@ -34,14 +34,38 @@ export function LineChart({
   const Y = (v: number) => P.t + ((max - v) / (max - min)) * (h - P.t - P.b)
 
   const ticks = Array.from({ length: 5 }, (_, i) => min + ((max - min) * i) / 4)
-  const showVals = series.length <= 4 && n <= 9
+  const showVals = series.length <= 4 && n <= 12
+
+  /**
+   * Value labels, laid out per x-position rather than per series.
+   * Two lines that run close together used to print their numbers on top of
+   * each other, because the offset was chosen from the series index alone.
+   * Here every label at one x is collected, sorted top-to-bottom, and pushed
+   * down until each clears the one above it by GAP.
+   */
+  const GAP = 15
+  const labelsAt = (i: number) => {
+    const here = series
+      .map((s) => ({ color: s.color, v: s.values[i] }))
+      .filter((o): o is { color: string; v: number } => o.v != null)
+      .map((o) => ({ ...o, y: Y(o.v) }))
+      .sort((a, b) => a.y - b.y)
+
+    let prev = -Infinity
+    return here.map((o) => {
+      const want = Math.max(o.y - 12, P.t - 6)
+      const ly = want < prev + GAP ? prev + GAP : want
+      prev = ly
+      return { ...o, ly }
+    })
+  }
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
       {ticks.map((v, i) => (
         <g key={`t${i}`}>
           <line x1={P.l} y1={Y(v)} x2={w - P.r} y2={Y(v)} stroke="#EDF0F5" strokeWidth={1} />
-          <text x={P.l - 7} y={Y(v) + 3.5} textAnchor="end" fontSize={9.5} fill="#8A94A6">
+          <text x={P.l - 9} y={Y(v) + 4} textAnchor="end" fontSize={12} fill="#8A94A6">
             {v.toFixed(0)}%
           </text>
         </g>
@@ -49,49 +73,54 @@ export function LineChart({
 
       {labels.map((l, i) => (
         <g key={`x${i}`}>
-          <text x={X(i)} y={h - P.b + 15} textAnchor="middle" fontSize={9.5} fill="#5A6474">{l.top}</text>
+          <text x={X(i)} y={h - P.b + 20} textAnchor="middle" fontSize={13} fill="#5A6474">{l.top}</text>
           {l.sub && (
-            <text x={X(i)} y={h - P.b + 27} textAnchor="middle" fontSize={9} fill="#A6AEBD">{l.sub}</text>
+            <text x={X(i)} y={h - P.b + 36} textAnchor="middle" fontSize={11} fill="#A6AEBD">{l.sub}</text>
           )}
         </g>
       ))}
 
       {series.map((s, j) => {
         const pts = s.values
-          .map((v, i) => (v == null ? null : { x: X(i), y: Y(v), v }))
-          .filter((p): p is { x: number; y: number; v: number } => p != null)
+          .map((v, i) => (v == null ? null : { x: X(i), y: Y(v) }))
+          .filter((p): p is { x: number; y: number } => p != null)
         if (!pts.length) return null
         return (
           <g key={s.name + j}>
             {pts.length > 1 && (
               <polyline
-                fill="none" stroke={s.color} strokeWidth={2}
+                fill="none" stroke={s.color} strokeWidth={2.5}
                 strokeLinejoin="round" strokeLinecap="round"
                 points={pts.map((p) => `${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ')}
               />
             )}
             {pts.map((p, i) => (
-              <g key={i}>
-                <circle cx={p.x} cy={p.y} r={3.2} fill="#fff" stroke={s.color} strokeWidth={2} />
-                {showVals && (
-                  <text
-                    x={p.x} y={p.y + (j % 2 === 0 ? -9 : 15)}
-                    textAnchor="middle" fontSize={9} fontWeight={700} fill={s.color}
-                  >
-                    {p.v.toFixed(2)}%
-                  </text>
-                )}
-              </g>
+              <circle key={i} cx={p.x} cy={p.y} r={4} fill="#fff" stroke={s.color} strokeWidth={2.5} />
             ))}
           </g>
         )
       })}
 
+      {/* drawn last so the numbers sit above every line */}
+      {showVals && labels.map((_, i) => (
+        <g key={`v${i}`}>
+          {labelsAt(i).map((o, k) => (
+            <text
+              key={k} x={X(i)} y={o.ly} textAnchor="middle"
+              fontSize={12} fontWeight={700} fill={o.color}
+              stroke="#fff" strokeWidth={3.5} paintOrder="stroke" strokeLinejoin="round"
+            >
+              {o.v.toFixed(2)}%
+            </text>
+          ))}
+        </g>
+      ))}
+
       {targetLine != null && targetLine >= min && targetLine <= max && (
         <g>
           <line x1={P.l} y1={Y(targetLine)} x2={w - P.r} y2={Y(targetLine)}
                 stroke="#E2231A" strokeWidth={1.2} strokeDasharray="5 4" />
-          <text x={w - P.r} y={Y(targetLine) - 5} textAnchor="end" fontSize={9} fill="#E2231A">
+          <text x={w - P.r} y={Y(targetLine) - 6} textAnchor="end" fontSize={11} fill="#E2231A">
             Target {targetLine.toFixed(2)}%
           </text>
         </g>

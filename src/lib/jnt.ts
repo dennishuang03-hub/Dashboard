@@ -281,6 +281,17 @@ export const CANONICAL_ORDER = [
   'RETUR COD NON-ECOMMERCE',
 ]
 
+/**
+ * KPIs pre-selected for the trend chart. Named explicitly so that reordering
+ * CANONICAL_ORDER, hiding a KPI, or a direction flip can't silently change
+ * which three lines you get. Everything else stays toggleable in the legend.
+ */
+export const TREND_DEFAULT = [
+  '06:30 ABSENSI',
+  '07:30 KELUAR GUDANG',
+  'TTD PAKET JAM 12:00',
+]
+
 export function shortLabel(name: string, group = ''): string {
   const combined = `${group} ${name}`
   for (const [re, out] of ALIASES) if (re.test(combined)) return out
@@ -672,10 +683,11 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
   // nothing matched (an unfamiliar file) — fall back to showing everything
   if (!kpis.some((k) => k.enabled)) for (const k of kpis) k.enabled = true
 
-  /* default trend series: first three enabled higher-is-better KPIs */
-  let picked = 0
-  for (const k of kpis) if (k.enabled && !k.lowerBetter && picked < 3) { k.inTrend = true; picked++ }
-  if (!picked) kpis.filter((k) => k.enabled).slice(0, 3).forEach((k) => { k.inTrend = true })
+  /* default trend series — see TREND_DEFAULT */
+  for (const k of kpis) k.inTrend = k.enabled && TREND_DEFAULT.includes(k.label)
+  if (!kpis.some((k) => k.inTrend)) {
+    kpis.filter((k) => k.enabled && !k.lowerBetter).slice(0, 3).forEach((k) => { k.inTrend = true })
+  }
 
   /**
    * Keep Jawa & Bali only. If the workbook ever carries other regions they are

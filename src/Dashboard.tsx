@@ -267,8 +267,8 @@ export default function Dashboard() {
         })}
       </div>
 
-      {/* -------- middle row -------- */}
-      <div className="row-mid">
+      {/* -------- trend, full width -------- */}
+      <div className="row-trend">
         <Panel title={`KPI Trend (${dates.length} day${dates.length === 1 ? '' : 's'})`}>
           <div className="legend">
             {kpis.map((k) => (
@@ -288,7 +288,10 @@ export default function Dashboard() {
             }))}
           />
         </Panel>
+      </div>
 
+      {/* -------- middle row -------- */}
+      <div className="row-mid">
         <Panel title="KPI Summary (Selected Day)" red flush>
           <table>
             <thead>

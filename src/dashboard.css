@@ -135,12 +135,12 @@ body{
 .panel.red > h3{background:var(--jt-red);color:#fff;border-bottom:none}
 .panel .body{padding:12px 14px;flex:1;min-height:0}
 
-.row-mid{display:grid;grid-template-columns:1.25fr .9fr 1fr;gap:12px;margin-bottom:12px}
+/* the trend chart gets the full width — it is the one panel where cramped
+   width made the plotted numbers unreadable */
+.row-trend{margin-bottom:12px}
+.row-mid{display:grid;grid-template-columns:.9fr 1fr;gap:12px;margin-bottom:12px}
 .row-bot{display:grid;grid-template-columns:1.3fr 1fr;gap:12px}
-@media (max-width:1180px){
-  .row-mid{grid-template-columns:1fr 1fr}
-  .row-bot{grid-template-columns:1fr}
-}
+@media (max-width:1180px){ .row-bot{grid-template-columns:1fr} }
 @media (max-width:760px){ .row-mid{grid-template-columns:1fr} }
 
 /* ---------- Tables ---------- */
@@ -164,10 +164,10 @@ td.ctr,th.ctr{text-align:center}
 .badge.bad{background:var(--jt-red)}
 
 /* ---------- Legend ---------- */
-.legend{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:6px}
+.legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-bottom:10px}
 .legend button{
   display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;
-  font-size:11px;color:var(--ink-2);padding:2px 0;font-family:inherit;
+  font-size:12px;color:var(--ink-2);padding:2px 0;font-family:inherit;
 }
 .legend button.off{opacity:.35;text-decoration:line-through}
 .legend .sw{width:16px;height:3px;border-radius:2px}
