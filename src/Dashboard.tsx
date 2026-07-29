@@ -2,7 +2,8 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   PALETTE, STATUS_COLOR, averageRows, dayName, explain, fmtDate, fmtDateFull, iconFor,
-  kpiSeries, latin, parseWorkbook, pct, readWorkbook, shortLabel, statusOf, targetFor,
+  exportPng, kpiSeries, latin, parseWorkbook, pct, readWorkbook, shortLabel, statusOf,
+  targetFor,
 } from './lib/jnt'
 import type { AgentRow, DateSlot, Explanation, Kpi, Model, Status } from './lib/jnt'
 import { BarChart, LineChart, Sparkline } from './components/Charts'
@@ -53,6 +54,7 @@ export default function Dashboard() {
   const [tick, force] = useState(0)      // Kpi objects are edited in place
 
   const fileRef = useRef<HTMLInputElement>(null)
+  const wrapRef = useRef<HTMLDivElement>(null)
   const rerender = () => force((n) => n + 1)
 
   /* ------------------------------------------------------------ loading */
@@ -119,6 +121,17 @@ export default function Dashboard() {
   // `tick` is the invalidation signal — Kpi objects are edited in place.
   const kpis = useMemo(() => model?.kpis.filter((k) => k.enabled) ?? [], [model, tick])
 
+  const savePng = async () => {
+    if (!wrapRef.current) return
+    const d = model?.dates[dateIdx]
+    const stamp = d?.date ? d.date.toISOString().slice(0, 10) : 'export'
+    try {
+      await exportPng(wrapRef.current, `jnt-dashboard-${stamp}.png`)
+    } catch (ex) {
+      setErr((ex as Error).message)
+    }
+  }
+
   /* -------------------------------------------------------- empty state */
 
   if (!model || !current) {
@@ -179,7 +192,7 @@ export default function Dashboard() {
   const badSheets = model.sheets.filter((s) => !s.ok)
 
   return (
-    <div className="wrap">
+    <div className="wrap" ref={wrapRef}>
       <TopBar
         meta={
           <>Region: <b>{model.region}</b> &nbsp;|&nbsp; Agent: <b>{current.label}</b>
@@ -222,9 +235,12 @@ export default function Dashboard() {
           {model.region} · {model.rows.length} agents · {kpis.length} KPIs · {dates.length} days
         </span>
         <button className="btn" onClick={() => setShowMap((v) => !v)}>Column mapping</button>
+        <button className="btn" onClick={savePng}>Save PNG</button>
         <button className="btn" onClick={() => window.print()}>Print / PDF</button>
         <button className="btn" onClick={() => { setModel(null); setFileName(''); setErr('') }}>Clear data</button>
       </div>
+
+      {err && <div className="err">{err}</div>}
 
       {badSheets.length > 0 && (
         <div className="warnbox">

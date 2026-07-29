@@ -243,9 +243,39 @@ tbody tr.st-bad .kpiname{color:var(--jt-red)}
 }
 .empty-mini{color:var(--ink-3);font-size:12px;padding:26px 0;text-align:center}
 
+/* Hidden while html2canvas takes the snapshot, so the PNG matches the print
+   sheet instead of capturing the toolbar and the mapping panel. */
+body.shooting .toolbar,
+body.shooting .panel.mapping,
+body.shooting .note,
+body.shooting .tipbox{display:none !important}
+
 @media print{
-  body{background:#fff}
-  .toolbar,.dropzone,.panel.mapping,.legend button{display:none !important}
-  .panel,.kcard,.topbar{box-shadow:none;border:1px solid var(--line)}
-  .wrap{max-width:none;padding:0}
+  /* landscape and colour-accurate: without print-color-adjust Chrome drops the
+     red table headers and the green/red status colours entirely */
+  @page{ size:A4 landscape; margin:8mm }
+  *{-webkit-print-color-adjust:exact !important; print-color-adjust:exact !important}
+  html,body{background:#fff}
+
+  /* zoom (not transform) so the layout actually reflows to the smaller size */
+  .wrap{max-width:none;padding:0;zoom:.62}
+
+  /* interactive chrome, plus the two panels the tables already cover */
+  .toolbar,.dropzone,.panel.mapping,.legend button,.warnbox,.note,.filechip,.tipbox{display:none !important}
+  .row-mid{display:none !important}
+
+  /* THE page-break fix: a panel that straddled a break printed its header on one
+     page and its chart on the next, which is why charts looked missing */
+  .panel,.kcard,.sumitem,tr,svg,
+  .row-trend,.row-bot{break-inside:avoid !important; page-break-inside:avoid !important}
+
+  .panel,.kcard,.topbar{box-shadow:none !important;border:1px solid var(--line)}
+  .cards{grid-template-columns:repeat(8,1fr);gap:6px}
+  .kcard{padding:8px 8px 4px}
+  .kcard .kname{font-size:8.5px;min-height:22px;padding-right:10px}
+  .kcard .kval{font-size:20px}
+  .kcard .ktgt,.kcard .kmtd{font-size:9px}
+  .kcard .spark{height:22px}
+  .panel .body{padding:8px 10px}
+  .row-bot{grid-template-columns:1.35fr 1fr}
 }

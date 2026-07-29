@@ -132,7 +132,7 @@ export function LineChart({
 /* ------------------------------------------------------------- bar chart */
 
 export function BarChart({
-  values, labels, targetLine, lowerBetter = false, w = 440, h = 262,
+  values, labels, targetLine, lowerBetter = false, w = 560, h = 340,
 }: {
   values: (number | null)[]
   labels: AxisLabel[]
@@ -141,7 +141,7 @@ export function BarChart({
   w?: number
   h?: number
 }) {
-  const P = { t: 26, r: 12, b: 44, l: 44 }
+  const P = { t: 34, r: 16, b: 52, l: 52 }
   const real = values.filter((v): v is number => v != null)
   if (!real.length) return EMPTY
 
@@ -160,7 +160,7 @@ export function BarChart({
       {ticks.map((v, i) => (
         <g key={`t${i}`}>
           <line x1={P.l} y1={Y(v)} x2={w - P.r} y2={Y(v)} stroke="#EDF0F5" />
-          <text x={P.l - 6} y={Y(v) + 3.5} textAnchor="end" fontSize={9.5} fill="#8A94A6">
+          <text x={P.l - 8} y={Y(v) + 4} textAnchor="end" fontSize={12} fill="#8A94A6">
             {v.toFixed(1)}%
           </text>
         </g>
@@ -181,16 +181,19 @@ export function BarChart({
                   height={Math.max(1, h - P.b - Y(val))} rx={2.5}
                   fill={ok ? '#00A650' : '#E2231A'}
                 />
-                <text x={cx} y={Y(val) - 6} textAnchor="middle" fontSize={9.5} fontWeight={700} fill="#3B4453">
+                <text
+                  x={cx} y={Y(val) - 7} textAnchor="middle" fontSize={12} fontWeight={700}
+                  fill="#3B4453" stroke="#fff" strokeWidth={3.5} paintOrder="stroke" strokeLinejoin="round"
+                >
                   {val.toFixed(2)}%
                 </text>
               </>
             )}
-            <text x={cx} y={h - P.b + 15} textAnchor="middle" fontSize={9.5} fill="#5A6474">
+            <text x={cx} y={h - P.b + 20} textAnchor="middle" fontSize={13} fill="#5A6474">
               {lab.top}
             </text>
             {lab.sub && (
-              <text x={cx} y={h - P.b + 27} textAnchor="middle" fontSize={9} fill="#A6AEBD">
+              <text x={cx} y={h - P.b + 36} textAnchor="middle" fontSize={11} fill="#A6AEBD">
                 {lab.sub}
               </text>
             )}
@@ -202,7 +205,12 @@ export function BarChart({
         <g>
           <line x1={P.l} y1={Y(targetLine)} x2={w - P.r} y2={Y(targetLine)}
                 stroke="#E2231A" strokeWidth={1.2} strokeDasharray="5 4" />
-          <text x={w - P.r} y={Y(targetLine) - 5} textAnchor="end" fontSize={9} fill="#E2231A">
+          {/* The caption used to sit on the line at the right edge, where it
+              landed on top of the last bar's value label. It now lives above the
+              plot area, which no bar and no value label can reach. */}
+          <line x1={P.l} y1={P.t - 13} x2={P.l + 16} y2={P.t - 13}
+                stroke="#E2231A" strokeWidth={1.2} strokeDasharray="5 4" />
+          <text x={P.l + 22} y={P.t - 9} textAnchor="start" fontSize={11} fill="#E2231A">
             Target {lowerBetter ? '≤ ' : '≥ '}{targetLine.toFixed(2)}%
           </text>
         </g>

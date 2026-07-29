@@ -802,3 +802,48 @@ export function averageRows(list: AgentRow[], label: string, area: string): Agen
 export function readWorkbook(buf: ArrayBuffer): XLSX.WorkBook {
   return XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: false, cellNF: true })
 }
+
+/* ------------------------------------------------------------- PNG export */
+
+/**
+ * Renders `el` to a PNG download. html2canvas is fetched on first use only, so
+ * the page still loads and parses Excel with no internet — the Excel path never
+ * depends on this. Adds `body.shooting` for the duration so the toolbar and the
+ * mapping panel stay out of the snapshot (see dashboard.css).
+ */
+export async function exportPng(el: HTMLElement, filename: string): Promise<void> {
+  const w = window as unknown as { html2canvas?: (e: HTMLElement, o: object) => Promise<HTMLCanvasElement> }
+
+  if (!w.html2canvas) {
+    await new Promise<void>((resolve, reject) => {
+      const tag = document.createElement('script')
+      tag.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
+      tag.onload = () => resolve()
+      tag.onerror = () => reject(new Error(
+        'Could not load the image library — you appear to be offline. Use Print / PDF instead.'))
+      document.head.appendChild(tag)
+    })
+  }
+
+  document.body.classList.add('shooting')
+  try {
+    const canvas = await w.html2canvas!(el, {
+      backgroundColor: '#F4F6FA',
+      scale: 2,
+      useCORS: true,
+      windowWidth: el.scrollWidth,
+    })
+    const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
+    if (!blob) throw new Error('The browser could not encode the image.')
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    setTimeout(() => URL.revokeObjectURL(url), 2000)
+  } finally {
+    document.body.classList.remove('shooting')
+  }
+}

@@ -98,9 +98,12 @@
   .panel.red > h3{background:var(--jt-red);color:#fff;border-bottom:none}
   .panel .body{padding:12px 14px;flex:1;min-height:0}
 
-  .row-mid{display:grid;grid-template-columns:1.25fr .9fr 1fr;gap:12px;margin-bottom:12px}
+  /* the trend chart gets the full width — it is the one panel where cramped
+     width made the plotted numbers unreadable */
+  .row-trend{margin-bottom:12px}
+  .row-mid{display:grid;grid-template-columns:.9fr 1fr;gap:12px;margin-bottom:12px}
   .row-bot{display:grid;grid-template-columns:1.3fr 1fr;gap:12px}
-  @media (max-width:1180px){ .row-mid{grid-template-columns:1fr 1fr} .row-bot{grid-template-columns:1fr} }
+  @media (max-width:1180px){ .row-bot{grid-template-columns:1fr} }
   @media (max-width:760px){ .row-mid{grid-template-columns:1fr} }
 
   table{width:100%;border-collapse:collapse;font-size:12px}
@@ -118,9 +121,9 @@
   .badge.warn{background:var(--amber)}
   .badge.bad{background:var(--jt-red)}
 
-  .legend{display:flex;flex-wrap:wrap;gap:12px;margin-bottom:6px}
+  .legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-bottom:10px}
   .legend button{display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;
-    font-size:11px;color:var(--ink-2);padding:2px 0;font-family:inherit}
+    font-size:12px;color:var(--ink-2);padding:2px 0;font-family:inherit}
   .legend button.off{opacity:.35;text-decoration:line-through}
   .legend .sw{width:16px;height:3px;border-radius:2px}
 
@@ -185,11 +188,41 @@
     padding:9px 14px;margin-bottom:12px;font-size:12px;line-height:1.5}
   .empty-mini{color:var(--ink-3);font-size:12px;padding:26px 0;text-align:center}
 
+  /* Hidden while html2canvas takes the snapshot, so the PNG matches the print
+     sheet instead of capturing the toolbar and the mapping panel. */
+  body.shooting .toolbar,
+  body.shooting #mapping,
+  body.shooting .note,
+  body.shooting .tipbox{display:none !important}
+
   @media print{
-    body{background:#fff}
-    .toolbar,#drop,#mapping,.legend button,.warnbox{display:none !important}
-    .panel,.kcard,.topbar{box-shadow:none;border:1px solid var(--line)}
-    .wrap{max-width:none;padding:0}
+    /* landscape and colour-accurate: without print-color-adjust Chrome drops the
+       red table headers and the green/red status colours entirely */
+    @page{ size:A4 landscape; margin:8mm }
+    *{-webkit-print-color-adjust:exact !important; print-color-adjust:exact !important}
+    html,body{background:#fff}
+
+    /* zoom (not transform) so the layout actually reflows to the smaller size */
+    .wrap{max-width:none;padding:0;zoom:.62}
+
+    /* interactive chrome, plus the two panels the tables already cover */
+    .toolbar,#drop,#mapping,.legend button,.warnbox,.note,.filechip,.tipbox{display:none !important}
+    .row-mid{display:none !important}
+
+    /* THE page-break fix: a panel that straddled a break printed its header on
+       one page and its chart on the next, which is why charts looked missing */
+    .panel,.kcard,.sumitem,tr,svg,
+    .row-trend,.row-bot{break-inside:avoid !important; page-break-inside:avoid !important}
+
+    .panel,.kcard,.topbar{box-shadow:none !important;border:1px solid var(--line)}
+    .cards{grid-template-columns:repeat(8,1fr);gap:6px}
+    .kcard{padding:8px 8px 4px}
+    .kcard .kname{font-size:8.5px;min-height:22px;padding-right:10px}
+    .kcard .kval{font-size:20px}
+    .kcard .ktgt,.kcard .kmtd{font-size:9px}
+    .kcard .spark{height:22px}
+    .panel .body{padding:8px 10px}
+    .row-bot{grid-template-columns:1.35fr 1fr}
   }
 </style>
 </head>
@@ -216,6 +249,7 @@
     <div class="spacer"></div>
     <span class="filechip hidden" id="fileChip"></span>
     <button class="btn" id="btnMap">Column mapping</button>
+    <button class="btn" id="btnPng">Save PNG</button>
     <button class="btn" id="btnPrint">Print / PDF</button>
     <button class="btn" id="btnClear">Clear data</button>
   </div>
@@ -239,7 +273,7 @@
   <div id="dash" class="hidden">
     <div class="cards" id="cards"></div>
 
-    <div class="row-mid">
+    <div class="row-trend">
       <div class="panel">
         <h3 id="trendTitle">KPI Trend</h3>
         <div class="body">
@@ -247,7 +281,9 @@
           <div id="trendChart"></div>
         </div>
       </div>
+    </div>
 
+    <div class="row-mid">
       <div class="panel red">
         <h3>KPI Summary (Selected Day)</h3>
         <div class="body" style="padding:0">
@@ -426,13 +462,18 @@ function snapDay(d){
   return new Date(x.getFullYear(), x.getMonth(), x.getDate());
 }
 
-function cellDate(cell){
+/* `loose` relaxes the number-format check and is passed ONLY for header cells.
+   A bare serial in a header row is always a date — readings are percentages, so
+   nothing in the data can reach the 20000-80000 window. In the data area the
+   format check stays on, so a genuine reading of 46231 is never read as a day. */
+function cellDate(cell, loose){
   if(!cell || cell.v == null) return null;
   if(cell.v instanceof Date) return snapDay(cell.v);
   var v = cell.v;
   if(typeof v === 'number'){
     var z = String(cell.z || '').toLowerCase();
-    if(v > 20000 && v < 80000 && (z.indexOf('y') >= 0 || z.indexOf('d') >= 0 || z.indexOf('m') >= 0)){
+    var formatted = z.indexOf('y') >= 0 || z.indexOf('d') >= 0 || z.indexOf('m') >= 0;
+    if(v > 20000 && v < 80000 && (formatted || loose)){
       var d = serialToDate(v);
       return isNaN(d.getTime()) ? null : d;
     }
@@ -492,6 +533,8 @@ var CANONICAL_ORDER = [
   'PICKUP NON-ECOMMERCE',
   'RETUR COD NON-ECOMMERCE'
 ];
+var TREND_DEFAULT = ['06:30 ABSENSI', '07:30 KELUAR GUDANG', 'TTD PAKET JAM 12:00'];
+
 function shortLabel(name, group){
   var combined = (group || '') + ' ' + name;
   for(var i = 0; i < ALIASES.length; i++) if(ALIASES[i][0].test(combined)) return ALIASES[i][1];
@@ -592,7 +635,9 @@ function parseOneSheet(ws, sheetName, sheetIdx){
 
   var nHdr = dataStart - headerRow;
 
-  /* 2b — forward-fill group rows if merge metadata was lost */
+  /* 2b — close every hole in the header block.
+     Each header row is forward-filled to the right, so a column whose group or
+     KPI-name cell is empty inherits the label of the column to its left. */
   if(nHdr > 1){
     for(R = headerRow; R < dataStart - 1; R++){
       var last = null;
@@ -604,38 +649,32 @@ function parseOneSheet(ws, sheetName, sheetIdx){
   }
 
   /* 3 — KPI columns */
-  var kpis = [], byKey = {}, lastBlock = null;
+  var kpis = [], byKey = {};
   for(C = kpiStart; C <= lastC; C++){
     var labels = [];
     for(var k = 0; k < nHdr; k++) labels.push(txt((m[headerRow + k] || [])[C]));
     var subCell = (m[headerRow + nHdr - 1] || [])[C];
     var sub = labels[nHdr - 1] || '';
-    var above = labels.slice(0, nHdr - 1).filter(function(x){ return !!x; });
-    var d = cellDate(subCell);
+    /* Positional read. Never collapse the upper rows with a filter: a hole in one
+       row would shift the others and hand the column a different identity from
+       its siblings — which is exactly how a single day goes missing from one
+       KPI. Step 2b guarantees there are no holes left. */
+    var upper = labels.slice(0, nHdr - 1);
 
-    var group = '', name = '', kind = 'value', date = null, fromHeader = false;
+    var group = upper[0] || '';
+    var name  = upper.length ? (upper[upper.length - 1] || group) : '';
+    var kind = 'value', date = null;
 
-    if(above.length){
-      group = above[0];
-      name  = above[above.length - 1];
-      fromHeader = true;
+    if(upper.length){
+      var d = cellDate(subCell, true);   // header row: unformatted serials count
       if(/^target|目标|标准|standar|kpi\s*target/i.test(sub))                          kind = 'target';
       else if(/bulanan|monthly|月度|\bmtd\b|pencapaian|akumulasi/i.test(sub))          kind = 'monthly';
       else if(d){ kind = 'date'; date = d; }
+    } else {
+      name = sub;                                   // flat header
     }
-    else if(nHdr > 1 && d && lastBlock){
-      /* Group label lost (merge metadata gone). A bare date column belongs to the
-         block immediately to its left — which is what a reader sees on screen. */
-      group = lastBlock.group; name = lastBlock.name;
-      kind = 'date'; date = d;
-    }
-    else {
-      name = sub;
-    }
-
     if(!name) continue;
     if(group === name) group = '';
-    if(fromHeader) lastBlock = { group:group, name:name };
 
     var key = group + '||' + name;
     var kk = byKey[mk(key)];
@@ -811,9 +850,14 @@ function parseWorkbook(wb){
   kpis.sort(function(a,b){ return rank(a) - rank(b); });
   if(!kpis.some(function(k){ return k.enabled; })) kpis.forEach(function(k){ k.enabled = true; });
 
-  var picked = 0;
-  kpis.forEach(function(k){ if(k.enabled && !k.lowerBetter && picked < 3){ k.inTrend = true; picked++; } });
-  if(!picked) kpis.filter(function(k){ return k.enabled; }).slice(0,3).forEach(function(k){ k.inTrend = true; });
+  /* Default trend series, named explicitly so that reordering CANONICAL_ORDER,
+     hiding a KPI, or a direction flip can't silently change which three lines
+     you get. Everything else stays toggleable in the legend. */
+  kpis.forEach(function(k){ k.inTrend = k.enabled && TREND_DEFAULT.indexOf(k.label) >= 0; });
+  if(!kpis.some(function(k){ return k.inTrend; })){
+    kpis.filter(function(k){ return k.enabled && !k.lowerBetter; })
+        .slice(0,3).forEach(function(k){ k.inTrend = true; });
+  }
 
   /* Keep Jawa & Bali only. If the workbook ever carries other regions they are
      dropped here — and the file's own Total row is discarded with them, since it
@@ -901,7 +945,7 @@ function tipHtml(ex, placement){
 /* ================= SVG charts ================= */
 function lineChart(series, labels, opt){
   opt = opt || {};
-  var W = opt.w || 640, H = opt.h || 262, P = { t:26, r:16, b:44, l:46 };
+  var W = opt.w || 1100, H = opt.h || 400, P = { t:30, r:54, b:52, l:54 };
   var all = [];
   series.forEach(function(s){ s.values.forEach(function(v){ if(v != null) all.push(v); }); });
   if(!all.length || !labels.length) return '<div class="empty-mini">No data for this selection</div>';
@@ -917,35 +961,58 @@ function lineChart(series, labels, opt){
 
   var out = '<svg viewBox="0 0 ' + W + ' ' + H + '" style="width:100%;height:auto;display:block" xmlns="http://www.w3.org/2000/svg">';
   var i, j;
+
   for(i = 0; i < 5; i++){
-    var v = min + (max - min) * i / 4, y = Y(v);
-    out += '<line x1="' + P.l + '" y1="' + y.toFixed(1) + '" x2="' + (W-P.r) + '" y2="' + y.toFixed(1) + '" stroke="#EDF0F5"/>';
-    out += '<text x="' + (P.l-7) + '" y="' + (y+3.5).toFixed(1) + '" text-anchor="end" font-size="9.5" fill="#8A94A6">' + v.toFixed(0) + '%</text>';
+    var gv = min + (max - min) * i / 4, gy = Y(gv);
+    out += '<line x1="' + P.l + '" y1="' + gy.toFixed(1) + '" x2="' + (W-P.r) + '" y2="' + gy.toFixed(1) + '" stroke="#EDF0F5"/>';
+    out += '<text x="' + (P.l-9) + '" y="' + (gy+4).toFixed(1) + '" text-anchor="end" font-size="12" fill="#8A94A6">' + gv.toFixed(0) + '%</text>';
   }
   for(i = 0; i < n; i++){
-    out += '<text x="' + X(i).toFixed(1) + '" y="' + (H-P.b+15) + '" text-anchor="middle" font-size="9.5" fill="#5A6474">' + esc(labels[i].top) + '</text>';
-    if(labels[i].sub) out += '<text x="' + X(i).toFixed(1) + '" y="' + (H-P.b+27) + '" text-anchor="middle" font-size="9" fill="#A6AEBD">' + esc(labels[i].sub) + '</text>';
+    out += '<text x="' + X(i).toFixed(1) + '" y="' + (H-P.b+20) + '" text-anchor="middle" font-size="13" fill="#5A6474">' + esc(labels[i].top) + '</text>';
+    if(labels[i].sub) out += '<text x="' + X(i).toFixed(1) + '" y="' + (H-P.b+36) + '" text-anchor="middle" font-size="11" fill="#A6AEBD">' + esc(labels[i].sub) + '</text>';
   }
-  var showVals = series.length <= 4 && n <= 9;
+
   for(j = 0; j < series.length; j++){
     var s = series[j], pts = [];
-    for(i = 0; i < n; i++) if(s.values[i] != null) pts.push([X(i), Y(s.values[i]), s.values[i]]);
+    for(i = 0; i < n; i++) if(s.values[i] != null) pts.push([X(i), Y(s.values[i])]);
     if(!pts.length) continue;
     if(pts.length > 1){
-      out += '<polyline fill="none" stroke="' + s.color + '" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="' +
+      out += '<polyline fill="none" stroke="' + s.color + '" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" points="' +
              pts.map(function(p){ return p[0].toFixed(1) + ',' + p[1].toFixed(1); }).join(' ') + '"/>';
     }
-    /* eslint-disable no-loop-func */
-    (function(sc, jj){
-      pts.forEach(function(p){
-        out += '<circle cx="' + p[0].toFixed(1) + '" cy="' + p[1].toFixed(1) + '" r="3.2" fill="#fff" stroke="' + sc + '" stroke-width="2"/>';
-        if(showVals){
-          var dy = (jj % 2 === 0) ? -9 : 15;
-          out += '<text x="' + p[0].toFixed(1) + '" y="' + (p[1]+dy).toFixed(1) + '" text-anchor="middle" font-size="9" font-weight="700" fill="' + sc + '">' + p[2].toFixed(2) + '%</text>';
-        }
-      });
-    })(s.color, j);
+    for(i = 0; i < pts.length; i++){
+      out += '<circle cx="' + pts[i][0].toFixed(1) + '" cy="' + pts[i][1].toFixed(1) +
+             '" r="4" fill="#fff" stroke="' + s.color + '" stroke-width="2.5"/>';
+    }
   }
+
+  /* Value labels, laid out per x-position rather than per series.
+     Two lines running close together used to print their numbers on top of each
+     other, because the offset was chosen from the series index alone. Here every
+     label at one x is collected, sorted top-to-bottom, and pushed down until it
+     clears the one above it by GAP. Drawn last so numbers sit above every line. */
+  if(series.length <= 4 && n <= 12){
+    var GAP = 15;
+    for(i = 0; i < n; i++){
+      var here = [];
+      for(j = 0; j < series.length; j++){
+        var vv = series[j].values[i];
+        if(vv != null) here.push({ y:Y(vv), v:vv, color:series[j].color });
+      }
+      here.sort(function(a,b){ return a.y - b.y; });
+      var prev = -Infinity;
+      for(var q = 0; q < here.length; q++){
+        var want = Math.max(here[q].y - 12, P.t - 6);
+        var ly = want < prev + GAP ? prev + GAP : want;
+        prev = ly;
+        out += '<text x="' + X(i).toFixed(1) + '" y="' + ly.toFixed(1) + '" text-anchor="middle"' +
+               ' font-size="12" font-weight="700" fill="' + here[q].color + '"' +
+               ' stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">' +
+               here[q].v.toFixed(2) + '%</text>';
+      }
+    }
+  }
+
   if(opt.targetLine != null && opt.targetLine >= min && opt.targetLine <= max){
     var ty = Y(opt.targetLine);
     out += '<line x1="' + P.l + '" y1="' + ty.toFixed(1) + '" x2="' + (W-P.r) + '" y2="' + ty.toFixed(1) + '" stroke="#E2231A" stroke-width="1.2" stroke-dasharray="5 4"/>';
@@ -955,7 +1022,7 @@ function lineChart(series, labels, opt){
 
 function barChart(values, labels, opt){
   opt = opt || {};
-  var W = opt.w || 440, H = opt.h || 262, P = { t:26, r:12, b:44, l:44 };
+  var W = opt.w || 560, H = opt.h || 340, P = { t:34, r:16, b:52, l:52 };
   var real = values.filter(function(v){ return v != null; });
   if(!real.length) return '<div class="empty-mini">No data for this selection</div>';
   var max = Math.max.apply(null, real);
@@ -969,7 +1036,7 @@ function barChart(values, labels, opt){
   for(i = 0; i < 4; i++){
     var v = max * i / 3, y = Y(v);
     out += '<line x1="' + P.l + '" y1="' + y.toFixed(1) + '" x2="' + (W-P.r) + '" y2="' + y.toFixed(1) + '" stroke="#EDF0F5"/>';
-    out += '<text x="' + (P.l-6) + '" y="' + (y+3.5).toFixed(1) + '" text-anchor="end" font-size="9.5" fill="#8A94A6">' + v.toFixed(1) + '%</text>';
+    out += '<text x="' + (P.l-8) + '" y="' + (y+4).toFixed(1) + '" text-anchor="end" font-size="12" fill="#8A94A6">' + v.toFixed(1) + '%</text>';
   }
   for(i = 0; i < n; i++){
     var cx = P.l + band * i + band / 2, val = values[i];
@@ -978,15 +1045,20 @@ function barChart(values, labels, opt){
       var ok = opt.targetLine == null ? true : (opt.lowerBetter ? val <= opt.targetLine : val >= opt.targetLine);
       out += '<rect x="' + (cx - bw/2).toFixed(1) + '" y="' + y0.toFixed(1) + '" width="' + bw.toFixed(1) +
              '" height="' + Math.max(1, (H - P.b) - y0).toFixed(1) + '" rx="2.5" fill="' + (ok ? '#00A650' : '#E2231A') + '"/>';
-      out += '<text x="' + cx.toFixed(1) + '" y="' + (y0-6).toFixed(1) + '" text-anchor="middle" font-size="9.5" font-weight="700" fill="#3B4453">' + val.toFixed(2) + '%</text>';
+      out += '<text x="' + cx.toFixed(1) + '" y="' + (y0-7).toFixed(1) + '" text-anchor="middle" font-size="12" font-weight="700"' +
+             ' fill="#3B4453" stroke="#fff" stroke-width="3.5" paint-order="stroke" stroke-linejoin="round">' + val.toFixed(2) + '%</text>';
     }
-    out += '<text x="' + cx.toFixed(1) + '" y="' + (H-P.b+15) + '" text-anchor="middle" font-size="9.5" fill="#5A6474">' + esc(labels[i].top) + '</text>';
-    if(labels[i].sub) out += '<text x="' + cx.toFixed(1) + '" y="' + (H-P.b+27) + '" text-anchor="middle" font-size="9" fill="#A6AEBD">' + esc(labels[i].sub) + '</text>';
+    out += '<text x="' + cx.toFixed(1) + '" y="' + (H-P.b+20) + '" text-anchor="middle" font-size="13" fill="#5A6474">' + esc(labels[i].top) + '</text>';
+    if(labels[i].sub) out += '<text x="' + cx.toFixed(1) + '" y="' + (H-P.b+36) + '" text-anchor="middle" font-size="11" fill="#A6AEBD">' + esc(labels[i].sub) + '</text>';
   }
   if(opt.targetLine != null && opt.targetLine <= max){
     var ty = Y(opt.targetLine);
     out += '<line x1="' + P.l + '" y1="' + ty.toFixed(1) + '" x2="' + (W-P.r) + '" y2="' + ty.toFixed(1) + '" stroke="#E2231A" stroke-width="1.2" stroke-dasharray="5 4"/>';
-    out += '<text x="' + (W-P.r) + '" y="' + (ty-5).toFixed(1) + '" text-anchor="end" font-size="9" fill="#E2231A">Target ' +
+    /* The caption used to sit on the line at the right edge, where it landed on
+       top of the last bar's value label. It now lives above the plot area, which
+       no bar and no value label can reach. */
+    out += '<line x1="' + P.l + '" y1="' + (P.t-13) + '" x2="' + (P.l+16) + '" y2="' + (P.t-13) + '" stroke="#E2231A" stroke-width="1.2" stroke-dasharray="5 4"/>';
+    out += '<text x="' + (P.l+22) + '" y="' + (P.t-9) + '" text-anchor="start" font-size="11" fill="#E2231A">Target ' +
            (opt.lowerBetter ? '≤ ' : '≥ ') + opt.targetLine.toFixed(2) + '%</text>';
   }
   return out + '</svg>';
@@ -1339,6 +1411,44 @@ $('qAgent').oninput    = function(e){ S.q = e.target.value; buildAgentSelect(); 
 
 $('btnMap').onclick   = function(){ $('mapping').classList.toggle('hidden'); };
 $('btnPrint').onclick = function(){ window.print(); };
+
+/* ---- PNG export -------------------------------------------------------
+   html2canvas is fetched on first click only, so the page still loads and
+   parses Excel with no internet. The capture is the same content the print
+   sheet shows. */
+function withHtml2Canvas(){
+  if(window.html2canvas) return Promise.resolve(window.html2canvas);
+  return new Promise(function(res, rej){
+    var el = document.createElement('script');
+    el.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    el.onload  = function(){ res(window.html2canvas); };
+    el.onerror = function(){ rej(new Error('Could not load the image library — you appear to be offline. Use Print / PDF instead.')); };
+    document.head.appendChild(el);
+  });
+}
+$('btnPng').onclick = function(){
+  if(!S.model){ return; }
+  var btn = $('btnPng'), wrap = document.querySelector('.wrap');
+  var d = S.model.dates[S.dateIdx];
+  var stamp = d && d.date ? d.date.toISOString().slice(0,10) : 'export';
+  btn.textContent = 'Rendering…'; btn.disabled = true;
+  document.body.classList.add('shooting');
+  withHtml2Canvas().then(function(h2c){
+    return h2c(wrap, { backgroundColor:'#F4F6FA', scale:2, useCORS:true, windowWidth: wrap.scrollWidth });
+  }).then(function(canvas){
+    return new Promise(function(res){ canvas.toBlob(res, 'image/png'); });
+  }).then(function(blob){
+    var url = URL.createObjectURL(blob), a = document.createElement('a');
+    a.href = url; a.download = 'jnt-dashboard-' + stamp + '.png';
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 2000);
+  }).catch(function(e){
+    showErr('<b>Could not save the PNG.</b><br>' + esc(e.message));
+  }).then(function(){
+    document.body.classList.remove('shooting');
+    btn.textContent = 'Save PNG'; btn.disabled = false;
+  });
+};
 $('btnClear').onclick = function(){
   S.model = null; S.fileName = '';
   $('dash').classList.add('hidden');
