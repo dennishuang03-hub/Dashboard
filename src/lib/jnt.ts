@@ -425,18 +425,20 @@ function parseOneSheet(ws: XLSX.WorkSheet, sheetIdx: number): RawSheet {
     for (let k = 0; k < nHdr; k++) labels.push(txt(m[headerRow + k]?.[C] ?? null))
     const subCell = m[headerRow + nHdr - 1]?.[C] ?? null
     const sub = labels[nHdr - 1] || ''
-    const above = labels.slice(0, nHdr - 1).filter(Boolean)
-
-    let group = '', name = '', kind: SubKind = 'value', date: Date | null = null
-    if (!above.length) {
-      name = sub                                     // flat header
-    } else {
-      group = above[0]
-      name = above[above.length - 1]
+    const upper = labels.slice(0, nHdr - 1)
+ 
+    let group = upper[0] || ''
+    let name = upper.length ? (upper[upper.length - 1] || group) : ''
+    let kind: SubKind = 'value'
+    let date: Date | null = null
+ 
+    if (upper.length) {
       const d = cellDate(subCell)
       if (/^target|目标|标准|standar|kpi\s*target/i.test(sub)) kind = 'target'
       else if (/bulanan|monthly|月度|\bmtd\b|pencapaian|akumulasi/i.test(sub)) kind = 'monthly'
       else if (d) { kind = 'date'; date = d }
+    } else {
+      name = sub                                     // flat header
     }
     if (!name) continue
     // when group === name there is really only one header level
