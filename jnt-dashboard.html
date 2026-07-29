@@ -604,29 +604,38 @@ function parseOneSheet(ws, sheetName, sheetIdx){
   }
 
   /* 3 — KPI columns */
-  var kpis = [], byKey = {};
+  var kpis = [], byKey = {}, lastBlock = null;
   for(C = kpiStart; C <= lastC; C++){
     var labels = [];
     for(var k = 0; k < nHdr; k++) labels.push(txt((m[headerRow + k] || [])[C]));
     var subCell = (m[headerRow + nHdr - 1] || [])[C];
     var sub = labels[nHdr - 1] || '';
     var above = labels.slice(0, nHdr - 1).filter(function(x){ return !!x; });
+    var d = cellDate(subCell);
 
-    var group = '', name = '', kind = 'value', date = null;
-    if(!above.length){
-      if(nHdr > 1 && cellDate(subCell)) continue;   // orphan date header — never its own KPI
-      name = sub;
-    }
-    else {
+    var group = '', name = '', kind = 'value', date = null, fromHeader = false;
+
+    if(above.length){
       group = above[0];
       name  = above[above.length - 1];
-      var d = cellDate(subCell);
+      fromHeader = true;
       if(/^target|目标|标准|standar|kpi\s*target/i.test(sub))                          kind = 'target';
       else if(/bulanan|monthly|月度|\bmtd\b|pencapaian|akumulasi/i.test(sub))          kind = 'monthly';
       else if(d){ kind = 'date'; date = d; }
     }
+    else if(nHdr > 1 && d && lastBlock){
+      /* Group label lost (merge metadata gone). A bare date column belongs to the
+         block immediately to its left — which is what a reader sees on screen. */
+      group = lastBlock.group; name = lastBlock.name;
+      kind = 'date'; date = d;
+    }
+    else {
+      name = sub;
+    }
+
     if(!name) continue;
     if(group === name) group = '';
+    if(fromHeader) lastBlock = { group:group, name:name };
 
     var key = group + '||' + name;
     var kk = byKey[mk(key)];
