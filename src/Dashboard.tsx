@@ -1,9 +1,8 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
-  PALETTE, STATUS_COLOR, averageRows, dayName, explain, fmtDate, fmtDateFull, iconFor,
-  exportPng, kpiSeries, latin, parseWorkbook, pct, readWorkbook, shortLabel, statusOf,
-  targetFor,
+  BAR_CHOICES, PALETTE, STATUS_COLOR, averageRows, dayName, explain, fmtDate, fmtDateFull,
+  iconFor, exportPng, kpiSeries, parseWorkbook, pct, readWorkbook, statusOf, targetFor,
 } from './lib/jnt'
 import type { AgentRow, DateSlot, Explanation, Kpi, Model, Status } from './lib/jnt'
 import { BarChart, LineChart, Sparkline } from './components/Charts'
@@ -48,8 +47,7 @@ export default function Dashboard() {
   const [err, setErr] = useState('')
   const [agentKey, setAgentKey] = useState('TOTAL')
   const [dateIdx, setDateIdx] = useState(0)
-  const [query, setQuery] = useState('')
-  const [showMap, setShowMap] = useState(false)
+  const [barKey, setBarKey] = useState('')
   const [hot, setHot] = useState(false)
   const [tick, force] = useState(0)      // Kpi objects are edited in place
 
@@ -69,7 +67,7 @@ export default function Dashboard() {
         setModel(mdl)
         setFileName(f.name)
         setAgentKey('TOTAL')
-        setQuery('')
+        setBarKey('')
         setDateIdx(Math.max(0, mdl.dates.length - 1))
         setErr('')
       } catch (ex) {
@@ -90,36 +88,48 @@ export default function Dashboard() {
 
   /* ------------------------------------------------------- derived data */
 
-  const visibleAgents = useMemo<AgentRow[]>(() => {
-    if (!model) return []
-    const q = query.trim().toLowerCase()
-    if (!q) return model.rows
-    return model.rows.filter((r) =>
-      r.label.toLowerCase().includes(q) || r.code.toLowerCase().includes(q))
-  }, [model, query])
-
   const current = useMemo(() => {
     if (!model) return null
     if (agentKey !== 'TOTAL') {
       const hit = model.rows.find((r) => r.key === agentKey)
       if (hit) return { rec: hit, label: hit.label, sub: hit.code || model.region, count: 1 }
     }
-    if (!query.trim() && model.totalRow) {
+    if (model.totalRow) {
       return {
         rec: model.totalRow, label: 'ALL AGENTS (TOTAL)',
         sub: `${model.rows.length} agents`, count: model.rows.length,
       }
     }
     return {
-      rec: averageRows(visibleAgents, 'AVERAGE', model.region),
+      rec: averageRows(model.rows, 'AVERAGE', model.region),
       label: 'ALL AGENTS (AVERAGE)',
-      sub: `${visibleAgents.length} agents`,
-      count: visibleAgents.length,
+      sub: `${model.rows.length} agents`,
+      count: model.rows.length,
     }
-  }, [model, agentKey, query, visibleAgents])
+  }, [model, agentKey])
 
   // `tick` is the invalidation signal — Kpi objects are edited in place.
   const kpis = useMemo(() => model?.kpis.filter((k) => k.enabled) ?? [], [model, tick])
+
+  /**
+   * The three KPIs the bar chart can show. They are looked up by label rather
+   * than by index so a workbook that omits one of them simply offers fewer
+   * choices instead of pointing the chart at the wrong column.
+   */
+  const barChoices = useMemo<Kpi[]>(() => {
+    if (!model) return []
+    const out: Kpi[] = []
+    for (const label of BAR_CHOICES) {
+      const hit = model.kpis.find((k) => k.label === label && k.enabled)
+      if (hit) out.push(hit)
+    }
+    // an unfamiliar workbook may carry none of the three — show what it does have
+    return out.length ? out : kpis.slice(0, 3)
+  }, [model, kpis])
+
+  // resolved, not stored: a newly loaded file falls back to the first choice
+  // on its own instead of pointing at a KPI that no longer exists
+  const barK: Kpi | null = barChoices.find((k) => k.key === barKey) ?? barChoices[0] ?? null
 
   const savePng = async () => {
     if (!wrapRef.current) return
@@ -175,19 +185,6 @@ export default function Dashboard() {
 
   const trendKpis = kpis.filter((k) => k.inTrend)
 
-  // bar panel: first lower-is-better KPI, otherwise the weakest one
-  let barK: Kpi | null = kpis.find((k) => k.lowerBetter) ?? null
-  if (!barK && kpis.length) {
-    let worstGap = Infinity
-    for (const k of kpis) {
-      const v = kpiSeries(k, current.rec, dates)[di]
-      if (v == null) continue
-      const gap = v - targetFor(k, current.rec)
-      if (gap < worstGap) { worstGap = gap; barK = k }
-    }
-    barK = barK ?? kpis[0]
-  }
-
   const okSheets = model.sheets.filter((s) => s.ok)
   const badSheets = model.sheets.filter((s) => !s.ok)
 
@@ -198,17 +195,6 @@ export default function Dashboard() {
           <>Region: <b>{model.region}</b> &nbsp;|&nbsp; Agent: <b>{current.label}</b>
             &nbsp;|&nbsp; Date: <b>{todayLabel}</b>
             &nbsp;|&nbsp; Source: <b>{fileName}</b> ({okSheets.length} sheet{okSheets.length === 1 ? '' : 's'})</>
-        }
-        right={
-          <div className="agentpick">
-            <label>Agent — {model.region}</label>
-            <select value={agentKey} onChange={(e) => setAgentKey(e.target.value)}>
-              <option value="TOTAL">ALL AGENTS ({model.rows.length})</option>
-              {visibleAgents.map((r) => (
-                <option key={r.key} value={r.key}>{r.label}{r.code ? ` · ${r.code}` : ''}</option>
-              ))}
-            </select>
-          </div>
         }
       />
 
@@ -226,15 +212,18 @@ export default function Dashboard() {
             ))}
           </select>
         </Field>
-        <Field label="Search agent / kode">
-          <input type="text" placeholder="JAKARTA or AGENT40" value={query}
-                 onChange={(e) => setQuery(e.target.value)} />
+        <Field label={`Agent — ${model.region}`}>
+          <select className="agentsel" value={agentKey} onChange={(e) => setAgentKey(e.target.value)}>
+            <option value="TOTAL">ALL AGENTS ({model.rows.length})</option>
+            {model.rows.map((r) => (
+              <option key={r.key} value={r.key}>{r.label}{r.code ? ` · ${r.code}` : ''}</option>
+            ))}
+          </select>
         </Field>
         <div className="spacer" />
         <span className="filechip">
           {model.region} · {model.rows.length} agents · {kpis.length} KPIs · {dates.length} days
         </span>
-        <button className="btn" onClick={() => setShowMap((v) => !v)}>Column mapping</button>
         <button className="btn" onClick={savePng}>Save PNG</button>
         <button className="btn" onClick={() => window.print()}>Print / PDF</button>
         <button className="btn" onClick={() => { setModel(null); setFileName(''); setErr('') }}>Clear data</button>
@@ -337,7 +326,17 @@ export default function Dashboard() {
           </table>
         </Panel>
 
-        <Panel title={barK ? `${barK.label} (${dates.length} day${dates.length === 1 ? '' : 's'})` : 'Trend'}>
+        <Panel
+          title={`Daily Comparison (${dates.length} day${dates.length === 1 ? '' : 's'})`}
+          right={barChoices.length > 1 && (
+            <select
+              className="hsel" value={barK ? barK.key : ''} aria-label="KPI shown in the bar chart"
+              onChange={(e) => setBarKey(e.target.value)}
+            >
+              {barChoices.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
+            </select>
+          )}
+        >
           {barK
             ? <BarChart
                 values={kpiSeries(barK, current.rec, dates)}
@@ -397,72 +396,6 @@ export default function Dashboard() {
         </Panel>
       </div>
 
-      {/* -------- mapping -------- */}
-      {showMap && (
-        <Panel title="Column mapping & targets" flush className="mapping">
-          <table>
-            <thead>
-              <tr>
-                <th className="ctr" style={{ width: 40 }}>Show</th>
-                <th>Sheet</th>
-                <th>Group</th>
-                <th>Detected column</th>
-                <th style={{ width: 180 }}>Display name</th>
-                <th className="ctr" style={{ width: 120 }}>Direction</th>
-                <th className="num" style={{ width: 130 }}>Target %</th>
-                <th className="ctr" style={{ width: 60 }}>Trend</th>
-                <th className="num">Days</th>
-              </tr>
-            </thead>
-            <tbody>
-              {model.kpis.map((k, i) => (
-                <tr key={k.key}>
-                  <td className="ctr">
-                    <input type="checkbox" checked={k.enabled}
-                           onChange={(e) => { k.enabled = e.target.checked; rerender() }} />
-                  </td>
-                  <td className="muted">{k.sheets.join(', ')}</td>
-                  <td className="muted">{latin(k.group) || '—'}</td>
-                  <td title={k.name}>{latin(k.name) || k.name}</td>
-                  <td>
-                    <input type="text" value={k.label}
-                           onChange={(e) => { k.label = e.target.value || shortLabel(k.name, k.group); rerender() }} />
-                  </td>
-                  <td className="ctr">
-                    <select value={k.lowerBetter ? 'lo' : 'hi'}
-                            onChange={(e) => { k.lowerBetter = e.target.value === 'lo'; rerender() }}>
-                      <option value="hi">≥ higher</option>
-                      <option value="lo">≤ lower</option>
-                    </select>
-                  </td>
-                  <td className="num">
-                    <input
-                      type="number" step="0.01"
-                      placeholder={k.targetCol ? 'from file' : String(k.target)}
-                      value={k.targetOverride ?? ''}
-                      onChange={(e) => {
-                        const raw = e.target.value
-                        k.targetOverride = raw === '' ? null : (Number.isNaN(parseFloat(raw)) ? null : parseFloat(raw))
-                        rerender()
-                      }}
-                    />
-                  </td>
-                  <td className="ctr">
-                    <input type="checkbox" checked={k.inTrend}
-                           style={{ accentColor: PALETTE[i % PALETTE.length] }}
-                           onChange={(e) => { k.inTrend = e.target.checked; rerender() }} />
-                  </td>
-                  <td className="num muted">{k.dateCols.length}{k.monthlyCol ? ' + MTD' : ''}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <div className="maphint">
-            Leave <b>Target %</b> empty to use the Target column from the file (per agent).
-            Type a number to override it for every agent.
-          </div>
-        </Panel>
-      )}
 
       <div className="note">
         Data is parsed in memory only. Refreshing the page or clicking “Clear data” removes everything —
@@ -474,10 +407,37 @@ export default function Dashboard() {
 
 /* ------------------------------------------------------------ sub-views */
 
+/**
+ * The J&T Express wordmark, drawn inline as SVG.
+ *
+ * Inline rather than an <img>: it stays sharp at every zoom level, it survives
+ * the html2canvas snapshot and the print sheet without a CORS or missing-file
+ * risk, and the viewBox is cropped tight to the letters so the red plate has no
+ * dead margin around it.
+ */
+function JntLogo() {
+  const FONT = "'Arial Black','Arial Bold','Helvetica Neue',Arial,sans-serif"
+  return (
+    <svg className="jtlogo" viewBox="0 0 262 58" role="img" aria-label="J&T Express">
+      <g fill="#fff" transform="skewX(-11)">
+        {/* kept on one line: SVG would otherwise fold the surrounding JSX
+            indentation into a leading space and nudge the glyphs right */}
+        <text x="24" y="46" fontFamily={FONT} fontSize="48" fontWeight="900" letterSpacing="-1.5">J&amp;T</text>
+        <text x="132" y="46" fontFamily={FONT} fontSize="26" fontWeight="900" letterSpacing="0.5">EXPRESS</text>
+        {/* speed lines: they meet the top-right of the T and fan out to the
+            right, matching the swoosh on the printed mark */}
+        <rect x="118" y="2" width="52" height="5" />
+        <rect x="124" y="10" width="46" height="5" />
+        <rect x="130" y="18" width="40" height="5" />
+      </g>
+    </svg>
+  )
+}
+
 function TopBar({ meta, right }: { meta: ReactNode; right?: ReactNode }) {
   return (
     <div className="topbar">
-      <div className="logo"><div><div className="jt">J&amp;T</div><div className="ex">EXPRESS</div></div></div>
+      <div className="logo"><JntLogo /></div>
       <div className="titleblock">
         <h1>DAILY AGENT PERFORMANCE DASHBOARD</h1>
         <div className="meta">{meta}</div>
@@ -492,13 +452,16 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 }
 
 function Panel({
-  title, children, red, flush, className,
+  title, children, red, flush, className, right,
 }: {
-  title: string; children: ReactNode; red?: boolean; flush?: boolean; className?: string
+  title: string; children: ReactNode
+  red?: boolean; flush?: boolean; className?: string
+  /** control rendered at the right end of the header, e.g. a KPI switcher */
+  right?: ReactNode
 }) {
   return (
     <div className={`panel${red ? ' red' : ''}${className ? ' ' + className : ''}`}>
-      <h3>{title}</h3>
+      <h3><span className="ptitle">{title}</span>{right}</h3>
       <div className="body" style={flush ? { padding: 0 } : undefined}>{children}</div>
     </div>
   )
@@ -568,7 +531,7 @@ function nextAction(off: Kpi[]): string {
     if (/tptw|on time/i.test(l)) return 'review handover timing at the drop point'
     if (/retur|return/i.test(l)) return 'reduce COD returns with pre-delivery confirmation calls'
     if (/pickup|otpu/i.test(l)) return 'improve on-time pickup routing for non-ecommerce shippers'
-    if (/full day/i.test(l)) return 'lift full-day signature completion across both ritase'
+    if (/full day|persentase ttd/i.test(l)) return 'lift full-day signature completion across both ritase'
     return `review ${l.toLowerCase()}`
   })
   const s = [...new Set(tips)].slice(0, 3).join('; ') + '.'

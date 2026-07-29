@@ -22,36 +22,34 @@ body{
   font-family:"Segoe UI",Inter,-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
   background:var(--bg);color:var(--ink);font-size:13px;-webkit-font-smoothing:antialiased;
 }
-.wrap{max-width:1480px;margin:0 auto;padding:14px 16px 40px}
+.wrap{max-width:1480px;margin:0 auto;padding:10px 14px 16px}
 
 /* ---------- Top bar ---------- */
 .topbar{
-  display:flex;align-items:center;gap:18px;
+  display:flex;align-items:center;gap:14px;
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
-  overflow:hidden;margin-bottom:12px;
+  overflow:hidden;margin-bottom:10px;
 }
+/* The plate hugs the wordmark: the SVG viewBox is already cropped to the
+   letters, so only this small optical padding is left. */
 .logo{
-  background:var(--jt-red);color:#fff;padding:16px 22px;align-self:stretch;
-  display:flex;align-items:center;min-width:150px;
+  background:var(--jt-red);align-self:stretch;flex:none;
+  display:flex;align-items:center;justify-content:center;padding:0 18px;
 }
-.logo .jt{font-size:26px;font-weight:800;letter-spacing:-1px;line-height:1}
-.logo .ex{font-size:10px;font-weight:700;letter-spacing:3px;opacity:.95;margin-top:3px}
-.titleblock{flex:1;padding:12px 0;text-align:center}
-.titleblock h1{margin:0;font-size:23px;font-weight:800;letter-spacing:.3px;color:#141821}
-.titleblock .meta{margin-top:4px;color:var(--ink-2);font-size:12px}
+.logo .jtlogo{display:block;width:146px;height:auto}
+.titleblock{flex:1;padding:9px 0;text-align:center}
+.titleblock h1{margin:0;font-size:22px;font-weight:800;letter-spacing:.3px;color:#141821}
+.titleblock .meta{margin-top:3px;color:var(--ink-2);font-size:12px}
 .titleblock .meta b{color:var(--ink)}
-.agentpick{padding:10px 16px;min-width:240px}
-.agentpick label{display:block;font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.6px;margin-bottom:3px}
-.agentpick select{
-  width:100%;font-size:14px;font-weight:700;color:var(--ink);font-family:inherit;
-  border:1px solid var(--line);border-radius:8px;padding:7px 9px;background:#fff;
-}
+/* the title block no longer shares the bar with the agent picker, so give it
+   the full width between the logo and the right edge */
+.topbar .titleblock{padding-right:14px}
 
 /* ---------- Toolbar ---------- */
 .toolbar{
   display:flex;flex-wrap:wrap;gap:10px;align-items:flex-end;
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
-  padding:10px 14px;margin-bottom:12px;
+  padding:9px 12px;margin-bottom:10px;
 }
 .field{display:flex;flex-direction:column;gap:3px}
 .field label{font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.6px}
@@ -59,6 +57,9 @@ body{
   border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;
   background:#fff;color:var(--ink);min-width:150px;font-family:inherit;
 }
+/* the agent picker is the primary filter on the bar — agent names are long, so
+   it gets more room and heavier type than the neighbouring date select */
+.field select.agentsel{min-width:250px;max-width:340px;font-size:13px;font-weight:700}
 .btn{
   border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;
   padding:7px 13px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;
@@ -80,10 +81,10 @@ body{
 .dropzone .lock{margin-top:16px;font-size:11.5px;color:var(--ink-3)}
 
 /* ---------- KPI cards ---------- */
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(196px,1fr));gap:12px;margin-bottom:12px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(188px,1fr));gap:10px;margin-bottom:10px}
 .kcard{
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
-  padding:12px 13px 8px;position:relative;border-top:3px solid transparent;
+  padding:10px 12px 7px;position:relative;border-top:3px solid transparent;
   transition:transform .16s ease, box-shadow .16s ease;
 }
 /* z-index is required: the hover transform creates a stacking context, and without
@@ -125,21 +126,31 @@ body{
   overflow:visible;               /* tooltips must be able to escape the panel */
 }
 .panel > h3{
-  margin:0;padding:11px 14px;font-size:12.5px;font-weight:800;letter-spacing:.5px;
+  margin:0;padding:7px 13px;font-size:12.5px;font-weight:800;letter-spacing:.5px;
   text-transform:uppercase;color:var(--ink);border-bottom:1px solid var(--line);
   border-radius:var(--radius) var(--radius) 0 0;
+  display:flex;align-items:center;gap:12px;min-height:34px;
 }
+.panel > h3 .ptitle{flex:1;min-width:0}
+/* in-header control (the bar-chart KPI switcher): normal case and weight, so it
+   reads as something you can click rather than as part of the heading */
+.panel > h3 .hsel{
+  flex:none;max-width:60%;font-family:inherit;font-size:11.5px;font-weight:700;
+  text-transform:none;letter-spacing:0;color:var(--ink);background:#fff;
+  border:1px solid var(--line);border-radius:7px;padding:4px 8px;cursor:pointer;
+}
+.panel > h3 .hsel:hover{border-color:#C9D0DD}
 /* re-round the bottom corners now that the panel no longer clips */
 .panel .body table tbody tr:last-child td:first-child{border-bottom-left-radius:var(--radius)}
 .panel .body table tbody tr:last-child td:last-child{border-bottom-right-radius:var(--radius)}
 .panel.red > h3{background:var(--jt-red);color:#fff;border-bottom:none}
-.panel .body{padding:12px 14px;flex:1;min-height:0}
+.panel .body{padding:10px 13px;flex:1;min-height:0}
 
 /* the trend chart gets the full width — it is the one panel where cramped
    width made the plotted numbers unreadable */
-.row-trend{margin-bottom:12px}
-.row-mid{display:grid;grid-template-columns:.9fr 1fr;gap:12px;margin-bottom:12px}
-.row-bot{display:grid;grid-template-columns:1.3fr 1fr;gap:12px}
+.row-trend{margin-bottom:10px}
+.row-mid{display:grid;grid-template-columns:.9fr 1fr;gap:10px;margin-bottom:10px}
+.row-bot{display:grid;grid-template-columns:1.3fr 1fr;gap:10px}
 @media (max-width:1180px){ .row-bot{grid-template-columns:1fr} }
 @media (max-width:760px){ .row-mid{grid-template-columns:1fr} }
 
@@ -174,7 +185,7 @@ td.ctr,th.ctr{text-align:center}
 
 /* ---------- Summary list ---------- */
 .sumlist{display:flex;flex-direction:column}
-.sumitem{display:flex;gap:12px;align-items:flex-start;padding:11px 0;border-bottom:1px solid var(--line)}
+.sumitem{display:flex;gap:12px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line)}
 .sumitem:last-child{border-bottom:none}
 .sumitem .ico{font-size:19px;width:26px;text-align:center;flex:none;line-height:1.2}
 .sumitem .lab{width:150px;flex:none;font-weight:700;font-size:12px}
@@ -184,16 +195,6 @@ td.ctr,th.ctr{text-align:center}
 .val.fair .strong{color:var(--amber)}
 .val.poor .strong{color:var(--jt-red)}
 
-/* ---------- Mapping ---------- */
-.panel.mapping{margin-top:12px}
-.panel.mapping table{font-size:11.5px}
-.panel.mapping thead th{background:#3B4453}
-.panel.mapping input[type=text]{border:1px solid var(--line);border-radius:6px;padding:4px 7px;font-size:11.5px;width:100%;font-family:inherit}
-.panel.mapping input[type=number]{border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-size:11.5px;width:82px;text-align:right;font-family:inherit}
-.panel.mapping select{border:1px solid var(--line);border-radius:6px;padding:4px 6px;font-size:11.5px;font-family:inherit}
-
-.panel.mapping input[type=number]::placeholder{color:#B6BECC;font-style:italic}
-.maphint{padding:9px 14px;font-size:11px;color:var(--ink-3);border-top:1px solid var(--line);background:#FAFBFD}
 .warnbox{
   background:#FEF4E4;border:1px solid #F3D8A6;color:#8A5A08;
   border-radius:10px;padding:9px 14px;margin-bottom:12px;font-size:12px;line-height:1.5;
@@ -236,19 +237,44 @@ tbody tr.st-bad td{background:#FFF7F6}
 tbody tr.st-bad .kpiname{color:var(--jt-red)}
 
 .muted{color:var(--ink-3)}
-.note{font-size:11px;color:var(--ink-3);margin-top:14px;line-height:1.6}
+.note{font-size:11px;color:var(--ink-3);margin-top:10px;line-height:1.5}
 .err{
   background:var(--red-soft);border:1px solid #F6C6C3;color:#9B1C15;
   border-radius:10px;padding:11px 14px;margin-bottom:12px;font-size:12.5px;line-height:1.55;
 }
 .empty-mini{color:var(--ink-3);font-size:12px;padding:26px 0;text-align:center}
 
-/* Hidden while html2canvas takes the snapshot, so the PNG matches the print
-   sheet instead of capturing the toolbar and the mapping panel. */
+/* ---------- PNG snapshot mode ----------
+   The snapshot must contain every panel that is on screen, so unlike the print
+   sheet nothing is dropped here except the controls themselves (buttons, file
+   picker, hover tooltips) — those carry no data.
+
+   The width is pinned so the capture never depends on how wide the window
+   happened to be: a narrow window would otherwise collapse .row-mid/.row-bot to
+   one column and squeeze the tables, and html2canvas would bake that in. */
+body.shooting{background:var(--bg) !important}
+body.shooting .wrap{width:1480px;max-width:none;padding:14px 16px}
+
 body.shooting .toolbar,
-body.shooting .panel.mapping,
-body.shooting .note,
-body.shooting .tipbox{display:none !important}
+body.shooting .tipbox,
+body.shooting .legend button.off{display:none !important}
+
+/* fixed 4-up grid: auto-fit leaves a lone orphan card on the second row */
+body.shooting .cards{grid-template-columns:repeat(4,1fr)}
+
+/* no clipping, no lifted cards, no scroll containers — everything must be
+   laid out at full height for html2canvas to see it */
+body.shooting .kcard{transform:none !important;box-shadow:var(--shadow) !important}
+body.shooting .panel,
+body.shooting .panel .body{overflow:visible !important;max-height:none !important}
+
+/* the KPI switcher photographs as an empty box; the chosen KPI is what matters,
+   so it is flattened to plain text for the shot */
+body.shooting .panel > h3 .hsel,
+body.shooting .panel > h3 .hsel:hover{
+  border-color:transparent;background:transparent;
+  -webkit-appearance:none;appearance:none;padding-left:0;
+}
 
 @media print{
   /* landscape and colour-accurate: without print-color-adjust Chrome drops the
@@ -260,17 +286,19 @@ body.shooting .tipbox{display:none !important}
   /* zoom (not transform) so the layout actually reflows to the smaller size */
   .wrap{max-width:none;padding:0;zoom:.62}
 
-  /* interactive chrome, plus the two panels the tables already cover */
-  .toolbar,.dropzone,.panel.mapping,.legend button,.warnbox,.note,.filechip,.tipbox{display:none !important}
-  .row-mid{display:none !important}
+  /* only the interactive chrome is dropped — every data panel is kept, so the
+     PDF carries the same information as the on-screen dashboard */
+  .toolbar,.dropzone,.legend button.off,.filechip,.tipbox{display:none !important}
+  .panel > h3 .hsel{border-color:transparent;background:transparent;-webkit-appearance:none;appearance:none;padding-left:0}
 
   /* THE page-break fix: a panel that straddled a break printed its header on one
      page and its chart on the next, which is why charts looked missing */
   .panel,.kcard,.sumitem,tr,svg,
-  .row-trend,.row-bot{break-inside:avoid !important; page-break-inside:avoid !important}
+  .row-trend,.row-mid,.row-bot{break-inside:avoid !important; page-break-inside:avoid !important}
 
   .panel,.kcard,.topbar{box-shadow:none !important;border:1px solid var(--line)}
-  .cards{grid-template-columns:repeat(8,1fr);gap:6px}
+  .panel,.panel .body{overflow:visible !important;max-height:none !important}
+  .cards{grid-template-columns:repeat(4,1fr);gap:6px}
   .kcard{padding:8px 8px 4px}
   .kcard .kname{font-size:8.5px;min-height:22px;padding-right:10px}
   .kcard .kval{font-size:20px}

@@ -53,7 +53,7 @@ export interface Kpi {
   lowerBetter: boolean
   /** fallback target when there is no target column */
   target: number
-  /** set from the mapping panel; wins over everything */
+  /** manual override; wins over the file's own Target column */
   targetOverride: number | null
   enabled: boolean
   inTrend: boolean
@@ -260,15 +260,15 @@ const ALIASES: [RegExp, string][] = [
   [/kehadiran|absensi|出勤|sprinter|attendance/i, '06:30 ABSENSI'],
   [/keluar\s*gudang|出仓|0730|07\s*[:.]\s*30/i, '07:30 KELUAR GUDANG'],
   [/pickup|揽收|otpu|penjemputan/i, 'PICKUP NON-ECOMMERCE'],
-  [/operasional|operational|全天签收|full\s*day|seharian/i, 'TTD FULL DAY'],
+  [/operasional|operational|全天签收|full\s*day|seharian/i, 'PERSENTASE TTD'],
   [/ritase\s*pertama|一派|ritase\s*1/i, 'TTD PAKET JAM 12:00'],
   [/签收|\bttd\b/i, 'TTD'],
 ]
 
 /**
- * The categories that actually exist in the report, in display order.
- * Anything a file contains that isn't on this list is still parsed, but starts
- * switched off — turn it on from the Column mapping panel if you need it.
+ * The categories that actually exist in the report, in display order. Anything
+ * a file contains that isn't on this list is still parsed but stays hidden, so
+ * an extra column in a future workbook can't push the dashboard out of shape.
  */
 export const CANONICAL_ORDER = [
   '06:30 ABSENSI',
@@ -276,7 +276,7 @@ export const CANONICAL_ORDER = [
   'TTD PAKET JAM 12:00',
   'TTD RITASE 2',
   'TPTW (ON TIME)',
-  'TTD FULL DAY',
+  'PERSENTASE TTD',
   'PICKUP NON-ECOMMERCE',
   'RETUR COD NON-ECOMMERCE',
 ]
@@ -291,6 +291,41 @@ export const TREND_DEFAULT = [
   '07:30 KELUAR GUDANG',
   'TTD PAKET JAM 12:00',
 ]
+
+/**
+ * The three categories the comparison bar chart can switch between. They share
+ * the same 90% target, so a single chart with one target line is meaningful for
+ * all three — which is not true of, say, RETUR (a low-is-good limit).
+ */
+export const BAR_CHOICES = [
+  '06:30 ABSENSI',
+  '07:30 KELUAR GUDANG',
+  'TTD PAKET JAM 12:00',
+]
+
+/**
+ * Direction is not guessable for these — it is known. Everything on this list is
+ * a completion rate (higher is better); RETUR is the one limit where lower wins.
+ *
+ * This exists because the per-file direction sniffing in `parseWorkbook` reads
+ * the data rather than the meaning, and it got TTD PAKET JAM 12:00 backwards:
+ * the chart then declared "Target ≤ 90%" and painted 93% bars red. Known
+ * categories are pinned after the sniffing so the data can no longer overrule
+ * them; unfamiliar columns still fall back to the guess.
+ */
+export const HIGHER_IS_BETTER = new Set([
+  '06:30 ABSENSI',
+  '07:30 KELUAR GUDANG',
+  'TTD PAKET JAM 12:00',
+  'TTD RITASE 2',
+  'TPTW (ON TIME)',
+  'PERSENTASE TTD',
+  'PICKUP NON-ECOMMERCE',
+  'TTD',
+])
+export const LOWER_IS_BETTER = new Set([
+  'RETUR COD NON-ECOMMERCE',
+])
 
 export function shortLabel(name: string, group = ''): string {
   const combined = `${group} ${name}`
@@ -664,6 +699,12 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
     if (above !== below) k.lowerBetter = below > above
   }
 
+  /* the sniffing above only applies to columns we don't already know */
+  for (const k of kpis) {
+    if (HIGHER_IS_BETTER.has(k.label)) k.lowerBetter = false
+    else if (LOWER_IS_BETTER.has(k.label)) k.lowerBetter = true
+  }
+
   /* fallback targets */
   for (const k of kpis) {
     let t: number | null = null
@@ -805,11 +846,29 @@ export function readWorkbook(buf: ArrayBuffer): XLSX.WorkBook {
 
 /* ------------------------------------------------------------- PNG export */
 
+/** Two frames, so the browser has actually applied `body.shooting` and reflowed
+ *  to the pinned capture width before anything is measured. Measuring in the
+ *  same tick returns the pre-reflow height, which is what truncated the image. */
+const settled = () =>
+  new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+
 /**
  * Renders `el` to a PNG download. html2canvas is fetched on first use only, so
  * the page still loads and parses Excel with no internet — the Excel path never
- * depends on this. Adds `body.shooting` for the duration so the toolbar and the
- * mapping panel stay out of the snapshot (see dashboard.css).
+ * depends on this.
+ *
+ * Capturing the *whole* dashboard, not just the visible part, needs four things
+ * that html2canvas will not infer on its own:
+ *
+ *   1. `body.shooting` pins .wrap to a fixed width, so the capture does not
+ *      depend on the current window size (see dashboard.css).
+ *   2. The page is scrolled to the top and `scrollX/scrollY` are zeroed —
+ *      otherwise html2canvas offsets the clone by the scroll position and the
+ *      top of the dashboard is cut off.
+ *   3. `width`/`height` are taken from `scrollWidth`/`scrollHeight` (the full
+ *      laid-out size), not from the viewport, so panels below the fold render.
+ *   4. `windowWidth`/`windowHeight` match, so media queries inside the clone
+ *      evaluate against the full canvas rather than the real window.
  */
 export async function exportPng(el: HTMLElement, filename: string): Promise<void> {
   const w = window as unknown as { html2canvas?: (e: HTMLElement, o: object) => Promise<HTMLCanvasElement> }
@@ -825,14 +884,38 @@ export async function exportPng(el: HTMLElement, filename: string): Promise<void
     })
   }
 
+  const prevX = window.scrollX
+  const prevY = window.scrollY
+
   document.body.classList.add('shooting')
+  window.scrollTo(0, 0)
+  await settled()
+
   try {
+    const width = Math.ceil(el.scrollWidth)
+    const height = Math.ceil(el.scrollHeight)
+
+    // Cap the pixel budget: at scale 2 a tall dashboard can exceed the browser's
+    // maximum canvas area and silently come back blank.
+    const scale = Math.max(1, Math.min(2, 30_000_000 / (width * height)))
+
     const canvas = await w.html2canvas!(el, {
       backgroundColor: '#F4F6FA',
-      scale: 2,
+      scale,
       useCORS: true,
-      windowWidth: el.scrollWidth,
+      logging: false,
+      scrollX: 0,
+      scrollY: 0,
+      width,
+      height,
+      windowWidth: width,
+      windowHeight: height,
     })
+
+    if (!canvas.width || !canvas.height) {
+      throw new Error('The snapshot came back empty. Use Print / PDF instead.')
+    }
+
     const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
     if (!blob) throw new Error('The browser could not encode the image.')
     const url = URL.createObjectURL(blob)
@@ -845,5 +928,6 @@ export async function exportPng(el: HTMLElement, filename: string): Promise<void
     setTimeout(() => URL.revokeObjectURL(url), 2000)
   } finally {
     document.body.classList.remove('shooting')
+    window.scrollTo(prevX, prevY)
   }
 }
