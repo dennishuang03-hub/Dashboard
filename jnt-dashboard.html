@@ -523,14 +523,15 @@ function sheetMatrix(ws){
     }
     m.push(row);
   }
+  function blank(c){ return c == null || c.v == null || String(c.v).trim() === ''; }
   var merges = ws['!merges'] || [];
   for(var i = 0; i < merges.length; i++){
     var g = merges[i];
     var src = (m[g.s.r] || [])[g.s.c];
-    if(!src) continue;
+    if(blank(src)) continue;
     for(R = g.s.r; R <= g.e.r; R++){
       if(!m[R]) continue;
-      for(C = g.s.c; C <= Math.min(g.e.c, lastC); C++) if(m[R][C] == null) m[R][C] = src;
+      for(C = g.s.c; C <= Math.min(g.e.c, lastC); C++) if(blank(m[R][C])) m[R][C] = src;
     }
   }
   return { m:m, lastC:lastC, hadMerges: merges.length > 0 };
@@ -592,7 +593,7 @@ function parseOneSheet(ws, sheetName, sheetIdx){
   var nHdr = dataStart - headerRow;
 
   /* 2b — forward-fill group rows if merge metadata was lost */
-  if(!mm.hadMerges && nHdr > 1){
+  if(nHdr > 1){
     for(R = headerRow; R < dataStart - 1; R++){
       var last = null;
       for(C = kpiStart; C <= lastC; C++){
@@ -612,7 +613,10 @@ function parseOneSheet(ws, sheetName, sheetIdx){
     var above = labels.slice(0, nHdr - 1).filter(function(x){ return !!x; });
 
     var group = '', name = '', kind = 'value', date = null;
-    if(!above.length){ name = sub; }
+    if(!above.length){
+      if(nHdr > 1 && cellDate(subCell)) continue;   // orphan date header — never its own KPI
+      name = sub;
+    }
     else {
       group = above[0];
       name  = above[above.length - 1];
@@ -752,7 +756,11 @@ function parseWorkbook(wb){
       if(!(mk(key) in seen)){ seen[mk(key)] = 1; dates.push({ key:key, date:d.date, seq:i }); }
     });
   });
-  dates.sort(function(a,b){ return (a.date && b.date) ? (a.date - b.date) : (a.seq - b.seq); });
+  dates.sort(function(a,b){
+    if(a.date && b.date) return a.date - b.date;
+    if(!a.date && !b.date) return a.seq - b.seq;
+    return a.date ? 1 : -1;          // undated slots sort before any real day
+  });
 
   kpis.forEach(function(k){
     k.byDateKey = {};
