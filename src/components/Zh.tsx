@@ -14,5 +14,8 @@
  * dashboard.css) — column headers are too narrow to carry both on one.
  */
 export default function Zh({ children }: { children: string }) {
+  // renders nothing rather than an empty span, so callers can pass a lookup
+  // that missed without guarding every one of them
+  if (!children) return null
   return <span className="zh" lang="zh-Hans">{children}</span>
 }

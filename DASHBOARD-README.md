@@ -42,7 +42,14 @@ without helping anyone find anything.
 
 Category names come from `CATEGORY_ZH` in `src/lib/jnt.ts` and are lifted **verbatim from the
 workbook's header rows**, not translated — so someone reading the dashboard and someone reading the
-Excel see the same words. The CSV export carries both languages in its header row for the same reason.
+Excel see the same words. The Excel export carries both languages for the same reason.
+
+Agent cities come from `AGENT_ZH` in the same file (`JAKARTA 雅加达`, `TANGERANG 唐格朗`, …). The
+per-agent tabs already write the combined form in their Agent column, but the summary tabs are Latin
+only and the summary name is the one that wins the join — so the Mandarin comes from a lookup rather
+than from keeping CJK the parser strips. `agentZh()` returns the gloss for JSX; `agentFull()` returns
+`"TANGERANG 唐格朗"` for the places that can only take a string — `<option>` text, SVG axis labels and
+the Excel export.
 
 ---
 

@@ -38,6 +38,9 @@ body{
 th .zh,.kname .zh,.dpstat .l .zh,.sumitem .lab .zh{
   display:block;margin-left:0;margin-top:1px;font-size:.94em;white-space:normal;
 }
+/* inside a table body the gloss sits on already-muted grey, and .55 on top of
+   that fades it out of legibility */
+tbody td .zh{opacity:.85}
 
 /* ---------- Top bar ---------- */
 .topbar{

@@ -349,6 +349,38 @@ export const CATEGORY_ZH: Record<string, string> = {
 }
 
 /**
+ * Mandarin name for each agent city.
+ *
+ * The per-agent tabs already write the combined form in their Agent column
+ * ("TANGERANG唐格朗"), but the summary tabs write Latin only — and the summary
+ * name is the one that wins the join, so it is the one shown. This puts the
+ * Mandarin back, from a table rather than by keeping the CJK the parser strips.
+ */
+export const AGENT_ZH: Record<string, string> = {
+  JAKARTA: '雅加达',
+  TANGERANG: '唐格朗',
+  BEKASI: '勿加西',
+  BOGOR: '茂物',
+  DEPOK: '德波',
+  BANDUNG: '万隆',
+  SEMARANG: '三宝垄',
+  YOGYAKARTA: '日惹',
+  SURABAYA: '泗水',
+  BALI: '巴厘',
+}
+
+/** `''` for anything not on the list — a new city, or the all-agents row. */
+export function agentZh(label: string): string {
+  return AGENT_ZH[latin(label).toUpperCase().trim()] ?? ''
+}
+
+/** `TANGERANG 唐格朗` — for plain-text places: options, SVG labels, Excel. */
+export function agentFull(label: string): string {
+  const zh = agentZh(label)
+  return zh ? `${label} ${zh}` : label
+}
+
+/**
  * The three categories a *sprinter* (courier) drives. A drop point that scores
  * zero on all three is not underperforming — it has no couriers at all and only
  * only takes parcels in at the collection counter. See `dpStatusOf`.

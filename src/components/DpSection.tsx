@@ -16,8 +16,8 @@
 import { useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import {
-  CANONICAL_ORDER, CATEGORY_ZH, DP_KIND_LABEL, SPRINTER_LABELS, dpStatusOf, dpTargetFor, dpValue,
-  exportPng, fmtDate, fmtDateFull, isoDay,
+  CANONICAL_ORDER, CATEGORY_ZH, DP_KIND_LABEL, SPRINTER_LABELS, agentFull, agentZh, dpStatusOf,
+  dpTargetFor, dpValue, exportPng, fmtDate, fmtDateFull, isoDay,
 } from '../lib/jnt'
 import type { DateSlot, DpKind, DpRow, Kpi, Model } from '../lib/jnt'
 import { BarChart, HBarChart } from './Charts'
@@ -140,7 +140,8 @@ export default function DpSection({
   const rank = (k: Kpi | null, worst: boolean): HBar[] =>
     ranked(k, worst).map((o) => ({
       name: o.s.dp.label,
-      sub: allAgents ? o.s.dp.agentLabel : undefined,
+      // SVG text, so the Mandarin is concatenated rather than wrapped in <Zh>
+      sub: allAgents ? agentFull(o.s.dp.agentLabel) : undefined,
       value: o.v,
     }))
 
@@ -163,7 +164,11 @@ export default function DpSection({
     const list = [...acc.values()].sort((a, b) => b.bad - a.bad)
     return {
       values: list.map((e) => e.bad),
-      labels: list.map((e) => ({ top: e.label, sub: `of ${e.tot}` })),
+      // the axis is SVG: the Mandarin goes on the second line, not in a <Zh>
+      labels: list.map((e) => ({
+        top: e.label,
+        sub: `${agentZh(e.label)}${agentZh(e.label) ? ' · ' : ''}dari ${e.tot}`,
+      })),
     }
   }, [active, tableK])
 
@@ -278,7 +283,7 @@ export default function DpSection({
 
     const body = filtered.map((s) => [
       s.dp.label,
-      ...(allAgents ? [s.dp.agentLabel] : []),
+      ...(allAgents ? [agentFull(s.dp.agentLabel)] : []),
       s.dp.isCp ? 'CP' : 'DP',
       DP_KIND_LABEL[s.kind],
       ...catKpis.map((k) => cell(s, k)),
@@ -300,7 +305,7 @@ export default function DpSection({
 
     ws['!cols'] = [
       { wch: 28 },
-      ...(allAgents ? [{ wch: 15 }] : []),
+      ...(allAgents ? [{ wch: 20 }] : []),
       { wch: 7 },
       { wch: 12 },
       ...catKpis.map(() => ({ wch: 15 })),
@@ -349,7 +354,9 @@ export default function DpSection({
   return (
     <div className="dpsection">
       <div className="dphead">
-        <h2>Performa DP / CP <Zh>网点绩效</Zh> — <b>{scope}</b></h2>
+        <h2>
+          Performa DP / CP <Zh>网点绩效</Zh> — <b>{scope}<Zh>{allAgents ? '' : agentZh(agentLabel)}</Zh></b>
+        </h2>
         <span className="dpday">
           {dayLabel}
           {wanted && wanted.key !== day.key && (
@@ -498,7 +505,9 @@ export default function DpSection({
                       <span className={`ptag ${s.dp.isCp ? 'cp' : 'dp'}`}>{s.dp.isCp ? 'CP' : 'DP'}</span>
                       {s.dp.label}
                     </td>
-                    {allAgents && <td className="muted">{s.dp.agentLabel}</td>}
+                    {allAgents && (
+                      <td className="muted">{s.dp.agentLabel}<Zh>{agentZh(s.dp.agentLabel)}</Zh></td>
+                    )}
                     <td>
                       <span className={`sbadge ${s.kind}`}>{DP_KIND_LABEL[s.kind]}</span>
                     </td>

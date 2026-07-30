@@ -1,9 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
-  BAR_CHOICES, CATEGORY_ZH, PALETTE, STATUS_COLOR, averageRows, dayName, explain, fmtDate, fmtDateFull,
-  iconFor, exportPng, isoDay, kpiSeries, parseWorkbook, pct, readWorkbook, resolveDpDate,
-  statusOf, targetFor,
+  BAR_CHOICES, CATEGORY_ZH, PALETTE, STATUS_COLOR, agentFull, agentZh, averageRows, dayName, explain,
+  fmtDate, fmtDateFull, iconFor, exportPng, isoDay, kpiSeries, parseWorkbook, pct, readWorkbook,
+  resolveDpDate, statusOf, targetFor,
 } from './lib/jnt'
 import type { AgentRow, DateSlot, Explanation, Kpi, Model, Status } from './lib/jnt'
 import { BarChart, LineChart, Sparkline } from './components/Charts'
@@ -203,7 +203,7 @@ export default function Dashboard() {
     <div className="wrap" ref={wrapRef}>
       <TopBar
         meta={
-          <>Wilayah: <b>{model.region}</b> &nbsp;|&nbsp; Agen: <b>{current.label}</b>
+          <>Wilayah: <b>{model.region}</b> &nbsp;|&nbsp; Agen: <b>{current.label}<Zh>{agentZh(current.label)}</Zh></b>
             &nbsp;|&nbsp; Tanggal: <b>{todayLabel}</b>
             &nbsp;|&nbsp; Sumber: <b>{fileName}</b> ({okSheets.length} sheet)</>
         }
@@ -226,8 +226,11 @@ export default function Dashboard() {
         <Field label={`Agen · 代理区 — ${model.region}`}>
           <select className="agentsel" value={agentKey} onChange={(e) => setAgentKey(e.target.value)}>
             <option value="TOTAL">SEMUA AGEN ({model.rows.length})</option>
+            {/* a plain string, not <Zh> — an <option> renders text only */}
             {model.rows.map((r) => (
-              <option key={r.key} value={r.key}>{r.label}{r.code ? ` · ${r.code}` : ''}</option>
+              <option key={r.key} value={r.key}>
+                {agentFull(r.label)}{r.code ? ` · ${r.code}` : ''}
+              </option>
             ))}
           </select>
         </Field>
