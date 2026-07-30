@@ -333,14 +333,18 @@ table.dpgrid th.sticky,table.dpgrid td.sticky{position:sticky;left:0;z-index:2}
 table.dpgrid thead th.sticky{z-index:4}
 table.dpgrid tbody td.sticky{background:#fff}
 table.dpgrid tbody tr:nth-child(even) td.sticky{background:#FAFBFD}
-.dpname{font-weight:500;display:flex;align-items:center;gap:6px}
-/* a quiet type-marker, not a coloured pill — there is one on every single row */
+.dpname{font-weight:500;display:flex;align-items:center;gap:7px}
+/* Solid fill, because this is the one thing on the row you scan for rather than
+   read. A fixed min-width keeps the two tags the same size so the names below
+   them stay in a straight column instead of stepping in and out. */
 .ptag{
   display:inline-flex;align-items:center;justify-content:center;flex:none;
-  font-size:9px;font-weight:600;letter-spacing:.2px;border-radius:4px;
-  padding:1px 4px;background:#EFF2F7;color:#7A8496;
+  min-width:24px;font-size:9.5px;font-weight:700;letter-spacing:.3px;
+  border-radius:4px;padding:2px 5px;background:#1D6FC0;color:#fff;
 }
-.ptag.cp{background:#F1ECF7;color:#7B5CA0}
+/* a shade darker than the palette blue: white text at 9.5px needs the extra
+   contrast, and it also balances the weight of the purple beside it */
+.ptag.cp{background:#8E44AD}
 .sbadge{
   display:inline-block;font-size:10px;font-weight:500;
   border-radius:99px;padding:2px 8px;white-space:nowrap;
@@ -351,10 +355,13 @@ table.dpgrid tbody tr:nth-child(even) td.sticky{background:#FAFBFD}
 
 /* Only the misses are tinted. Colouring the passes as well turned the grid into
    a wall of green that took just as long to read as plain numbers — the point
-   of the grid is to find the red. */
+   of the grid is to find the red.
+   The tint is deliberately strong enough to pick out from across a desk, and
+   paired with a dark red rather than the brand red so the number on top of it
+   stays comfortable to read. */
 td.hm{font-variant-numeric:tabular-nums}
 td.hm.ok {color:var(--ink)}
-td.hm.bad{background:#FDF1F0;color:#B81810;font-weight:600}
+td.hm.bad{background:#F9D3CF;color:#96150E;font-weight:600}
 td.hm.off{color:#B3BAC7}
 tbody tr.k-closed td.sticky{color:#8A94A6}
 .dpmore{padding:9px 13px;border-top:1px solid var(--line);text-align:center}
