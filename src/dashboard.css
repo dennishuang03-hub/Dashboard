@@ -288,6 +288,12 @@ tbody tr.st-bad .kpiname{color:var(--jt-red)}
 
 .row-dp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
 @media (max-width:900px){ .row-dp{grid-template-columns:1fr} }
+/* caption under a ranking chart — explains an exclusion, so it stays visible in
+   the PNG and the print sheet rather than being treated as chrome */
+.chartnote{
+  font-size:10.5px;color:var(--ink-3);line-height:1.45;
+  padding-top:7px;margin-top:7px;border-top:1px solid var(--line);
+}
 
 .btn.tiny{padding:3px 9px;font-size:11px;flex:none}
 
@@ -393,6 +399,28 @@ body.shooting .panel > h3 .hsel:hover{
   border-color:transparent;background:transparent;
   -webkit-appearance:none;appearance:none;padding-left:0;
 }
+/* the export buttons are chrome, not data — never in the picture */
+body.shooting .btn{display:none !important}
+
+/* ---------- Two capture scopes ----------
+   The dashboard and the DP/CP list are two different documents that happen to
+   share a page: one is a daily summary for an agent, the other is a working
+   list of sites. Photographing them together produced an image too tall to read
+   and too wide to send, so each has its own button and its own scope.
+
+   These rules must come after the body.shooting block — the .wrap selectors
+   have identical specificity, so source order is what decides. */
+
+/* dashboard only — the DP/CP section has its own button */
+body.shoot-main .dpsection{display:none !important}
+
+/* DP/CP list only. The wrap is sized to the table instead of the fixed capture
+   width: the grid is wider than the dashboard, and pinning it to 1480px would
+   cut the right-hand categories off. */
+body.shoot-table .wrap > *:not(.dpsection){display:none !important}
+body.shoot-table .dpsection > *:not(.dptable){display:none !important}
+body.shoot-table .wrap{width:max-content;max-width:none;padding:0}
+body.shoot-table .dptable{margin-top:0}
 
 @media print{
   /* landscape and colour-accurate: without print-color-adjust Chrome drops the

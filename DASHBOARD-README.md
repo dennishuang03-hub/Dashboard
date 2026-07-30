@@ -149,10 +149,25 @@ Two shapes of zero are not underperformance, and both are kept out of the rankin
 | --- | --- | --- |
 | **Pickup only** | 06:30, 07:30 **and** 12:00 all read 0 | No sprinter is based there, so the delivery categories are structurally zero. A `0.00%` worst-five entry would be meaningless. |
 | **Closed** | every category reads 0 | The site is shut. |
-| **Active** | anything else | The only rows eligible for top five / worst five. |
+| **Active** | anything else | Eligible for the rankings. |
 
 Both are still listed in the DP/CP table with a badge and their cells greyed rather than red — "why is
 this one missing from the chart?" has to have a visible answer.
+
+### The third exclusion: zero in the ranked category
+
+Status is judged across all eight categories, but a ranking looks at one. A site can be **active** and
+still read exactly `0` in the category being ranked — `CP_ARIF_RAHMAN_HAKIM` scores 100% at 07:30 and
+12:00 but 0 at 06:30. In this report that 0 means *nothing happened in this category today*, not
+*performed at 0%*, so those rows are dropped from the top five and worst five as well. Left in, they
+would own the worst-five every single day and say nothing.
+
+This applies to `RETUR COD` too, where low is good: a 0.00% return rate at a site that handled no COD
+parcels is not the region's best performer, it is an empty cell wearing a medal.
+
+The exclusion is **only** applied to the two ranking charts. The status counters, the below-target count
+and the per-agent chart still count every active site, so a caption under each chart says how many rows
+the zero rule held back — otherwise the counters and the bars would disagree with no explanation.
 
 ### What the section shows
 
@@ -186,8 +201,24 @@ the rows the filters are currently showing. Nothing else is added: no summary sh
 - Column headers carry both languages, the same way the source workbook writes its own
 - Filename: `Daftar DP-CP TANGERANG 2026-07-28.xlsx` (or `… bulanan.xlsx` on the MTD toggle)
 
-Cell colouring is not available in the community build of SheetJS, so the sheet ships plain — apply
-Excel's own conditional formatting to the percentage columns if you want the red/green back.
+**No header colour, and it is not an oversight.** The community build of SheetJS writes `styles.xml`
+with `<fonts count="1">` and `<fills count="2">` hardcoded (`write_sty_xml`, `xlsx.mjs`) — the only part
+it varies is the number-format table. Fills, colours and bold are therefore unreachable, and so is a
+frozen header row. Getting them needs a swap to `xlsx-js-style`, a drop-in fork with the same API.
+Column widths and autofilter come through the supported `!cols` / `!autofilter` keys, and they are what
+actually make the sheet workable.
+
+## Two PNG buttons, two scopes
+
+**Simpan PNG** in the toolbar captures the dashboard and stops above the DP/CP section. The DP/CP list
+has its own **Simpan PNG** next to **Ekspor Excel**, which captures that panel alone.
+
+They are separate because they are separate documents that happen to share a page: one is a daily
+summary for an agent, the other a working list of sites. Photographed together the image came out too
+tall to read and too wide to send. The scopes are two body classes applied for the duration of the shot
+(`shoot-main`, `shoot-table`); the table shot also lets the wrap size to the grid instead of the fixed
+1480px capture width, so the right-hand categories are not cropped off. Both shots drop the buttons and
+the filter bar, which is why the day is printed in the panel title.
 
 ---
 

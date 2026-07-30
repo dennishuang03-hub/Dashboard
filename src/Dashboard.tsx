@@ -134,12 +134,14 @@ export default function Dashboard() {
   // on its own instead of pointing at a KPI that no longer exists
   const barK: Kpi | null = barChoices.find((k) => k.key === barKey) ?? barChoices[0] ?? null
 
+  /* The dashboard shot deliberately stops above the DP/CP section — that list
+     has its own Simpan PNG button, because the two are read separately. */
   const savePng = async () => {
     if (!wrapRef.current) return
     const d = model?.dates[dateIdx]
     const stamp = d?.date ? isoDay(d.date) : 'export'
     try {
-      await exportPng(wrapRef.current, `jnt-dashboard-${stamp}.png`)
+      await exportPng(wrapRef.current, `jnt-dashboard-${stamp}.png`, 'shoot-main')
     } catch (ex) {
       setErr((ex as Error).message)
     }
@@ -419,7 +421,7 @@ export default function Dashboard() {
       {dpDay && (
         <DpSection
           model={model} kpis={kpis} agentKey={agentKey}
-          agentLabel={current.label} day={dpDay} wanted={dToday}
+          agentLabel={current.label} day={dpDay} wanted={dToday} onError={setErr}
         />
       )}
 

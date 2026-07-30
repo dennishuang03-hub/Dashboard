@@ -1287,7 +1287,18 @@ const settled = () =>
  *   4. `windowWidth`/`windowHeight` match, so media queries inside the clone
  *      evaluate against the full canvas rather than the real window.
  */
-export async function exportPng(el: HTMLElement, filename: string): Promise<void> {
+export async function exportPng(
+  el: HTMLElement,
+  filename: string,
+  /**
+   * Extra body class applied for the duration of the shot, so a caller can
+   * decide what belongs in *its* picture — `shoot-main` drops the DP/CP section
+   * from the dashboard shot, `shoot-table` keeps nothing but the DP/CP table.
+   * It goes on before the two settling frames, so the reflow it causes is
+   * included in the measurement rather than fighting it.
+   */
+  bodyClass = '',
+): Promise<void> {
   const w = window as unknown as { html2canvas?: (e: HTMLElement, o: object) => Promise<HTMLCanvasElement> }
 
   if (!w.html2canvas) {
@@ -1305,6 +1316,7 @@ export async function exportPng(el: HTMLElement, filename: string): Promise<void
   const prevY = window.scrollY
 
   document.body.classList.add('shooting')
+  if (bodyClass) document.body.classList.add(bodyClass)
   window.scrollTo(0, 0)
   await settled()
 
@@ -1345,6 +1357,7 @@ export async function exportPng(el: HTMLElement, filename: string): Promise<void
     setTimeout(() => URL.revokeObjectURL(url), 2000)
   } finally {
     document.body.classList.remove('shooting')
+    if (bodyClass) document.body.classList.remove(bodyClass)
     window.scrollTo(prevX, prevY)
   }
 }

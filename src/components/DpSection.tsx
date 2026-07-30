@@ -13,11 +13,11 @@
  * a badge instead, because "why is this one missing?" is a question the table
  * has to be able to answer.
  */
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import {
   CANONICAL_ORDER, CATEGORY_ZH, DP_KIND_LABEL, SPRINTER_LABELS, dpStatusOf, dpTargetFor, dpValue,
-  fmtDate, fmtDateFull, isoDay,
+  exportPng, fmtDate, fmtDateFull, isoDay,
 } from '../lib/jnt'
 import type { DateSlot, DpKind, DpRow, Kpi, Model } from '../lib/jnt'
 import { BarChart, HBarChart } from './Charts'
@@ -42,7 +42,7 @@ type ValueMode = 'day' | 'mtd'
 type SortDir = 'asc' | 'desc'
 
 export default function DpSection({
-  model, kpis, agentKey, agentLabel, day, wanted,
+  model, kpis, agentKey, agentLabel, day, wanted, onError,
 }: {
   model: Model
   /** the enabled KPIs, already in canonical display order */
@@ -54,6 +54,8 @@ export default function DpSection({
   day: DateSlot
   /** the day the toolbar actually asked for — differs when the DP tabs are shorter */
   wanted: DateSlot | null
+  /** surfaced in the dashboard's own error banner rather than a second one here */
+  onError: (msg: string) => void
 }) {
   const allAgents = !agentKey || agentKey === 'TOTAL'
 
@@ -105,19 +107,35 @@ export default function DpSection({
   /**
    * The five best or worst sites for one category.
    *
-   * Pickup-only and closed sites are already gone — this ranks `active` only,
-   * which is where the rule in `dpStatusOf` actually takes effect.
+   * Two exclusions, and they are different things:
+   *
+   *   `dpStatusOf` already removed the sites that do not run a delivery shift at
+   *   all — pickup-only and closed. Only `active` reaches here.
+   *
+   *   This then drops sites reading exactly 0 *in the category being ranked*. A
+   *   site can be active overall and still have no activity in one category —
+   *   CP_ARIF_RAHMAN_HAKIM scores 100% at 07:30 and 12:00 but 0 at 06:30. That 0
+   *   is "nothing happened here today", not "performed at 0%", and left in it
+   *   would own the worst-five every single day while telling nobody anything.
+   *
+   * The zero rule applies to RETUR too, where low is good: a 0.00% return rate
+   * at a site that handled no COD parcels is not the region's best performer,
+   * it is an empty cell wearing a medal.
    */
   const ranked = (k: Kpi | null, worst: boolean): { s: Scored; v: number }[] => {
     if (!k) return []
     const rows = active
       .map((s) => ({ s, v: s.vals[k.label] }))
-      .filter((o): o is { s: Scored; v: number } => o.v != null)
+      .filter((o): o is { s: Scored; v: number } => o.v != null && o.v !== 0)
     // "worst" means furthest from meeting the target, which flips for RETUR
     const best = (a: number, b: number) => (k.lowerBetter ? a - b : b - a)
     rows.sort((x, y) => (worst ? best(y.v, x.v) : best(x.v, y.v)))
     return rows.slice(0, TOP_N)
   }
+
+  /** How many active sites the zero rule above kept out of a category's ranking. */
+  const zeroCount = (k: Kpi | null) =>
+    k ? active.filter((s) => s.vals[k.label] === 0).length : 0
 
   const rank = (k: Kpi | null, worst: boolean): HBar[] =>
     ranked(k, worst).map((o) => ({
@@ -159,6 +177,7 @@ export default function DpSection({
   const [sortKey, setSortKey] = useState('__name__')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [showAll, setShowAll] = useState(false)
+  const tableRef = useRef<HTMLDivElement>(null)
 
   const cell = (s: Scored, k: Kpi): number | null =>
     mode === 'mtd' ? (s.dp.vals[k.label]?.mtd ?? null) : s.vals[k.label]
@@ -205,6 +224,30 @@ export default function DpSection({
   }
   const arrow = (key: string) => (sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '')
 
+  /** Filename-safe: an agent label is free text out of the workbook. */
+  const fileStem = () => {
+    const who = (allAgents ? 'Semua Agen' : agentLabel).replace(/[\\/:*?"<>|]+/g, ' ').trim()
+    const when = mode === 'mtd' ? 'bulanan' : (day.date ? isoDay(day.date) : 'daftar')
+    return `Daftar DP-CP ${who} ${when}`
+  }
+
+  /**
+   * A picture of this table alone.
+   *
+   * `shoot-table` hides everything else on the page and lets the wrap size to
+   * the grid, so the right-hand categories are not cropped by the fixed capture
+   * width the dashboard shot uses. Rows hidden behind "Tampilkan 40 pertama"
+   * stay hidden — the image matches the screen.
+   */
+  const savePng = async () => {
+    if (!tableRef.current) return
+    try {
+      await exportPng(tableRef.current, `${fileStem()}.png`, 'shoot-table')
+    } catch (ex) {
+      onError((ex as Error).message)
+    }
+  }
+
   /**
    * Export the "Daftar DP / CP" table as a real .xlsx — one sheet, the same
    * columns as the table on screen, and only the rows the filters are showing.
@@ -214,10 +257,13 @@ export default function DpSection({
    * file has no separator Excel recognises and every row lands whole in column
    * A. A workbook carries its own typing, so nothing depends on the reader's
    * regional settings and the Mandarin survives without a BOM.
+   *
+   * No header colour: the community build of SheetJS hardcodes one font and two
+   * fills when it writes styles.xml, so fills and bold are simply not reachable
+   * from here. Column widths and autofilter are, and they are what actually make
+   * the sheet workable — the red header would only have been decoration.
    */
   const exportXlsx = () => {
-    const stamp = day.date ? isoDay(day.date) : ''
-    const scopeName = allAgents ? 'Semua Agen' : agentLabel
     const zh = (k: Kpi) => (CATEGORY_ZH[k.label] ? ` ${CATEGORY_ZH[k.label]}` : '')
 
     // the agent column only exists on screen in the all-agents view
@@ -275,11 +321,7 @@ export default function DpSection({
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    // an agent label is free text from the workbook; strip anything Windows
-    // refuses in a filename rather than letting the download fail silently
-    const who = scopeName.replace(/[\\/:*?"<>|]+/g, ' ').trim()
-    const suffix = mode === 'mtd' ? 'bulanan' : stamp || 'daftar'
-    a.download = `Daftar DP-CP ${who} ${suffix}.xlsx`
+    a.download = `${fileStem()}.xlsx`
     document.body.appendChild(a)
     a.click()
     a.remove()
@@ -347,6 +389,7 @@ export default function DpSection({
               targetLine={topK ? dpTargetFor(scored[0]?.dp ?? model.dps[0], topK) : null}
               lowerBetter={topK?.lowerBetter}
             />
+            <ZeroNote n={zeroCount(topK)} />
           </div>
         </div>
 
@@ -361,6 +404,7 @@ export default function DpSection({
               targetLine={worstK ? dpTargetFor(scored[0]?.dp ?? model.dps[0], worstK) : null}
               lowerBetter={worstK?.lowerBetter}
             />
+            <ZeroNote n={zeroCount(worstK)} />
           </div>
         </div>
       </div>
@@ -379,12 +423,16 @@ export default function DpSection({
         </div>
       )}
 
-      <div className="panel dptable">
+      <div className="panel dptable" ref={tableRef}>
         <h3>
+          {/* the period is in the title rather than only in the filter bar, so a
+              PNG of just this table still says which day it is */}
           <span className="ptitle">
-            Daftar DP / CP <Zh>网点清单</Zh> — {filtered.length} dari {counts.total}
+            Daftar DP / CP <Zh>网点清单</Zh> — {filtered.length} dari {counts.total} ·{' '}
+            {mode === 'mtd' ? 'Bulanan (MTD)' : dayLabel}
           </span>
           <button className="btn tiny" onClick={exportXlsx}>Ekspor Excel</button>
+          <button className="btn tiny" onClick={savePng}>Simpan PNG</button>
         </h3>
 
         <div className="dpfilters">
@@ -496,11 +544,31 @@ export default function DpSection({
       </div>
 
       <div className="note">
-        Nilai yang ditampilkan: {mode === 'mtd' ? 'pencapaian bulanan' : dayLabel}. DP/CP yang bernilai nol
-        pada 06:30, 07:30 dan 12:00 berarti tidak memiliki sprinter — statusnya pickup saja, dan tidak
-        dimasukkan ke dalam lima terbaik maupun lima terburuk. DP/CP yang bernilai nol pada semua kategori
-        dianggap sudah tutup. Keduanya tetap muncul di daftar di atas agar tidak ada yang hilang diam-diam.
+        Nilai yang ditampilkan: {mode === 'mtd' ? 'pencapaian bulanan' : dayLabel}.
+        {' '}Tiga hal dikeluarkan dari peringkat lima terbaik dan lima terburuk:
+        {' '}<b>Pickup saja</b> — nilai nol pada 06:30, 07:30 dan 12:00, berarti tidak ada sprinter;
+        {' '}<b>Tutup</b> — nilai nol pada semua kategori;
+        {' '}dan <b>DP/CP yang bernilai tepat 0,00% pada kategori yang sedang diperingkat</b> — itu berarti
+        kategorinya tidak berjalan hari itu, bukan performanya nol, jadi kalau ikut diperingkat ia akan
+        menguasai daftar terburuk setiap hari tanpa memberi informasi apa pun. Semuanya tetap muncul di
+        daftar di atas agar tidak ada yang hilang diam-diam.
       </div>
+    </div>
+  )
+}
+
+/**
+ * Says out loud how many sites the zero rule kept out of a ranking.
+ *
+ * Without it the counters above and the chart below disagree — "25 di bawah
+ * target" but only two bars — and a silent exclusion is the kind of thing that
+ * costs someone twenty minutes and a phone call.
+ */
+function ZeroNote({ n }: { n: number }) {
+  if (!n) return null
+  return (
+    <div className="chartnote">
+      {n} DP/CP tidak diperingkat: nilainya 0,00% — tidak ada aktivitas pada kategori ini.
     </div>
   )
 }
