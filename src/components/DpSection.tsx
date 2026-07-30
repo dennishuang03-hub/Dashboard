@@ -276,7 +276,7 @@ export default function DpSection({
       <div className="row-dp">
         <div className="panel">
           <h3>
-            <span className="ptitle">🏆 {TOP_N} DP / CP Terbaik <Zh>前五名网点</Zh></span>
+            <span className="ptitle">{TOP_N} DP / CP Terbaik <Zh>前五名网点</Zh></span>
             {catSelect(topK, setTopCat, 'grafik lima terbaik')}
           </h3>
           <div className="body">
@@ -290,7 +290,7 @@ export default function DpSection({
 
         <div className="panel">
           <h3>
-            <span className="ptitle">⚠️ {TOP_N} DP / CP Terburuk <Zh>后五名网点</Zh></span>
+            <span className="ptitle">{TOP_N} DP / CP Terburuk <Zh>后五名网点</Zh></span>
             {catSelect(worstK, setWorstCat, 'grafik lima terburuk')}
           </h3>
           <div className="body">
@@ -408,7 +408,9 @@ export default function DpSection({
                       )
                     })}
                     <td className="num">
-                      {s.kind === 'active' ? <b>{s.onTarget}/{s.scored}</b> : <span className="muted">—</span>}
+                      {s.kind === 'active'
+                        ? `${s.onTarget}/${s.scored}`
+                        : <span className="muted">—</span>}
                     </td>
                   </tr>
                 ))}

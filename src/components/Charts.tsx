@@ -115,7 +115,7 @@ export function LineChart({
           {labelsAt(i).map((o, k) => (
             <text
               key={k} x={X(i)} y={o.ly} textAnchor="middle"
-              fontSize={12} fontWeight={700} fill={o.color}
+              fontSize={12} fontWeight={600} fill={o.color}
               stroke="#fff" strokeWidth={3.5} paintOrder="stroke" strokeLinejoin="round"
             >
               {o.v.toFixed(2)}%
@@ -192,7 +192,7 @@ export function BarChart({
                   fill={ok ? '#00A650' : '#E2231A'}
                 />
                 <text
-                  x={cx} y={Y(val) - 7} textAnchor="middle" fontSize={12} fontWeight={700}
+                  x={cx} y={Y(val) - 7} textAnchor="middle" fontSize={12} fontWeight={500}
                   fill="#3B4453" stroke="#fff" strokeWidth={3.5} paintOrder="stroke" strokeLinejoin="round"
                 >
                   {val.toFixed(2)}%
@@ -282,7 +282,7 @@ export function HBarChart({
         return (
           <g key={`${b.name}-${i}`}>
             <line x1={P.l} y1={y + rowH - 0.5} x2={w - P.r} y2={y + rowH - 0.5} stroke="#F2F4F8" />
-            <text x={P.l - 10} y={b.sub ? cy - 2 : cy + 4} textAnchor="end" fontSize={11.5} fill="#3B4453" fontWeight={600}>
+            <text x={P.l - 10} y={b.sub ? cy - 2 : cy + 4} textAnchor="end" fontSize={11.5} fill="#3B4453" fontWeight={500}>
               {clip(b.name, 24)}
             </text>
             {b.sub && (
@@ -291,10 +291,10 @@ export function HBarChart({
               </text>
             )}
             <rect
-              x={P.l} y={cy - 8} width={Math.max(2, x - P.l)} height={16} rx={3}
-              fill={ok ? '#00A650' : '#E2231A'}
+              x={P.l} y={cy - 7} width={Math.max(2, x - P.l)} height={14} rx={3}
+              fill={ok ? '#3FB37A' : '#E2231A'}
             />
-            <text x={x + 7} y={cy + 4} fontSize={11.5} fontWeight={700} fill={ok ? '#0A7C3E' : '#B81810'}>
+            <text x={x + 7} y={cy + 4} fontSize={11.5} fontWeight={500} fill={ok ? '#2A7A52' : '#B81810'}>
               {b.value.toFixed(2)}%
             </text>
           </g>

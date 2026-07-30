@@ -30,14 +30,13 @@ body{
    narrow — a table header, a KPI card name, a stat label — it drops to its own
    line, because those boxes have no horizontal room to spare. */
 .zh{
-  font-weight:600;font-size:.86em;letter-spacing:0;text-transform:none;
-  opacity:.6;margin-left:.45em;white-space:nowrap;
+  font-weight:400;font-size:.86em;letter-spacing:0;text-transform:none;
+  opacity:.55;margin-left:.45em;white-space:nowrap;
 }
-h1 .zh,h2 .zh,.panel > h3 .zh{opacity:.5}
-.panel.red > h3 .zh{opacity:.75}
+.panel.red > h3 .zh,thead th .zh{opacity:.72}
 
 th .zh,.kname .zh,.dpstat .l .zh,.sumitem .lab .zh{
-  display:block;margin-left:0;margin-top:1px;font-size:.94em;opacity:.72;white-space:normal;
+  display:block;margin-left:0;margin-top:1px;font-size:.94em;white-space:normal;
 }
 
 /* ---------- Top bar ---------- */
@@ -54,7 +53,7 @@ th .zh,.kname .zh,.dpstat .l .zh,.sumitem .lab .zh{
 }
 .logo .jtlogo{display:block;width:146px;height:auto}
 .titleblock{flex:1;padding:9px 0;text-align:center}
-.titleblock h1{margin:0;font-size:22px;font-weight:800;letter-spacing:.3px;color:#141821}
+.titleblock h1{margin:0;font-size:19px;font-weight:600;letter-spacing:.2px;color:#141821}
 .titleblock .meta{margin-top:3px;color:var(--ink-2);font-size:12px}
 .titleblock .meta b{color:var(--ink)}
 /* the title block no longer shares the bar with the agent picker, so give it
@@ -68,17 +67,17 @@ th .zh,.kname .zh,.dpstat .l .zh,.sumitem .lab .zh{
   padding:9px 12px;margin-bottom:10px;
 }
 .field{display:flex;flex-direction:column;gap:3px}
-.field label{font-size:10px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.6px}
+.field label{font-size:10.5px;color:var(--ink-3);letter-spacing:.1px}
 .field select,.field input[type=text]{
   border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;
   background:#fff;color:var(--ink);min-width:150px;font-family:inherit;
 }
 /* the agent picker is the primary filter on the bar — agent names are long, so
    it gets more room and heavier type than the neighbouring date select */
-.field select.agentsel{min-width:250px;max-width:340px;font-size:13px;font-weight:700}
+.field select.agentsel{min-width:250px;max-width:340px;font-size:13px;font-weight:600}
 .btn{
   border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;
-  padding:7px 13px;font-size:12.5px;font-weight:600;cursor:pointer;font-family:inherit;
+  padding:7px 13px;font-size:12.5px;font-weight:500;cursor:pointer;font-family:inherit;
 }
 .btn:hover{background:#F7F8FB}
 .btn.primary{background:var(--jt-red);border-color:var(--jt-red);color:#fff}
@@ -106,35 +105,33 @@ th .zh,.kname .zh,.dpstat .l .zh,.sumitem .lab .zh{
 /* z-index is required: the hover transform creates a stacking context, and without
    it the tooltip would be painted underneath the panels further down the page. */
 .kcard:hover{transform:translateY(-2px);box-shadow:0 3px 8px rgba(16,24,40,.08),0 12px 26px rgba(16,24,40,.10);z-index:50}
-/* below target — tint the whole card so it reads as a problem at a glance */
-.kcard.st-bad{background:#FFF7F6}
-.kcard.st-bad .dot{animation:pulse 1.8s ease-in-out infinite}
-@keyframes pulse{
-  0%,100%{box-shadow:0 0 0 0 rgba(226,35,26,.45)}
-  50%    {box-shadow:0 0 0 5px rgba(226,35,26,0)}
-}
+/* below target — a light tint is enough to find the card; the red value and the
+   red top border already say what is wrong, so nothing here pulses or flashes */
+.kcard.st-bad{background:#FFF9F8}
 @media (prefers-reduced-motion:reduce){
-  .kcard,.kcard.st-bad .dot,.tipbox{transition:none;animation:none}
+  .kcard,.tipbox{transition:none;animation:none}
 }
 .kcard .dot{position:absolute;top:12px;right:12px;width:10px;height:10px;border-radius:50%}
 /* min-height keeps every card's value row on the same baseline; it allows for
    a two-line Indonesian name plus its Mandarin gloss underneath */
+/* min-height keeps every card's value row on the same baseline; it allows for
+   a two-line name plus its Mandarin gloss underneath */
 .kcard .kname{
-  font-size:10.5px;font-weight:800;letter-spacing:.5px;color:var(--ink-2);
-  text-transform:uppercase;padding-right:16px;line-height:1.35;min-height:44px;
+  font-size:10.5px;font-weight:600;letter-spacing:.2px;color:var(--ink-2);
+  padding-right:16px;line-height:1.35;min-height:42px;
 }
 .kcard .krow{display:flex;align-items:center;gap:9px;margin-top:6px}
-.kcard .kicon{font-size:20px;line-height:1}
-.kcard .kval{font-size:29px;font-weight:800;letter-spacing:-.8px;line-height:1}
+.kcard .kicon{font-size:18px;line-height:1;opacity:.75}
+.kcard .kval{font-size:26px;font-weight:600;letter-spacing:-.4px;line-height:1}
 .kcard .ktgt{font-size:11px;color:var(--ink-3);margin-top:3px}
 .kcard .kmtd{font-size:10.5px;color:var(--ink-3);margin-top:2px;min-height:14px}
 .kcard .kcmp{
   display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--ink-2);
   border-top:1px solid var(--line);margin-top:8px;padding-top:6px;
 }
-.up{color:var(--green);font-weight:700}
-.down{color:var(--jt-red);font-weight:700}
-.flat{color:var(--ink-3);font-weight:700}
+.up{color:var(--green);font-weight:600}
+.down{color:var(--jt-red);font-weight:600}
+.flat{color:var(--ink-3);font-weight:500}
 .spark{display:block;width:100%;height:30px;margin-top:4px}
 
 /* ---------- Panels ---------- */
@@ -143,9 +140,11 @@ th .zh,.kname .zh,.dpstat .l .zh,.sumitem .lab .zh{
   display:flex;flex-direction:column;
   overflow:visible;               /* tooltips must be able to escape the panel */
 }
+/* Sentence case, no tracking. The titles are already written the way they should
+   read; uppercasing them in CSS only made eight panels shout at once. */
 .panel > h3{
-  margin:0;padding:7px 13px;font-size:12.5px;font-weight:800;letter-spacing:.5px;
-  text-transform:uppercase;color:var(--ink);border-bottom:1px solid var(--line);
+  margin:0;padding:8px 13px;font-size:13px;font-weight:600;letter-spacing:0;
+  color:var(--ink);border-bottom:1px solid var(--line);
   border-radius:var(--radius) var(--radius) 0 0;
   display:flex;align-items:center;gap:12px;min-height:34px;
 }
@@ -153,7 +152,7 @@ th .zh,.kname .zh,.dpstat .l .zh,.sumitem .lab .zh{
 /* in-header control (the bar-chart KPI switcher): normal case and weight, so it
    reads as something you can click rather than as part of the heading */
 .panel > h3 .hsel{
-  flex:none;max-width:60%;font-family:inherit;font-size:11.5px;font-weight:700;
+  flex:none;max-width:60%;font-family:inherit;font-size:11.5px;font-weight:500;
   text-transform:none;letter-spacing:0;color:var(--ink);background:#fff;
   border:1px solid var(--line);border-radius:7px;padding:4px 8px;cursor:pointer;
 }
@@ -175,18 +174,18 @@ th .zh,.kname .zh,.dpstat .l .zh,.sumitem .lab .zh{
 /* ---------- Tables ---------- */
 table{width:100%;border-collapse:collapse;font-size:12px}
 thead th{
-  background:var(--jt-red);color:#fff;text-align:left;padding:8px 10px;font-size:10.5px;
-  letter-spacing:.6px;text-transform:uppercase;font-weight:700;
+  background:var(--jt-red);color:#fff;text-align:left;padding:8px 10px;font-size:11px;
+  letter-spacing:.1px;font-weight:600;
 }
 tbody td{padding:8px 10px;border-bottom:1px solid var(--line)}
 tbody tr:last-child td{border-bottom:none}
 tbody tr:nth-child(even){background:#FAFBFD}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 td.ctr,th.ctr{text-align:center}
-.kpiname{font-weight:600}
+.kpiname{font-weight:500}
 .badge{
   display:inline-flex;align-items:center;justify-content:center;
-  width:19px;height:19px;border-radius:50%;font-size:11px;font-weight:900;color:#fff;
+  width:18px;height:18px;border-radius:50%;font-size:10.5px;font-weight:600;color:#fff;
 }
 .badge.ok{background:var(--green)}
 .badge.warn{background:var(--amber)}
@@ -206,9 +205,9 @@ td.ctr,th.ctr{text-align:center}
 .sumitem{display:flex;gap:12px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line)}
 .sumitem:last-child{border-bottom:none}
 .sumitem .ico{font-size:19px;width:26px;text-align:center;flex:none;line-height:1.2}
-.sumitem .lab{width:150px;flex:none;font-weight:700;font-size:12px}
+.sumitem .lab{width:150px;flex:none;font-weight:600;font-size:12px}
 .sumitem .val{flex:1;font-size:12px;color:var(--ink-2);line-height:1.5}
-.sumitem .val .strong{font-weight:700;display:block;margin-bottom:1px}
+.sumitem .val .strong{font-weight:600;display:block;margin-bottom:1px}
 .val.good .strong{color:var(--green)}
 .val.fair .strong{color:var(--amber)}
 .val.poor .strong{color:var(--jt-red)}
@@ -243,12 +242,12 @@ span.tip{display:inline-block}
 .tipbox.tip-left::after{right:-4px;top:calc(50% - 4px)}
 .tip:hover > .tipbox.tip-left{opacity:1;transform:translateY(-50%) translateX(0) scale(1)}
 
-.tiptitle{display:block;font-weight:800;margin-bottom:4px;font-size:11.5px}
+.tiptitle{display:block;font-weight:600;margin-bottom:4px;font-size:11.5px}
 .tiptitle.ok{color:#4ADE80}
 .tiptitle.bad{color:#FF9A90}
 .tiptitle.na{color:#C6CCD8}
 .tipline{display:block;color:#C3CAD6}
-.tipline:first-of-type{color:#fff;font-weight:600}
+.tipline:first-of-type{color:#fff;font-weight:500}
 
 /* below-target rows */
 tbody tr.st-bad td{background:#FFF7F6}
@@ -266,23 +265,25 @@ tbody tr.st-bad .kpiname{color:var(--jt-red)}
 .dpsection{margin-top:16px}
 .dphead{
   display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;
-  padding:0 2px 8px;border-bottom:2px solid var(--jt-red);margin-bottom:12px;
+  padding:0 2px 7px;border-bottom:1px solid var(--line);margin-bottom:12px;
 }
-.dphead h2{margin:0;font-size:15px;font-weight:800;letter-spacing:.3px;color:#141821}
-.dphead h2 b{color:var(--jt-red)}
+.dphead h2{margin:0;font-size:14.5px;font-weight:600;letter-spacing:.1px;color:#141821}
+.dphead h2 b{color:var(--jt-red);font-weight:600}
 .dphead .dpday{font-size:11.5px;color:var(--ink-3)}
 .dphead .dpday em{font-style:normal;color:#B47607}
 
+/* The number carries the colour; the card itself stays plain. Five tinted,
+   bordered, bold boxes in a row competed with the charts underneath them. */
 .dpstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px}
 .dpstat{
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
-  padding:9px 13px;display:flex;flex-direction:column;gap:1px;border-left:3px solid var(--line);
+  padding:9px 13px;display:flex;flex-direction:column;gap:2px;
 }
-.dpstat .n{font-size:23px;font-weight:800;letter-spacing:-.6px;line-height:1.15}
-.dpstat .l{font-size:10.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.5px;line-height:1.35}
-.dpstat.good{border-left-color:var(--green)} .dpstat.good .n{color:var(--green)}
-.dpstat.warn{border-left-color:var(--amber)} .dpstat.warn .n{color:#B47607}
-.dpstat.bad {border-left-color:var(--jt-red)} .dpstat.bad  .n{color:var(--jt-red)}
+.dpstat .n{font-size:21px;font-weight:600;letter-spacing:-.3px;line-height:1.15}
+.dpstat .l{font-size:11px;color:var(--ink-3);line-height:1.35}
+.dpstat.good .n{color:var(--green)}
+.dpstat.warn .n{color:#B47607}
+.dpstat.bad  .n{color:var(--jt-red)}
 .dpstat.mute .n{color:var(--ink-3)}
 
 .row-dp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
@@ -305,9 +306,9 @@ tbody tr.st-bad .kpiname{color:var(--jt-red)}
 .dpfilters .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
 .dpfilters .seg button{
   border:none;background:#fff;color:var(--ink-2);padding:5px 11px;font-size:11.5px;
-  font-weight:700;cursor:pointer;font-family:inherit;
+  font-weight:500;cursor:pointer;font-family:inherit;
 }
-.dpfilters .seg button.on{background:var(--jt-red);color:#fff}
+.dpfilters .seg button.on{background:var(--jt-red);color:#fff;font-weight:600}
 
 /* The grid is wider than the panel by design: 8 category columns plus identity
    never fit at full type size, and shrinking the type to make them fit is worse
@@ -326,25 +327,29 @@ table.dpgrid th.sticky,table.dpgrid td.sticky{position:sticky;left:0;z-index:2}
 table.dpgrid thead th.sticky{z-index:4}
 table.dpgrid tbody td.sticky{background:#fff}
 table.dpgrid tbody tr:nth-child(even) td.sticky{background:#FAFBFD}
-.dpname{font-weight:600;display:flex;align-items:center;gap:6px}
+.dpname{font-weight:500;display:flex;align-items:center;gap:6px}
+/* a quiet type-marker, not a coloured pill — there is one on every single row */
 .ptag{
   display:inline-flex;align-items:center;justify-content:center;flex:none;
-  font-size:8.5px;font-weight:900;letter-spacing:.4px;border-radius:4px;padding:1px 4px;color:#fff;
+  font-size:9px;font-weight:600;letter-spacing:.2px;border-radius:4px;
+  padding:1px 4px;background:#EFF2F7;color:#7A8496;
 }
-.ptag.dp{background:#2E86DE} .ptag.cp{background:#8E44AD}
+.ptag.cp{background:#F1ECF7;color:#7B5CA0}
 .sbadge{
-  display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.3px;
+  display:inline-block;font-size:10px;font-weight:500;
   border-radius:99px;padding:2px 8px;white-space:nowrap;
 }
-.sbadge.active{background:#E4F7EC;color:#0A7C3E}
-.sbadge.pickup{background:#FEF1DC;color:#8A5A08}
-.sbadge.closed{background:#EDEFF4;color:#6C7789}
+.sbadge.active{background:#EDF6F1;color:#2A7A52}
+.sbadge.pickup{background:#FBF3E4;color:#8A5A08}
+.sbadge.closed{background:#F1F3F7;color:#798394}
 
-/* the heatmap: one colour per cell, read as a block down the column */
-td.hm{font-variant-numeric:tabular-nums;font-weight:600}
-td.hm.ok {background:#E9F8EF;color:#0A7C3E}
-td.hm.bad{background:#FDEAE8;color:#B81810}
-td.hm.off{color:#AEB6C4}
+/* Only the misses are tinted. Colouring the passes as well turned the grid into
+   a wall of green that took just as long to read as plain numbers — the point
+   of the grid is to find the red. */
+td.hm{font-variant-numeric:tabular-nums}
+td.hm.ok {color:var(--ink)}
+td.hm.bad{background:#FDF1F0;color:#B81810;font-weight:600}
+td.hm.off{color:#B3BAC7}
 tbody tr.k-closed td.sticky{color:#8A94A6}
 .dpmore{padding:9px 13px;border-top:1px solid var(--line);text-align:center}
 

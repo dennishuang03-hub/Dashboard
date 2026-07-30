@@ -160,16 +160,21 @@ this one missing from the chart?" has to have a visible answer.
 - **Top 5 / Worst 5** — horizontal bars, each chart with its **own** category dropdown, target line drawn
   in. "Worst" respects direction, so for `RETUR COD` it means the highest, not the lowest
 - **Below-target DP/CP by agent** — only in the all-agents view
-- **DP/CP list** — every site with all eight categories as a colour-coded grid (green met / red missed /
-  grey structural). Search, status filter, DP vs CP filter, below-target-only filter, day vs MTD toggle,
-  sort on any column, and CSV export of whatever the filters currently show
+- **DP/CP list** — every site with all eight categories in one grid. Only the **misses** are tinted;
+  values that met their target stay plain, and the structural zeros of a pickup-only or closed site are
+  greyed rather than reddened. Search, status filter, DP vs CP filter, below-target-only filter, day vs
+  MTD toggle, sort on any column, and CSV export of whatever the filters currently show
+
+The whole section is deliberately low-contrast: one accent colour, no uppercase tracking, no heavy
+weights beyond a single semibold for headings. The red is reserved for things that are actually wrong.
 
 ---
 
 ## Status colours
 
-Binary, no middle ground: **green = met the target, red = missed it.** A card that misses turns red,
-tints its background, and its status dot pulses gently.
+Binary, no middle ground: **green = met the target, red = missed it.** A card that misses turns its
+value red and takes a light background tint. Nothing pulses, flashes or animates — a dashboard that
+someone reads every morning should sit still.
 
 Hovering any card — or any status badge in the two tables — fades in a small dark panel explaining the
 call, e.g.

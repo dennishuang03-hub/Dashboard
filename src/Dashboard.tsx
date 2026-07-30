@@ -392,7 +392,7 @@ export default function Dashboard() {
                 return (
                   <tr key={k.key} className={`st-${st}`}>
                     <td className="kpiname">{k.label}</td>
-                    <td className="num"><b>{pct(v)}</b></td>
+                    <td className="num">{pct(v)}</td>
                     <td className="num muted">{pct(p)}</td>
                     <td className="num"><Delta diff={v != null && p != null ? v - p : null} lowerBetter={k.lowerBetter} /></td>
                     <td className="num muted">{pct(mtd)}</td>

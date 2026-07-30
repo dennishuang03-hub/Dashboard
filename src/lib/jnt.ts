@@ -854,29 +854,38 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
 /**
  * What a drop point was actually doing on a given day.
  *
- *   closed  — every category reads zero. The site is shut; scoring it would drag
- *             the agent's worst-five list down with sites that no longer exist.
- *   pickup  — 06:30, 07:30 and 12:00 are all zero but something else is not.
+ *   closed  — every one of the eight categories reads 0. The site is shut.
+ *   pickup  — 06:30, 07:30 and 12:00 all read 0, but something else does not.
  *             No sprinter is based here, so the delivery categories are
- *             structurally zero and a "0.00%" ranking would be meaningless.
- *   active  — runs at least part of a delivery shift.
+ *             structurally zero rather than bad.
+ *   active  — at least one of 06:30 / 07:30 / 12:00 is above zero.
  *
- * Only `active` sites are eligible for the top-five and worst-five charts.
+ * Only `active` sites are ranked. Both other kinds would otherwise fill the
+ * worst-five with 0.00% rows that no supervisor can act on.
+ *
+ * Order matters: a closed site is zero on the three sprinter categories too, so
+ * the all-zero test has to run first or every closed site would be mislabelled
+ * "pickup only". `closed` is the more specific answer, so it wins.
  */
 export function dpStatusOf(dp: DpRow, dateKey: string): DpKind {
   const read = (label: string): number | null => {
-    const s = dp.vals[label]
-    if (!s) return null
-    const v = s.byDate[dateKey]
+    const v = dp.vals[label]?.byDate[dateKey]
     return v == null ? null : v
   }
 
-  const present = CANONICAL_ORDER.map(read).filter((v): v is number => v != null)
-  if (!present.length) return 'closed'
-  if (present.every((v) => v === 0)) return 'closed'
+  /* closed — 0 across all eight categories */
+  const all = CANONICAL_ORDER.map(read).filter((v): v is number => v != null)
+  if (!all.length) return 'closed'          // nothing recorded at all — unrankable either way
+  if (all.every((v) => v === 0)) return 'closed'
 
+  /* pickup only — 0 on 06:30, 07:30 and 12:00 */
   const sprinter = SPRINTER_LABELS.map(read)
+  /* Guard: if the workbook carried none of the three columns there is nothing to
+     test, and treating "absent" as "zero" would quietly mark every single site
+     pickup-only and leave both ranking charts empty. */
+  if (sprinter.every((v) => v == null)) return 'active'
   if (sprinter.every((v) => v == null || v === 0)) return 'pickup'
+
   return 'active'
 }
 
