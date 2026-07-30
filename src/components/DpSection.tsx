@@ -1,5 +1,5 @@
 /**
- * Drop point / counter point level view.
+ * Drop point / collection point level view.
  *
  * The agent tabs answer "how is TANGERANG doing?". These per-agent tabs answer
  * the follow-up — "*which* of its 108 drop points is dragging it down?" — so the
@@ -16,7 +16,7 @@
 import { useMemo, useState } from 'react'
 import {
   CANONICAL_ORDER, CATEGORY_ZH, DP_KIND_LABEL, SPRINTER_LABELS, dpStatusOf, dpTargetFor, dpValue,
-  fmtDate, fmtDateFull,
+  fmtDate, fmtDateFull, isoDay,
 } from '../lib/jnt'
 import type { DateSlot, DpKind, DpRow, Kpi, Model } from '../lib/jnt'
 import { BarChart, HBarChart } from './Charts'
@@ -196,28 +196,71 @@ export default function DpSection({
   }
   const arrow = (key: string) => (sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '')
 
+  /**
+   * CSV written for the Excel this report is actually opened in.
+   *
+   * That Excel runs an Indonesian locale: its list separator is `;` and `90,00`
+   * is a number. A plain comma-delimited file therefore has no separators it
+   * recognises at all, which is why the first version landed every row whole in
+   * column A. Three things fix it, and all three are needed:
+   *
+   *   `sep=;`        — consumed by Excel before parsing, so the file opens right
+   *                    on a double-click no matter how the machine is set up
+   *   `;` delimiter  — matches that separator
+   *   decimal commas — so 94,50 arrives as a number rather than as text
+   *
+   * The BOM keeps the Chinese glosses readable; without it Excel reads the file
+   * as ANSI and they arrive as mojibake.
+   */
   const exportCsv = () => {
-    /* the export keeps the workbook's bilingual habit, so the CSV can be pasted
-       back beside the source data without anyone having to re-map the columns */
-    const head = [
-      'DP/CP 网点', 'Agen 代理区', 'Jenis 类型', 'Status 状态',
-      ...catKpis.map((k) => `${k.label}${CATEGORY_ZH[k.label] ? ` ${CATEGORY_ZH[k.label]}` : ''}`),
-      'Sesuai target 达标数',
+    const SEP = ';'
+    const esc = (v: string) => (/[";\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
+    const num = (v: number | null) => (v == null ? '' : v.toFixed(2).replace('.', ','))
+    /* both languages in one cell, split over two lines — the same shape the
+       source workbook uses for its own headers */
+    const head = (id: string, zh: string) => esc(zh ? `${id}\n${zh}` : id)
+
+    const cols = [
+      head('Tanggal', '日期'),
+      head('Periode', '周期'),
+      head('Agen', '代理区'),
+      head('Kode Agen', '代理区编码'),
+      head('DP / CP', '网点'),
+      head('Jenis', '类型'),
+      head('Status', '状态'),
+      ...catKpis.map((k) => head(`${k.label} (%)`, CATEGORY_ZH[k.label] ?? '')),
+      /* split rather than "7/8": two numbers can be sorted, filtered and summed
+         in Excel, a text fraction can only be looked at */
+      head('Sesuai target', '达标项数'),
+      head('Kategori dinilai', '评估项数'),
     ]
-    const esc = (v: string) => (/[",\n;]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
-    const lines = [head.map(esc).join(',')]
-    for (const s of filtered) {
-      lines.push([
-        esc(s.dp.label), esc(s.dp.agentLabel), s.dp.isCp ? 'CP' : 'DP', DP_KIND_LABEL[s.kind],
-        ...catKpis.map((k) => { const v = cell(s, k); return v == null ? '' : v.toFixed(2) }),
-        `${s.onTarget}/${s.scored}`,
-      ].join(','))
-    }
-    const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' })
+
+    const stamp = day.date ? isoDay(day.date) : ''
+    const periode = mode === 'mtd' ? 'Bulanan (MTD)' : 'Harian'
+
+    const rows = filtered.map((s) => [
+      stamp,
+      periode,
+      esc(s.dp.agentLabel),
+      esc(s.dp.agentCode),
+      esc(s.dp.label),
+      s.dp.isCp ? 'CP' : 'DP',
+      esc(DP_KIND_LABEL[s.kind]),
+      ...catKpis.map((k) => num(cell(s, k))),
+      /* only active sites are scored — see dpStatusOf */
+      s.kind === 'active' ? String(s.onTarget) : '',
+      s.kind === 'active' ? String(s.scored) : '',
+    ].join(SEP))
+
+    const csv = ['sep=;', cols.join(SEP), ...rows].join('\r\n')
+    const blob = new Blob(['﻿' + csv + '\r\n'], { type: 'text/csv;charset=utf-8' })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
-    a.download = `dp-cp-${day.date ? day.date.toISOString().slice(0, 10) : 'list'}.csv`
+    // an agent label is free text from the workbook; strip anything Windows
+    // refuses in a filename rather than letting the download fail silently
+    const who = (allAgents ? 'Semua Agen' : agentLabel).replace(/[\\/:*?"<>|]+/g, ' ').trim()
+    a.download = `DP-CP ${who} ${stamp || 'daftar'}.csv`
     document.body.appendChild(a)
     a.click()
     a.remove()
@@ -339,7 +382,7 @@ export default function DpSection({
           <select value={type} onChange={(e) => setType(e.target.value as 'all' | 'dp' | 'cp')} aria-label="Filter jenis">
             <option value="all">DP dan CP</option>
             <option value="dp">Drop point</option>
-            <option value="cp">Counter point</option>
+            <option value="cp">Collection point</option>
           </select>
           <select
             value={tableK ? tableK.label : ''} onChange={(e) => setTableCat(e.target.value)}

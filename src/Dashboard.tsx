@@ -2,7 +2,8 @@ import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   BAR_CHOICES, CATEGORY_ZH, PALETTE, STATUS_COLOR, averageRows, dayName, explain, fmtDate, fmtDateFull,
-  iconFor, exportPng, kpiSeries, parseWorkbook, pct, readWorkbook, resolveDpDate, statusOf, targetFor,
+  iconFor, exportPng, isoDay, kpiSeries, parseWorkbook, pct, readWorkbook, resolveDpDate,
+  statusOf, targetFor,
 } from './lib/jnt'
 import type { AgentRow, DateSlot, Explanation, Kpi, Model, Status } from './lib/jnt'
 import { BarChart, LineChart, Sparkline } from './components/Charts'
@@ -136,7 +137,7 @@ export default function Dashboard() {
   const savePng = async () => {
     if (!wrapRef.current) return
     const d = model?.dates[dateIdx]
-    const stamp = d?.date ? d.date.toISOString().slice(0, 10) : 'export'
+    const stamp = d?.date ? isoDay(d.date) : 'export'
     try {
       await exportPng(wrapRef.current, `jnt-dashboard-${stamp}.png`)
     } catch (ex) {

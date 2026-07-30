@@ -27,7 +27,7 @@ npm run dev
 | --- | --- |
 | `src/lib/jnt.ts` | Parser + KPI model. Framework-free, reusable. |
 | `src/components/Charts.tsx` | Hand-rolled SVG line/bar/h-bar/sparkline. No chart library. |
-| `src/components/DpSection.tsx` | Drop point / counter point view. |
+| `src/components/DpSection.tsx` | Drop point / collection point view. |
 | `src/Dashboard.tsx` | All UI. |
 | `src/components/Zh.tsx` | Mandarin gloss shown beside a heading. |
 | `src/dashboard.css` | Styling. |
@@ -118,7 +118,7 @@ but starts switched off; tick it in the mapping panel to bring it in. All labels
 ## DP / CP level — the per-agent tabs
 
 Alongside the three summary tabs the workbook now carries one tab per agent (`AG12`, `AG13`, … `AG40`),
-each listing that agent's drop points and counter points:
+each listing that agent's drop points (DP) and collection points (CP):
 
 ```
 ┌───────────┬────────────┬─────────────────────┬────────────────────────────────────┐
@@ -167,6 +167,25 @@ this one missing from the chart?" has to have a visible answer.
 
 The whole section is deliberately low-contrast: one accent colour, no uppercase tracking, no heavy
 weights beyond a single semibold for headings. The red is reserved for things that are actually wrong.
+
+### The CSV export
+
+Written for the Excel this report is opened in, which runs an Indonesian locale — its list separator is
+`;` and `90,00` is a number, not text. A comma-delimited file has no separator that Excel recognises, so
+every row arrives whole in column A. The export therefore uses:
+
+| | |
+| --- | --- |
+| `sep=;` first line | consumed by Excel before parsing — the file opens correctly on a double-click regardless of the machine's regional setting |
+| `;` delimiter | matches that separator |
+| decimal commas | `94,50` arrives as a number, so it can be averaged and conditionally formatted |
+| UTF-8 BOM | without it Excel reads the file as ANSI and the Chinese glosses arrive as mojibake |
+
+Column headers carry both languages in one cell, split over two lines, the same way the source workbook
+writes its own. `Sesuai target` and `Kategori dinilai` are two separate numeric columns rather than a
+`7/8` text fraction — two numbers can be sorted, filtered and summed; a fraction can only be looked at.
+`Tanggal` and `Periode` travel with every row, so exports from different days can be stacked into one
+sheet without losing track of which is which.
 
 ---
 

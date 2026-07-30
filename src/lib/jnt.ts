@@ -75,7 +75,7 @@ export interface SheetInfo {
   reason?: string
   kpiCount: number
   agentCount: number
-  /** 'agent' = one row per agent · 'dp' = one row per drop point / counter point */
+  /** 'agent' = one row per agent · 'dp' = one row per drop point / collection point */
   kind: 'agent' | 'dp'
 }
 
@@ -107,7 +107,7 @@ export interface DpRow {
   agentKey: string
   agentLabel: string
   agentCode: string
-  /** the file prefixes counter points with `CP_`; everything else is a drop point */
+  /** the file prefixes collection points with `CP_`; everything else is a drop point */
   isCp: boolean
   sheet: string
   /** canonical KPI label → readings */
@@ -122,7 +122,7 @@ export interface Model {
   dates: DateSlot[]
   totalRow: AgentRow | null
   sheets: SheetInfo[]
-  /** every drop point / counter point found in the per-agent tabs */
+  /** every drop point / collection point found in the per-agent tabs */
   dps: DpRow[]
   /** the days the DP tabs carry — usually a subset of `dates` */
   dpDates: DateSlot[]
@@ -156,6 +156,16 @@ const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
  */
 export const dayKey = (d: Date | null, seq: number): string =>
   d ? `d${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}` : `seq${seq}`
+
+/**
+ * `2026-07-28`, built from the date's *local* parts.
+ *
+ * `toISOString()` converts to UTC first, and every date in this model is local
+ * midnight — so in Jakarta (UTC+7) it became 17:00 the previous day and each
+ * exported filename came out dated one day early.
+ */
+export const isoDay = (d: Date) =>
+  `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`
 
 export const fmtDate = (d: Date) => `${d.getDate()} ${MONTHS[d.getMonth()]}`
 export const fmtDateFull = (d: Date) => `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`
@@ -341,7 +351,7 @@ export const CATEGORY_ZH: Record<string, string> = {
 /**
  * The three categories a *sprinter* (courier) drives. A drop point that scores
  * zero on all three is not underperforming — it has no couriers at all and only
- * accepts parcels over the counter. See `dpStatusOf`.
+ * only takes parcels in at the collection counter. See `dpStatusOf`.
  */
 export const SPRINTER_LABELS = [
   '06:30 ABSENSI',
