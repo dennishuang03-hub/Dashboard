@@ -163,29 +163,31 @@ this one missing from the chart?" has to have a visible answer.
 - **DP/CP list** — every site with all eight categories in one grid. Only the **misses** are tinted;
   values that met their target stay plain, and the structural zeros of a pickup-only or closed site are
   greyed rather than reddened. Search, status filter, DP vs CP filter, below-target-only filter, day vs
-  MTD toggle, sort on any column, and CSV export of whatever the filters currently show
+  MTD toggle, sort on any column, and an Excel export of whatever the filters currently show
 
 The whole section is deliberately low-contrast: one accent colour, no uppercase tracking, no heavy
 weights beyond a single semibold for headings. The red is reserved for things that are actually wrong.
 
-### The CSV export
+### The Excel export
 
-Written for the Excel this report is opened in, which runs an Indonesian locale — its list separator is
-`;` and `90,00` is a number, not text. A comma-delimited file has no separator that Excel recognises, so
-every row arrives whole in column A. The export therefore uses:
+**Ekspor Excel** writes a real `.xlsx` — not a CSV. CSV was the wrong container here: this report is
+opened in an Indonesian Excel, where the list separator is `;` and `90,00` is a number, so a
+comma-delimited file has no separator Excel recognises and every row arrives whole in column A. A
+workbook carries its own typing instead: numbers arrive as numbers, text as text, nothing depends on the
+reader's regional settings, and the Mandarin survives without a BOM.
 
-| | |
-| --- | --- |
-| `sep=;` first line | consumed by Excel before parsing — the file opens correctly on a double-click regardless of the machine's regional setting |
-| `;` delimiter | matches that separator |
-| decimal commas | `94,50` arrives as a number, so it can be averaged and conditionally formatted |
-| UTF-8 BOM | without it Excel reads the file as ANSI and the Chinese glosses arrive as mojibake |
+**One sheet, and it is the table** — same columns as **Daftar DP / CP** on screen, same order, and only
+the rows the filters are currently showing. Nothing else is added: no summary sheet, no extra columns.
 
-Column headers carry both languages in one cell, split over two lines, the same way the source workbook
-writes its own. `Sesuai target` and `Kategori dinilai` are two separate numeric columns rather than a
-`7/8` text fraction — two numbers can be sorted, filtered and summed; a fraction can only be looked at.
-`Tanggal` and `Periode` travel with every row, so exports from different days can be stacked into one
-sheet without losing track of which is which.
+- The Agent column appears only in the all-agents view, exactly as it does on screen
+- Percentages are stored as real numbers (`98.25`) and formatted `0.00"%"`, so the cell *displays* 98.25%
+  while still averaging and sorting correctly. A true percent format would multiply by 100 and print 9825%
+- Autofilter is already switched on and the column widths are set
+- Column headers carry both languages, the same way the source workbook writes its own
+- Filename: `Daftar DP-CP TANGERANG 2026-07-28.xlsx` (or `… bulanan.xlsx` on the MTD toggle)
+
+Cell colouring is not available in the community build of SheetJS, so the sheet ships plain — apply
+Excel's own conditional formatting to the percentage columns if you want the red/green back.
 
 ---
 

@@ -14,6 +14,7 @@
  * has to be able to answer.
  */
 import { useMemo, useState } from 'react'
+import * as XLSX from 'xlsx'
 import {
   CANONICAL_ORDER, CATEGORY_ZH, DP_KIND_LABEL, SPRINTER_LABELS, dpStatusOf, dpTargetFor, dpValue,
   fmtDate, fmtDateFull, isoDay,
@@ -101,8 +102,13 @@ export default function DpSection({
     closed: scored.filter((s) => s.kind === 'closed').length,
   }), [scored, active])
 
-  /** Ranked, excluding pickup-only and closed sites entirely. */
-  const rank = (k: Kpi | null, worst: boolean): HBar[] => {
+  /**
+   * The five best or worst sites for one category.
+   *
+   * Pickup-only and closed sites are already gone — this ranks `active` only,
+   * which is where the rule in `dpStatusOf` actually takes effect.
+   */
+  const ranked = (k: Kpi | null, worst: boolean): { s: Scored; v: number }[] => {
     if (!k) return []
     const rows = active
       .map((s) => ({ s, v: s.vals[k.label] }))
@@ -110,12 +116,15 @@ export default function DpSection({
     // "worst" means furthest from meeting the target, which flips for RETUR
     const best = (a: number, b: number) => (k.lowerBetter ? a - b : b - a)
     rows.sort((x, y) => (worst ? best(y.v, x.v) : best(x.v, y.v)))
-    return rows.slice(0, TOP_N).map((o) => ({
+    return rows.slice(0, TOP_N)
+  }
+
+  const rank = (k: Kpi | null, worst: boolean): HBar[] =>
+    ranked(k, worst).map((o) => ({
       name: o.s.dp.label,
       sub: allAgents ? o.s.dp.agentLabel : undefined,
       value: o.v,
     }))
-  }
 
   const topBars = useMemo(() => rank(topK, false), [active, topK, allAgents])
   const worstBars = useMemo(() => rank(worstK, true), [active, worstK, allAgents])
@@ -197,70 +206,80 @@ export default function DpSection({
   const arrow = (key: string) => (sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '')
 
   /**
-   * CSV written for the Excel this report is actually opened in.
+   * Export the "Daftar DP / CP" table as a real .xlsx — one sheet, the same
+   * columns as the table on screen, and only the rows the filters are showing.
    *
-   * That Excel runs an Indonesian locale: its list separator is `;` and `90,00`
-   * is a number. A plain comma-delimited file therefore has no separators it
-   * recognises at all, which is why the first version landed every row whole in
-   * column A. Three things fix it, and all three are needed:
-   *
-   *   `sep=;`        — consumed by Excel before parsing, so the file opens right
-   *                    on a double-click no matter how the machine is set up
-   *   `;` delimiter  — matches that separator
-   *   decimal commas — so 94,50 arrives as a number rather than as text
-   *
-   * The BOM keeps the Chinese glosses readable; without it Excel reads the file
-   * as ANSI and they arrive as mojibake.
+   * A workbook rather than a CSV because this is opened in an Indonesian Excel,
+   * where the list separator is `;` and `90,00` is a number: a comma-delimited
+   * file has no separator Excel recognises and every row lands whole in column
+   * A. A workbook carries its own typing, so nothing depends on the reader's
+   * regional settings and the Mandarin survives without a BOM.
    */
-  const exportCsv = () => {
-    const SEP = ';'
-    const esc = (v: string) => (/[";\r\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v)
-    const num = (v: number | null) => (v == null ? '' : v.toFixed(2).replace('.', ','))
-    /* both languages in one cell, split over two lines — the same shape the
-       source workbook uses for its own headers */
-    const head = (id: string, zh: string) => esc(zh ? `${id}\n${zh}` : id)
+  const exportXlsx = () => {
+    const stamp = day.date ? isoDay(day.date) : ''
+    const scopeName = allAgents ? 'Semua Agen' : agentLabel
+    const zh = (k: Kpi) => (CATEGORY_ZH[k.label] ? ` ${CATEGORY_ZH[k.label]}` : '')
 
-    const cols = [
-      head('Tanggal', '日期'),
-      head('Periode', '周期'),
-      head('Agen', '代理区'),
-      head('Kode Agen', '代理区编码'),
-      head('DP / CP', '网点'),
-      head('Jenis', '类型'),
-      head('Status', '状态'),
-      ...catKpis.map((k) => head(`${k.label} (%)`, CATEGORY_ZH[k.label] ?? '')),
-      /* split rather than "7/8": two numbers can be sorted, filtered and summed
-         in Excel, a text fraction can only be looked at */
-      head('Sesuai target', '达标项数'),
-      head('Kategori dinilai', '评估项数'),
+    // the agent column only exists on screen in the all-agents view
+    const head = [
+      'DP / CP 网点',
+      ...(allAgents ? ['Agen 代理区'] : []),
+      'Jenis 类型',
+      'Status 状态',
+      ...catKpis.map((k) => `${k.label}${zh(k)}`),
+      'Sesuai target 达标数',
     ]
 
-    const stamp = day.date ? isoDay(day.date) : ''
-    const periode = mode === 'mtd' ? 'Bulanan (MTD)' : 'Harian'
-
-    const rows = filtered.map((s) => [
-      stamp,
-      periode,
-      esc(s.dp.agentLabel),
-      esc(s.dp.agentCode),
-      esc(s.dp.label),
+    const body = filtered.map((s) => [
+      s.dp.label,
+      ...(allAgents ? [s.dp.agentLabel] : []),
       s.dp.isCp ? 'CP' : 'DP',
-      esc(DP_KIND_LABEL[s.kind]),
-      ...catKpis.map((k) => num(cell(s, k))),
+      DP_KIND_LABEL[s.kind],
+      ...catKpis.map((k) => cell(s, k)),
       /* only active sites are scored — see dpStatusOf */
-      s.kind === 'active' ? String(s.onTarget) : '',
-      s.kind === 'active' ? String(s.scored) : '',
-    ].join(SEP))
+      s.kind === 'active' ? `${s.onTarget}/${s.scored}` : '',
+    ])
 
-    const csv = ['sep=;', cols.join(SEP), ...rows].join('\r\n')
-    const blob = new Blob(['﻿' + csv + '\r\n'], { type: 'text/csv;charset=utf-8' })
+    const ws = XLSX.utils.aoa_to_sheet([head, ...body])
+
+    /* `0.00"%"` keeps the underlying value at 98.25 while showing "98.25%".
+       A real percent format would multiply by 100 and print 9825%. */
+    const firstKpi = allAgents ? 4 : 3
+    for (let R = 1; R <= body.length; R++) {
+      for (let C = firstKpi; C < firstKpi + catKpis.length; C++) {
+        const c = ws[XLSX.utils.encode_cell({ r: R, c: C })]
+        if (c && c.t === 'n') c.z = '0.00"%"'
+      }
+    }
+
+    ws['!cols'] = [
+      { wch: 28 },
+      ...(allAgents ? [{ wch: 15 }] : []),
+      { wch: 7 },
+      { wch: 12 },
+      ...catKpis.map(() => ({ wch: 15 })),
+      { wch: 14 },
+    ]
+    ws['!autofilter'] = {
+      ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: body.length, c: head.length - 1 } }),
+    }
+
+    const wb = XLSX.utils.book_new()
+    // sheet names cannot contain / \ ? * [ ] :
+    XLSX.utils.book_append_sheet(wb, ws, 'Daftar DP-CP')
+
+    const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
+    const blob = new Blob([out], {
+      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    })
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url
     // an agent label is free text from the workbook; strip anything Windows
     // refuses in a filename rather than letting the download fail silently
-    const who = (allAgents ? 'Semua Agen' : agentLabel).replace(/[\\/:*?"<>|]+/g, ' ').trim()
-    a.download = `DP-CP ${who} ${stamp || 'daftar'}.csv`
+    const who = scopeName.replace(/[\\/:*?"<>|]+/g, ' ').trim()
+    const suffix = mode === 'mtd' ? 'bulanan' : stamp || 'daftar'
+    a.download = `Daftar DP-CP ${who} ${suffix}.xlsx`
     document.body.appendChild(a)
     a.click()
     a.remove()
@@ -365,7 +384,7 @@ export default function DpSection({
           <span className="ptitle">
             Daftar DP / CP <Zh>网点清单</Zh> — {filtered.length} dari {counts.total}
           </span>
-          <button className="btn tiny" onClick={exportCsv}>Ekspor CSV</button>
+          <button className="btn tiny" onClick={exportXlsx}>Ekspor Excel</button>
         </h3>
 
         <div className="dpfilters">
