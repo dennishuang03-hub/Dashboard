@@ -3,12 +3,19 @@
 export interface AxisLabel { top: string; sub?: string }
 export interface Series { name: string; color: string; values: (number | null)[] }
 
-const EMPTY = <div className="empty-mini">No data for this selection</div>
+const EMPTY = <div className="empty-mini">Tidak ada data untuk pilihan ini</div>
 
 /* ------------------------------------------------------------ line chart */
 
+/**
+ * A note on sizing: both charts render at `width:100%` and scale by their
+ * viewBox, so `w` and `h` are a *ratio*, not a pixel size. Shrinking `h` alone
+ * makes the chart shorter on screen while every font, bar and dot keeps exactly
+ * the size it had — which is what "smaller but still readable" needs. Lowering
+ * the font sizes instead would have been the wrong lever.
+ */
 export function LineChart({
-  series, labels, targetLine, clamp01 = true, w = 1100, h = 400,
+  series, labels, targetLine, clamp01 = true, w = 1100, h = 300,
 }: {
   series: Series[]
   labels: AxisLabel[]
@@ -17,14 +24,15 @@ export function LineChart({
   w?: number
   h?: number
 }) {
-  const P = { t: 30, r: 54, b: 52, l: 54 }
+  const P = { t: 26, r: 54, b: 48, l: 54 }
   const all = series.flatMap((s) => s.values.filter((v): v is number => v != null))
   if (!all.length || !labels.length) return EMPTY
 
   let min = Math.min(...all)
   let max = Math.max(...all)
   const span = max - min
-  const pad = span > 0 ? span * 0.3 : Math.max(1, Math.abs(max) * 0.05)
+  // just enough slack for the value labels to sit above the top-most point
+  const pad = span > 0 ? span * 0.18 : Math.max(1, Math.abs(max) * 0.05)
   min -= pad; max += pad
   if (clamp01) { min = Math.max(0, min); max = Math.min(100, max) }
   if (max - min < 0.5) max = min + 1
@@ -132,7 +140,7 @@ export function LineChart({
 /* ------------------------------------------------------------- bar chart */
 
 export function BarChart({
-  values, labels, targetLine, lowerBetter = false, w = 560, h = 340,
+  values, labels, targetLine, lowerBetter = false, w = 560, h = 240,
 }: {
   values: (number | null)[]
   labels: AxisLabel[]
@@ -141,13 +149,15 @@ export function BarChart({
   w?: number
   h?: number
 }) {
-  const P = { t: 34, r: 16, b: 52, l: 52 }
+  const P = { t: 30, r: 16, b: 48, l: 52 }
   const real = values.filter((v): v is number => v != null)
   if (!real.length) return EMPTY
 
   let max = Math.max(...real)
   if (targetLine != null) max = Math.max(max, targetLine)
-  max = max * 1.35 || 1
+  /* 1.35 left a third of the panel as blank sky above the bars. 1.12 keeps only
+     the room the value labels actually need, so the bars fill the plot. */
+  max = max * 1.12 || 1
 
   const n = values.length
   const band = (w - P.l - P.r) / n
@@ -211,6 +221,93 @@ export function BarChart({
           <line x1={P.l} y1={P.t - 13} x2={P.l + 16} y2={P.t - 13}
                 stroke="#E2231A" strokeWidth={1.2} strokeDasharray="5 4" />
           <text x={P.l + 22} y={P.t - 9} textAnchor="start" fontSize={11} fill="#E2231A">
+            Target {lowerBetter ? '≤ ' : '≥ '}{targetLine.toFixed(2)}%
+          </text>
+        </g>
+      )}
+    </svg>
+  )
+}
+
+/* -------------------------------------------------- horizontal bar chart */
+
+export interface HBar { name: string; sub?: string; value: number }
+
+/**
+ * Ranked bars laid out horizontally.
+ *
+ * Drop-point names are long (`SERUA_INDAH_CIPUTAT`, `CP_TANGKUBAN_PERAHU`) and a
+ * vertical bar chart can only show them rotated or truncated. Turning the axis
+ * on its side gives each label a full readable line and makes the ranking read
+ * top-to-bottom, which is how a "top five" is read anyway.
+ *
+ * The value axis starts at the *smallest* bar rather than at zero: five drop
+ * points that all sit between 94% and 98% are otherwise five identical-looking
+ * blocks. `floor` keeps the target line inside the frame when it is close by.
+ */
+export function HBarChart({
+  bars, targetLine, lowerBetter = false, w = 560, rowH = 30,
+}: {
+  bars: HBar[]
+  targetLine?: number | null
+  lowerBetter?: boolean
+  w?: number
+  rowH?: number
+}) {
+  if (!bars.length) return EMPTY
+
+  const P = { t: 8, r: 62, b: 22, l: 176 }
+  const h = P.t + P.b + bars.length * rowH
+  const vals = bars.map((b) => b.value)
+
+  let lo = Math.min(...vals, targetLine ?? Infinity)
+  let hi = Math.max(...vals, targetLine ?? -Infinity)
+  const span = hi - lo
+  lo = Math.max(0, lo - (span > 0 ? span * 0.25 : Math.max(2, Math.abs(lo) * 0.05)))
+  hi = hi + (span > 0 ? span * 0.12 : Math.max(2, Math.abs(hi) * 0.05) )
+  if (hi - lo < 0.5) hi = lo + 1
+
+  const plot = w - P.l - P.r
+  const X = (v: number) => P.l + ((v - lo) / (hi - lo)) * plot
+
+  const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
+
+  return (
+    <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
+      {bars.map((b, i) => {
+        const y = P.t + i * rowH
+        const cy = y + rowH / 2
+        const ok = targetLine == null ? true : lowerBetter ? b.value <= targetLine : b.value >= targetLine
+        const x = X(b.value)
+        return (
+          <g key={`${b.name}-${i}`}>
+            <line x1={P.l} y1={y + rowH - 0.5} x2={w - P.r} y2={y + rowH - 0.5} stroke="#F2F4F8" />
+            <text x={P.l - 10} y={b.sub ? cy - 2 : cy + 4} textAnchor="end" fontSize={11.5} fill="#3B4453" fontWeight={600}>
+              {clip(b.name, 24)}
+            </text>
+            {b.sub && (
+              <text x={P.l - 10} y={cy + 10} textAnchor="end" fontSize={9.5} fill="#A6AEBD">
+                {clip(b.sub, 28)}
+              </text>
+            )}
+            <rect
+              x={P.l} y={cy - 8} width={Math.max(2, x - P.l)} height={16} rx={3}
+              fill={ok ? '#00A650' : '#E2231A'}
+            />
+            <text x={x + 7} y={cy + 4} fontSize={11.5} fontWeight={700} fill={ok ? '#0A7C3E' : '#B81810'}>
+              {b.value.toFixed(2)}%
+            </text>
+          </g>
+        )
+      })}
+
+      {targetLine != null && targetLine >= lo && targetLine <= hi && (
+        <g>
+          <line
+            x1={X(targetLine)} y1={P.t} x2={X(targetLine)} y2={h - P.b}
+            stroke="#E2231A" strokeWidth={1.2} strokeDasharray="5 4"
+          />
+          <text x={X(targetLine)} y={h - P.b + 14} textAnchor="middle" fontSize={10.5} fill="#E2231A">
             Target {lowerBetter ? '≤ ' : '≥ '}{targetLine.toFixed(2)}%
           </text>
         </g>

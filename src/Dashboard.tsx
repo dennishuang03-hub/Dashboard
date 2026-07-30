@@ -1,12 +1,14 @@
 import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
-  BAR_CHOICES, PALETTE, STATUS_COLOR, averageRows, dayName, explain, fmtDate, fmtDateFull,
-  iconFor, exportPng, kpiSeries, parseWorkbook, pct, readWorkbook, statusOf, targetFor,
+  BAR_CHOICES, CATEGORY_ZH, PALETTE, STATUS_COLOR, averageRows, dayName, explain, fmtDate, fmtDateFull,
+  iconFor, exportPng, kpiSeries, parseWorkbook, pct, readWorkbook, resolveDpDate, statusOf, targetFor,
 } from './lib/jnt'
 import type { AgentRow, DateSlot, Explanation, Kpi, Model, Status } from './lib/jnt'
 import { BarChart, LineChart, Sparkline } from './components/Charts'
 import type { AxisLabel } from './components/Charts'
+import DpSection from './components/DpSection'
+import Zh from './components/Zh'
 import './dashboard.css'
 
 /* --------------------------------------------------------------- helpers */
@@ -75,7 +77,7 @@ export default function Dashboard() {
         setErr((ex as Error).message)
       }
     }
-    reader.onerror = () => setErr('The browser refused to open this file.')
+    reader.onerror = () => setErr('Browser menolak membuka file ini.')
     reader.readAsArrayBuffer(f)
   }, [])
 
@@ -96,14 +98,14 @@ export default function Dashboard() {
     }
     if (model.totalRow) {
       return {
-        rec: model.totalRow, label: 'ALL AGENTS (TOTAL)',
-        sub: `${model.rows.length} agents`, count: model.rows.length,
+        rec: model.totalRow, label: 'SEMUA AGEN (TOTAL)',
+        sub: `${model.rows.length} agen`, count: model.rows.length,
       }
     }
     return {
-      rec: averageRows(model.rows, 'AVERAGE', model.region),
-      label: 'ALL AGENTS (AVERAGE)',
-      sub: `${model.rows.length} agents`,
+      rec: averageRows(model.rows, 'RATA-RATA', model.region),
+      label: 'SEMUA AGEN (RATA-RATA)',
+      sub: `${model.rows.length} agen`,
       count: model.rows.length,
     }
   }, [model, agentKey])
@@ -147,25 +149,26 @@ export default function Dashboard() {
   if (!model || !current) {
     return (
       <div className="wrap">
-        <TopBar meta="Upload your Excel file to begin — no data is stored." />
-        {err && <div className="err"><b>Could not read that file.</b><br />{err}</div>}
+        <TopBar meta="Unggah file Excel Anda untuk memulai — tidak ada data yang disimpan." />
+        {err && <div className="err"><b>File tersebut tidak dapat dibaca.</b><br />{err}</div>}
         <div
           className={`dropzone${hot ? ' hot' : ''}`}
           onDragOver={(e) => { e.preventDefault(); setHot(true) }}
           onDragLeave={() => setHot(false)}
           onDrop={(e) => { e.preventDefault(); setHot(false); handleFile(e.dataTransfer.files?.[0]) }}
         >
-          <h2>Drop your J&amp;T Excel report here</h2>
+          <h2>Letakkan laporan Excel J&amp;T Anda di sini <Zh>请拖入报表文件</Zh></h2>
           <p>
-            The file is read <b>entirely in your browser</b> — nothing is uploaded, sent, or saved.
-            Close the tab and the data is gone.<br />
-            <b>Every sheet is read and merged automatically</b>, so a workbook that splits the
-            categories across tabs (Pickup &amp; Retur, 6.30/7.30/12.00, R-2/TPTW/TTD …) produces one
-            combined dashboard per agent.
+            File dibaca <b>sepenuhnya di browser Anda</b> — tidak ada yang diunggah, dikirim, atau
+            disimpan. Tutup tab ini dan datanya hilang.<br />
+            <b>Semua sheet dibaca dan digabungkan otomatis</b>, sehingga workbook yang memisahkan
+            kategori ke beberapa tab (Pickup &amp; Retur, 6.30/7.30/12.00, R-2/TPTW/TTD …) tetap
+            menghasilkan satu dashboard gabungan per agen. Tab per agen (AG12, AG13 …) dibaca
+            terpisah sebagai data DP/CP.
           </p>
-          <button className="btn primary" onClick={() => fileRef.current?.click()}>Choose file…</button>
+          <button className="btn primary" onClick={() => fileRef.current?.click()}>Pilih file…</button>
           {picker}
-          <div className="lock">Supported: .xlsx · .xlsm · .xls · .csv</div>
+          <div className="lock">Didukung: .xlsx · .xlsm · .xls · .csv</div>
         </div>
       </div>
     )
@@ -177,44 +180,49 @@ export default function Dashboard() {
   const di = Math.max(0, Math.min(dateIdx, dates.length - 1))
   const dToday = dates[di]
   const dPrev = di > 0 ? dates[di - 1] : null
-  const todayLabel = dToday.date ? fmtDateFull(dToday.date) : `Day ${di + 1}`
+  const todayLabel = dToday.date ? fmtDateFull(dToday.date) : `Hari ${di + 1}`
 
   const axisLabels: AxisLabel[] = dates.map((d, i) =>
-    d.date ? { top: fmtDate(d.date), sub: dayName(d.date) } : { top: `Day ${i + 1}` })
-  const prevAxisLabel = dPrev ? (dPrev.date ? fmtDate(dPrev.date) : `day ${di}`) : 'the previous day'
+    d.date ? { top: fmtDate(d.date), sub: dayName(d.date) } : { top: `Hari ${i + 1}` })
+  const prevAxisLabel = dPrev ? (dPrev.date ? fmtDate(dPrev.date) : `hari ${di}`) : 'hari sebelumnya'
 
   const trendKpis = kpis.filter((k) => k.inTrend)
 
-  const okSheets = model.sheets.filter((s) => s.ok)
+  /* The DP tabs carry fewer days than the agent tabs, so the section shows the
+     closest day it actually has rather than going blank — see `resolveDpDate`. */
+  const dpDay = resolveDpDate(model.dpDates, dToday)
+
+  const okSheets = model.sheets.filter((s) => s.ok && s.kind === 'agent')
+  const dpSheets = model.sheets.filter((s) => s.ok && s.kind === 'dp')
   const badSheets = model.sheets.filter((s) => !s.ok)
 
   return (
     <div className="wrap" ref={wrapRef}>
       <TopBar
         meta={
-          <>Region: <b>{model.region}</b> &nbsp;|&nbsp; Agent: <b>{current.label}</b>
-            &nbsp;|&nbsp; Date: <b>{todayLabel}</b>
-            &nbsp;|&nbsp; Source: <b>{fileName}</b> ({okSheets.length} sheet{okSheets.length === 1 ? '' : 's'})</>
+          <>Wilayah: <b>{model.region}</b> &nbsp;|&nbsp; Agen: <b>{current.label}</b>
+            &nbsp;|&nbsp; Tanggal: <b>{todayLabel}</b>
+            &nbsp;|&nbsp; Sumber: <b>{fileName}</b> ({okSheets.length} sheet)</>
         }
       />
 
       {/* -------- toolbar -------- */}
       <div className="toolbar">
-        <button className="btn primary" onClick={() => fileRef.current?.click()}>Upload Excel</button>
+        <button className="btn primary" onClick={() => fileRef.current?.click()}>Unggah Excel</button>
         {picker}
-        <Field label="Report date">
+        <Field label="Tanggal laporan · 报表日期">
           <select value={di} onChange={(e) => setDateIdx(Number(e.target.value))}>
             {dates.map((d, i) => (
               <option key={d.key} value={i}>
-                {d.date ? `${fmtDateFull(d.date)} (${dayName(d.date)})` : `Day ${i + 1}`}
-                {i === dates.length - 1 ? ' — latest' : ''}
+                {d.date ? `${fmtDateFull(d.date)} (${dayName(d.date)})` : `Hari ${i + 1}`}
+                {i === dates.length - 1 ? ' — terbaru' : ''}
               </option>
             ))}
           </select>
         </Field>
-        <Field label={`Agent — ${model.region}`}>
+        <Field label={`Agen · 代理区 — ${model.region}`}>
           <select className="agentsel" value={agentKey} onChange={(e) => setAgentKey(e.target.value)}>
-            <option value="TOTAL">ALL AGENTS ({model.rows.length})</option>
+            <option value="TOTAL">SEMUA AGEN ({model.rows.length})</option>
             {model.rows.map((r) => (
               <option key={r.key} value={r.key}>{r.label}{r.code ? ` · ${r.code}` : ''}</option>
             ))}
@@ -222,18 +230,19 @@ export default function Dashboard() {
         </Field>
         <div className="spacer" />
         <span className="filechip">
-          {model.region} · {model.rows.length} agents · {kpis.length} KPIs · {dates.length} days
+          {model.region} · {model.rows.length} agen · {kpis.length} KPI · {dates.length} hari
+          {model.dps.length > 0 && ` · ${model.dps.length} DP/CP dari ${dpSheets.length} tab agen`}
         </span>
-        <button className="btn" onClick={savePng}>Save PNG</button>
-        <button className="btn" onClick={() => window.print()}>Print / PDF</button>
-        <button className="btn" onClick={() => { setModel(null); setFileName(''); setErr('') }}>Clear data</button>
+        <button className="btn" onClick={savePng}>Simpan PNG</button>
+        <button className="btn" onClick={() => window.print()}>Cetak / PDF</button>
+        <button className="btn" onClick={() => { setModel(null); setFileName(''); setErr('') }}>Hapus data</button>
       </div>
 
       {err && <div className="err">{err}</div>}
 
       {badSheets.length > 0 && (
         <div className="warnbox">
-          Skipped {badSheets.length} sheet{badSheets.length === 1 ? '' : 's'}:{' '}
+          {badSheets.length} sheet dilewati:{' '}
           {badSheets.map((s) => `“${s.name}” (${s.reason})`).join(' · ')}
         </div>
       )}
@@ -254,7 +263,7 @@ export default function Dashboard() {
           return (
             <div className={`kcard tip st-${st}`} key={k.key} style={{ borderTopColor: color }}>
               <span className="dot" style={{ background: color }} />
-              <div className="kname">{k.label}</div>
+              <div className="kname">{k.label}<Zh>{CATEGORY_ZH[k.label] ?? ''}</Zh></div>
               <div className="krow">
                 <span className="kicon">{iconFor(k.label)}</span>
                 <span className="kval" style={{ color: st === 'na' ? '#8A94A6' : color }}>{pct(v)}</span>
@@ -274,7 +283,7 @@ export default function Dashboard() {
 
       {/* -------- trend, full width -------- */}
       <div className="row-trend">
-        <Panel title={`KPI Trend (${dates.length} day${dates.length === 1 ? '' : 's'})`}>
+        <Panel title={<>Tren KPI ({dates.length} hari) <Zh>KPI趋势</Zh></>}>
           <div className="legend">
             {kpis.map((k) => (
               <button key={k.key} className={k.inTrend ? '' : 'off'}
@@ -297,10 +306,15 @@ export default function Dashboard() {
 
       {/* -------- middle row -------- */}
       <div className="row-mid">
-        <Panel title="KPI Summary (Selected Day)" red flush>
+        <Panel title={<>Ringkasan KPI (Hari Terpilih) <Zh>KPI汇总</Zh></>} red flush>
           <table>
             <thead>
-              <tr><th>KPI</th><th className="num">Value</th><th className="num">Target</th><th className="ctr">Status</th></tr>
+              <tr>
+                <th>KPI<Zh>指标</Zh></th>
+                <th className="num">Nilai<Zh>数值</Zh></th>
+                <th className="num">Target<Zh>目标</Zh></th>
+                <th className="ctr">Status<Zh>状态</Zh></th>
+              </tr>
             </thead>
             <tbody>
               {kpis.map((k) => {
@@ -327,10 +341,10 @@ export default function Dashboard() {
         </Panel>
 
         <Panel
-          title={`Daily Comparison (${dates.length} day${dates.length === 1 ? '' : 's'})`}
+          title={<>Perbandingan Harian ({dates.length} hari) <Zh>每日对比</Zh></>}
           right={barChoices.length > 1 && (
             <select
-              className="hsel" value={barK ? barK.key : ''} aria-label="KPI shown in the bar chart"
+              className="hsel" value={barK ? barK.key : ''} aria-label="KPI yang ditampilkan pada grafik batang"
               onChange={(e) => setBarKey(e.target.value)}
             >
               {barChoices.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
@@ -344,22 +358,27 @@ export default function Dashboard() {
                 targetLine={targetFor(barK, current.rec)}
                 lowerBetter={barK.lowerBetter}
               />
-            : <div className="empty-mini">No KPI available</div>}
+            : <div className="empty-mini">Tidak ada KPI yang tersedia</div>}
         </Panel>
       </div>
 
       {/* -------- bottom row -------- */}
       <div className="row-bot">
-        <Panel title="KPI Details (Today vs Previous Day)" flush>
+        <Panel title={<>Detail KPI (Hari Ini vs Hari Sebelumnya) <Zh>KPI明细</Zh></>} flush>
           <table>
             <thead>
               <tr>
-                <th>KPI</th>
-                <th className="num">Today ({dToday.date ? fmtDate(dToday.date) : `D${di + 1}`})</th>
-                <th className="num">{dPrev ? `Prev (${dPrev.date ? fmtDate(dPrev.date) : `D${di}`})` : 'Previous'}</th>
-                <th className="num">Difference</th>
-                <th className="num">MTD</th>
-                <th className="ctr">Status</th>
+                <th>KPI<Zh>指标</Zh></th>
+                <th className="num">
+                  Hari Ini ({dToday.date ? fmtDate(dToday.date) : `H${di + 1}`})<Zh>今日</Zh>
+                </th>
+                <th className="num">
+                  {dPrev ? `Sebelumnya (${dPrev.date ? fmtDate(dPrev.date) : `H${di}`})` : 'Sebelumnya'}
+                  <Zh>前一日</Zh>
+                </th>
+                <th className="num">Selisih<Zh>差异</Zh></th>
+                <th className="num">Bulanan<Zh>月度达成</Zh></th>
+                <th className="ctr">Status<Zh>状态</Zh></th>
               </tr>
             </thead>
             <tbody>
@@ -390,16 +409,22 @@ export default function Dashboard() {
           </table>
         </Panel>
 
-        <Panel title="Today's Summary">
+        <Panel title={<>Ringkasan Hari Ini <Zh>今日总结</Zh></>}>
           <SummaryPanel kpis={kpis} rec={current.rec} dates={dates} di={di}
                         sub={current.sub} count={current.count} />
         </Panel>
       </div>
 
+      {dpDay && (
+        <DpSection
+          model={model} kpis={kpis} agentKey={agentKey}
+          agentLabel={current.label} day={dpDay} wanted={dToday}
+        />
+      )}
 
       <div className="note">
-        Data is parsed in memory only. Refreshing the page or clicking “Clear data” removes everything —
-        nothing is written to disk or sent over the network.
+        Data hanya diproses di memori. Menyegarkan halaman atau menekan “Hapus data” akan menghilangkan
+        semuanya — tidak ada yang ditulis ke disk maupun dikirim melalui jaringan.
       </div>
     </div>
   )
@@ -439,7 +464,7 @@ function TopBar({ meta, right }: { meta: ReactNode; right?: ReactNode }) {
     <div className="topbar">
       <div className="logo"><JntLogo /></div>
       <div className="titleblock">
-        <h1>DAILY AGENT PERFORMANCE DASHBOARD</h1>
+        <h1>DASHBOARD PERFORMA AGEN HARIAN <Zh>每日代理区绩效看板</Zh></h1>
         <div className="meta">{meta}</div>
       </div>
       {right}
@@ -454,7 +479,8 @@ function Field({ label, children }: { label: string; children: ReactNode }) {
 function Panel({
   title, children, red, flush, className, right,
 }: {
-  title: string; children: ReactNode
+  /** ReactNode rather than string, so a title can carry its `<Zh>` gloss */
+  title: ReactNode; children: ReactNode
   red?: boolean; flush?: boolean; className?: string
   /** control rendered at the right end of the header, e.g. a KPI switcher */
   right?: ReactNode
@@ -488,32 +514,32 @@ function SummaryPanel({
   const total = on.length + off.length
   const ratio = total ? on.length / total : 0
   const [verdict, tone] =
-    ratio >= 0.85 ? ['Excellent', 'good'] :
-    ratio >= 0.6 ? ['Good', 'good'] :
-    ratio >= 0.4 ? ['Fair', 'fair'] : ['Needs Attention', 'poor']
+    ratio >= 0.85 ? ['Sangat Baik', 'good'] :
+    ratio >= 0.6 ? ['Baik', 'good'] :
+    ratio >= 0.4 ? ['Cukup', 'fair'] : ['Perlu Perhatian', 'poor']
 
   return (
     <div className="sumlist">
-      <Item ico="📊" lab="Overall Performance" strong={verdict} tone={tone}
-            detail={`${on.length} KPI on target / ${off.length} below target${count > 1 ? ` • ${sub}` : ''}`} />
-      <Item ico="⭐" lab="Best KPI" strong={best ? best.k.label : '—'} tone="good"
-            detail={best ? `${pct(best.v)} vs target ${pct(best.t)}` : ''} />
-      <Item ico="⚠️" lab="Needs Attention" tone={off.length ? 'poor' : 'good'}
-            strong={off.length ? `${off.length} KPI below target` : 'None'}
-            detail={off.length ? off.map((k) => k.label).join(', ') : 'All KPIs are on target'} />
-      <Item ico="👥" lab="Next Action" strong="Priority" tone=""
-            detail={off.length ? nextAction(off) : 'Maintain current performance and keep the daily briefing discipline.'} />
+      <Item ico="📊" lab="Performa Keseluruhan" zh="整体表现" strong={verdict} tone={tone}
+            detail={`${on.length} KPI sesuai target / ${off.length} di bawah target${count > 1 ? ` • ${sub}` : ''}`} />
+      <Item ico="⭐" lab="KPI Terbaik" zh="最佳指标" strong={best ? best.k.label : '—'} tone="good"
+            detail={best ? `${pct(best.v)} terhadap target ${pct(best.t)}` : ''} />
+      <Item ico="⚠️" lab="Perlu Perhatian" zh="需关注" tone={off.length ? 'poor' : 'good'}
+            strong={off.length ? `${off.length} KPI di bawah target` : 'Tidak ada'}
+            detail={off.length ? off.map((k) => k.label).join(', ') : 'Semua KPI sesuai target'} />
+      <Item ico="👥" lab="Tindak Lanjut" zh="后续行动" strong="Prioritas" tone=""
+            detail={off.length ? nextAction(off) : 'Pertahankan performa saat ini dan jaga disiplin briefing harian.'} />
     </div>
   )
 }
 
-function Item({ ico, lab, strong, detail, tone }: {
-  ico: string; lab: string; strong: string; detail: string; tone: string
+function Item({ ico, lab, zh, strong, detail, tone }: {
+  ico: string; lab: string; zh: string; strong: string; detail: string; tone: string
 }) {
   return (
     <div className="sumitem">
       <div className="ico">{ico}</div>
-      <div className="lab">{lab}</div>
+      <div className="lab">{lab}<Zh>{zh}</Zh></div>
       <div className={`val ${tone}`}><span className="strong">{strong}</span>{detail}</div>
     </div>
   )
@@ -524,15 +550,15 @@ function Item({ ico, lab, strong, detail, tone }: {
 function nextAction(off: Kpi[]): string {
   const tips = off.map((k) => {
     const l = k.label
-    if (/absensi|kehadiran/i.test(l)) return 'tighten sprinter attendance before 06:30'
-    if (/gudang/i.test(l)) return 'speed up sorting so vehicles leave the warehouse by 07:30'
-    if (/12:00|1200/i.test(l)) return 'push first-ritase deliveries to be signed before 12:00'
-    if (/ritase 2/i.test(l)) return 'reinforce second-ritase dispatch and follow-up'
-    if (/tptw|on time/i.test(l)) return 'review handover timing at the drop point'
-    if (/retur|return/i.test(l)) return 'reduce COD returns with pre-delivery confirmation calls'
-    if (/pickup|otpu/i.test(l)) return 'improve on-time pickup routing for non-ecommerce shippers'
-    if (/full day|persentase ttd/i.test(l)) return 'lift full-day signature completion across both ritase'
-    return `review ${l.toLowerCase()}`
+    if (/absensi|kehadiran/i.test(l)) return 'perketat kehadiran sprinter sebelum 06:30'
+    if (/gudang/i.test(l)) return 'percepat sortir agar armada keluar gudang sebelum 07:30'
+    if (/12:00|1200/i.test(l)) return 'dorong pengiriman ritase pertama agar TTD sebelum jam 12:00'
+    if (/ritase 2/i.test(l)) return 'perkuat dispatch dan tindak lanjut ritase kedua'
+    if (/tptw|on time/i.test(l)) return 'tinjau ketepatan waktu serah terima di drop point'
+    if (/retur|return/i.test(l)) return 'tekan retur COD dengan konfirmasi telepon sebelum pengantaran'
+    if (/pickup|otpu/i.test(l)) return 'perbaiki rute penjemputan tepat waktu untuk shipper non-ecommerce'
+    if (/full day|persentase ttd/i.test(l)) return 'tingkatkan capaian TTD seharian di kedua ritase'
+    return `tinjau ${l.toLowerCase()}`
   })
   const s = [...new Set(tips)].slice(0, 3).join('; ') + '.'
   return s.charAt(0).toUpperCase() + s.slice(1)

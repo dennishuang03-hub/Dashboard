@@ -13,6 +13,9 @@ a shared drive for the regional team.
 **Offline use:** it pulls the Excel reader (SheetJS) from a CDN. If the machine has no internet,
 download `xlsx.full.min.js` from cdn.sheetjs.com into the same folder — the page falls back to it.
 
+> **Note:** the standalone file does **not** include the DP/CP section described below — that lives in
+> the React app only. Run `npm run dev` for the drop-point view.
+
 ## 2. React app — `npm run dev`
 
 ```bash
@@ -23,9 +26,23 @@ npm run dev
 | File | Purpose |
 | --- | --- |
 | `src/lib/jnt.ts` | Parser + KPI model. Framework-free, reusable. |
-| `src/components/Charts.tsx` | Hand-rolled SVG line/bar/sparkline. No chart library. |
+| `src/components/Charts.tsx` | Hand-rolled SVG line/bar/h-bar/sparkline. No chart library. |
+| `src/components/DpSection.tsx` | Drop point / counter point view. |
 | `src/Dashboard.tsx` | All UI. |
+| `src/components/Zh.tsx` | Mandarin gloss shown beside a heading. |
 | `src/dashboard.css` | Styling. |
+
+### Language
+
+The interface is in **Bahasa Indonesia**. Every *heading* — page title, panel title, table column
+header, KPI card name, stat label — also carries a Mandarin gloss in lighter type, the same way the
+workbook labels its own headers (`代理区 / Agent`, `网点 / Nama Drop point`). Running text, tooltips,
+hints and footnotes stay in Indonesian alone: glossing whole sentences doubles the reading load
+without helping anyone find anything.
+
+Category names come from `CATEGORY_ZH` in `src/lib/jnt.ts` and are lifted **verbatim from the
+workbook's header rows**, not translated — so someone reading the dashboard and someone reading the
+Excel see the same words. The CSV export carries both languages in its header row for the same reason.
 
 ---
 
@@ -95,6 +112,57 @@ because `Persentase TTD` means different things in different groups:
 There is **no OTPU (T-1) box** — that metric was in the original blueprint but isn't in the data, so it
 isn't rendered. If the file ever contains a column that isn't one of the eight above, it's still parsed
 but starts switched off; tick it in the mapping panel to bring it in. All labels are editable there too.
+
+---
+
+## DP / CP level — the per-agent tabs
+
+Alongside the three summary tabs the workbook now carries one tab per agent (`AG12`, `AG13`, … `AG40`),
+each listing that agent's drop points and counter points:
+
+```
+┌───────────┬────────────┬─────────────────────┬────────────────────────────────────┐
+│   Agent   │ Kode Agent │  Nama Drop point    │   Penilaian Kualitas Ritase Pertama │
+│           │            │                     ├──────┬──────────┬──────────┬───────┤
+│           │            │                     │Target│29/07/2026│28/07/2026│  MTD  │
+├───────────┼────────────┼─────────────────────┼──────┼──────────┼──────────┼───────┤
+│ TANGERANG │  AGENT12   │  SERANG_JAYA        │90.00%│  85.33%  │  89.23%  │86.02% │
+│           │            │  KASEMEN_JAYA       │90.00%│  89.13%  │  90.38%  │88.54% │
+└───────────┴────────────┴─────────────────────┴──────┴──────────┴──────────┴───────┘
+```
+
+These tabs are detected by their `Nama Drop point` / `网点` column and parsed **separately** — they are
+never merged into the agent rows, or the Chinese-named columns would produce a second copy of every KPI
+card. Drop points join their agent on **Kode Agent**, falling back to the tab name (`AG12` → `AGENT12`),
+so the section follows whatever the agent picker is set to. Category names are resolved through the same
+`shortLabel()` aliases as the summary tabs, which is what makes
+`快递员出勤准点率 / Tingkat Ketepatan Waktu Kehadiran Spirnter` and `06:30 ABSENSI` the same thing.
+
+The DP tabs carry fewer days than the summary tabs. Picking a date they don't have shows the closest day
+they do have, and says so, rather than blanking the section.
+
+### Pickup-only and closed sites
+
+Two shapes of zero are not underperformance, and both are kept out of the rankings:
+
+| Status | Rule | Why |
+| --- | --- | --- |
+| **Pickup only** | 06:30, 07:30 **and** 12:00 all read 0 | No sprinter is based there, so the delivery categories are structurally zero. A `0.00%` worst-five entry would be meaningless. |
+| **Closed** | every category reads 0 | The site is shut. |
+| **Active** | anything else | The only rows eligible for top five / worst five. |
+
+Both are still listed in the DP/CP table with a badge and their cells greyed rather than red — "why is
+this one missing from the chart?" has to have a visible answer.
+
+### What the section shows
+
+- **Counters** — total, active, pickup-only, closed, and how many are below target in the chosen category
+- **Top 5 / Worst 5** — horizontal bars, each chart with its **own** category dropdown, target line drawn
+  in. "Worst" respects direction, so for `RETUR COD` it means the highest, not the lowest
+- **Below-target DP/CP by agent** — only in the all-agents view
+- **DP/CP list** — every site with all eight categories as a colour-coded grid (green met / red missed /
+  grey structural). Search, status filter, DP vs CP filter, below-target-only filter, day vs MTD toggle,
+  sort on any column, and CSV export of whatever the filters currently show
 
 ---
 

@@ -75,6 +75,43 @@ export interface SheetInfo {
   reason?: string
   kpiCount: number
   agentCount: number
+  /** 'agent' = one row per agent · 'dp' = one row per drop point / counter point */
+  kind: 'agent' | 'dp'
+}
+
+/* ------------------------------------------------------- drop point level */
+
+/**
+ * One KPI's readings for one drop point.
+ *
+ * DP sheets are keyed by the *canonical* KPI label rather than by `ColId`,
+ * because the drop-point tabs and the agent tabs spell the same category
+ * differently (`快递员出勤准点率 / Tingkat Ketepatan Waktu Kehadiran Spirnter`
+ * vs `06:30 ABSENSI`). Resolving both to `shortLabel()` is what lets a DP row
+ * and an agent row talk about the same thing.
+ */
+export interface DpKpiVals {
+  byDate: Record<string, number>
+  mtd: number | null
+  target: number | null
+}
+
+/** How much of the operation a drop point actually runs — see `dpStatusOf`. */
+export type DpKind = 'active' | 'pickup' | 'closed'
+
+export interface DpRow {
+  /** unique across the workbook: `${agentKey}::${name}` */
+  key: string
+  name: string
+  label: string
+  agentKey: string
+  agentLabel: string
+  agentCode: string
+  /** the file prefixes counter points with `CP_`; everything else is a drop point */
+  isCp: boolean
+  sheet: string
+  /** canonical KPI label → readings */
+  vals: Record<string, DpKpiVals>
 }
 
 export interface Model {
@@ -85,6 +122,10 @@ export interface Model {
   dates: DateSlot[]
   totalRow: AgentRow | null
   sheets: SheetInfo[]
+  /** every drop point / counter point found in the per-agent tabs */
+  dps: DpRow[]
+  /** the days the DP tabs carry — usually a subset of `dates` */
+  dpDates: DateSlot[]
 }
 
 /** This dashboard covers the Jawa & Bali region only. */
@@ -282,6 +323,33 @@ export const CANONICAL_ORDER = [
 ]
 
 /**
+ * Mandarin name for each category, lifted verbatim from the workbook's own
+ * header rows rather than translated — so a supervisor reading the dashboard
+ * and a supervisor reading the Excel are looking at the same words.
+ */
+export const CATEGORY_ZH: Record<string, string> = {
+  '06:30 ABSENSI': '快递员出勤准点率',
+  '07:30 KELUAR GUDANG': '0730出仓率',
+  'TTD PAKET JAM 12:00': '1200签收率',
+  'TTD RITASE 2': '二派签收率',
+  'TPTW (ON TIME)': '交件准点率',
+  'PERSENTASE TTD': '全天签收率',
+  'PICKUP NON-ECOMMERCE': '非平台揽收及时率',
+  'RETUR COD NON-ECOMMERCE': '非平台COD退件率',
+}
+
+/**
+ * The three categories a *sprinter* (courier) drives. A drop point that scores
+ * zero on all three is not underperforming — it has no couriers at all and only
+ * accepts parcels over the counter. See `dpStatusOf`.
+ */
+export const SPRINTER_LABELS = [
+  '06:30 ABSENSI',
+  '07:30 KELUAR GUDANG',
+  'TTD PAKET JAM 12:00',
+]
+
+/**
  * KPIs pre-selected for the trend chart. Named explicitly so that reordering
  * CANONICAL_ORDER, hiding a KPI, or a direction flip can't silently change
  * which three lines you get. Everything else stays toggleable in the legend.
@@ -410,7 +478,7 @@ const IDENTITY_RE = /^(kode|code|kd\.?|id|no\.?|nomor|nama|name|agen|agent|area|
 /** Errors thrown here are plain phrases — `parseWorkbook` prefixes the sheet name. */
 function parseOneSheet(ws: XLSX.WorkSheet, sheetIdx: number): RawSheet {
   const { m, lastC } = sheetMatrix(ws)
-  if (!m.length) throw new Error('the sheet is empty')
+  if (!m.length) throw new Error('sheet ini kosong')
 
   const cid = (C: number): ColId => `${sheetIdx}:${C}`
 
@@ -427,7 +495,7 @@ function parseOneSheet(ws: XLSX.WorkSheet, sheetIdx: number): RawSheet {
       }
     }
   }
-  if (agentCol < 0) throw new Error('no "Agent" header cell found in the first 40 rows')
+  if (agentCol < 0) throw new Error('tidak ada judul kolom "Agent" pada 40 baris pertama')
 
   for (let C = 0; C < agentCol; C++) {
     const s = txt(m[headerRow][C])
@@ -457,7 +525,7 @@ function parseOneSheet(ws: XLSX.WorkSheet, sheetIdx: number): RawSheet {
     if (/^(agent|agen|代理区|area|区域|kode)/i.test(a)) continue
     if (numCount(R) >= 2) { dataStart = R; break }
   }
-  if (dataStart < 0) throw new Error('the Agent column has no numeric data rows underneath it')
+  if (dataStart < 0) throw new Error('kolom Agent tidak memiliki baris data angka di bawahnya')
 
   const nHdr = dataStart - headerRow
 
@@ -520,7 +588,7 @@ function parseOneSheet(ws: XLSX.WorkSheet, sheetIdx: number): RawSheet {
     else if (kind === 'target') { if (!k.targetCol) k.targetCol = cid(C) }
     else k.dateCols.push({ id: cid(C), date: null })   // unlabelled → treat as a day slot
   }
-  if (!kpis.length) throw new Error('no KPI columns found to the right of the identity columns')
+  if (!kpis.length) throw new Error('tidak ada kolom KPI di sebelah kanan kolom identitas')
 
   /* 4 — read data rows */
   const rows: RawRow[] = []
@@ -557,7 +625,7 @@ function parseOneSheet(ws: XLSX.WorkSheet, sheetIdx: number): RawSheet {
     if (isTotal) totalRow = rec
     else rows.push(rec)
   }
-  if (!rows.length) throw new Error('no agent rows found')
+  if (!rows.length) throw new Error('tidak ditemukan baris agen')
 
   /* 5 — percent-scaling fallback (0.9140 stored without a % format) */
   for (const k of kpis) {
@@ -581,6 +649,256 @@ function normKey(s: string): string {
   return s.toUpperCase().replace(/\s+/g, ' ').trim()
 }
 
+/* --------------------------------------------------- drop-point sheet parse */
+
+const DP_HEADER_RE = /drop\s*point|网点|dp\s*\/\s*cp/i
+const CODE_HEADER_RE = /kode|code|编码|\bkd\b/i
+const AGENT_HEADER_RE = /agent|agen\b|代理区/i
+
+/**
+ * A per-agent tab lists drop points, not agents, and must NOT be merged into the
+ * agent-level model — doing so would create a second "06:30 ABSENSI" KPI (the
+ * DP tabs spell it in Chinese) and duplicate every card on the dashboard.
+ * The give-away is a "Nama Drop point" / 网点 column in the header block.
+ */
+export function looksLikeDpSheet(ws: XLSX.WorkSheet): boolean {
+  if (!ws || !ws['!ref']) return false
+  const r = XLSX.utils.decode_range(ws['!ref'])
+  const maxR = Math.min(r.e.r, 14)
+  const maxC = Math.min(r.e.c, 14)
+  for (let R = 0; R <= maxR; R++) {
+    for (let C = 0; C <= maxC; C++) {
+      const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })] as XLSX.CellObject | undefined
+      if (cell && DP_HEADER_RE.test(String(cell.v ?? ''))) return true
+    }
+  }
+  return false
+}
+
+interface RawDpSheet { rows: DpRow[]; kpiCount: number; dates: { key: string; date: Date | null }[] }
+
+/**
+ * `AG12` → `AGENT12`. The tab name is the fallback identity for a sheet whose
+ * Kode Agent column is blank; without it such a tab's drop points would end up
+ * orphaned and invisible behind the agent filter.
+ */
+function agentKeyFromSheet(sheetName: string): string {
+  const m = sheetName.trim().match(/^ag[\s_-]*(\d+)$/i)
+  return m ? `AGENT${m[1]}` : ''
+}
+
+/** Errors thrown here are plain phrases — `parseWorkbook` prefixes the sheet name. */
+function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
+  const { m, lastC } = sheetMatrix(ws)
+  if (!m.length) throw new Error('sheet ini kosong')
+
+  /* 1 — locate the Drop point header cell */
+  let headerRow = -1, dpCol = -1
+  for (let R = 0; R < Math.min(m.length, 20) && dpCol < 0; R++) {
+    for (let C = 0; C <= Math.min(lastC, 14); C++) {
+      if (DP_HEADER_RE.test(txt(m[R][C]))) { headerRow = R; dpCol = C; break }
+    }
+  }
+  if (dpCol < 0) throw new Error('tidak ada judul kolom "Nama Drop point"')
+
+  /* 1b — identity columns to its left */
+  let agentCol = -1, codeCol = -1
+  for (let C = 0; C < dpCol; C++) {
+    const s = txt(m[headerRow][C])
+    if (!s) continue
+    if (CODE_HEADER_RE.test(s)) { if (codeCol < 0) codeCol = C }
+    else if (AGENT_HEADER_RE.test(s)) { if (agentCol < 0) agentCol = C }
+  }
+
+  /* 2 — first data row */
+  const numCount = (R: number) => {
+    let n = 0
+    for (let c = dpCol + 1; c <= lastC; c++) if (cellNum(m[R][c]) != null) n++
+    return n
+  }
+  let dataStart = -1
+  for (let R = headerRow + 1; R < m.length; R++) {
+    if (!txt(m[R][dpCol])) continue
+    if (DP_HEADER_RE.test(txt(m[R][dpCol]))) continue
+    if (numCount(R) >= 2) { dataStart = R; break }
+  }
+  if (dataStart < 0) throw new Error('kolom Drop point tidak memiliki baris data angka di bawahnya')
+
+  const nHdr = dataStart - headerRow
+  if (nHdr < 2) throw new Error('blok judul terlalu dangkal untuk memuat nama KPI')
+
+  /* 2b — close every hole in the header block (see parseOneSheet, step 2b) */
+  for (let R = headerRow; R < dataStart - 1; R++) {
+    let last: Cell = null
+    for (let C = dpCol + 1; C <= lastC; C++) {
+      if (m[R][C] != null && txt(m[R][C])) last = m[R][C]
+      else if (last) m[R][C] = last
+    }
+  }
+
+  /* 3 — describe every KPI column, resolved to a canonical label.
+     Columns that do not resolve to a category this dashboard knows about are
+     dropped outright — the DP tabs carry a few hidden helper columns holding
+     copies of the drop-point name, and they must not become phantom KPIs. */
+  interface DpCol { label: string; kind: SubKind; dateKey: string; date: Date | null }
+  const cols: Record<number, DpCol> = {}
+  const dateSlots = new Map<string, Date | null>()
+  const seenLabels = new Set<string>()
+
+  for (let C = dpCol + 1; C <= lastC; C++) {
+    const labels: string[] = []
+    for (let k = 0; k < nHdr; k++) labels.push(txt(m[headerRow + k]?.[C] ?? null))
+    const sub = labels[nHdr - 1] || ''
+    const group = labels[0] || ''
+    const name = labels[nHdr - 2] || group
+    if (!name) continue
+
+    const label = shortLabel(name, group)
+    if (!CANONICAL_ORDER.includes(label)) continue
+
+    let kind: SubKind = 'value'
+    let date: Date | null = null
+    if (/^target|目标|标准|standar|kpi\s*target/i.test(sub)) kind = 'target'
+    else if (/bulanan|monthly|月度|\bmtd\b|pencapaian|akumulasi/i.test(sub)) kind = 'monthly'
+    else {
+      const d = cellDate(m[headerRow + nHdr - 1]?.[C] ?? null, true)
+      if (!d) continue                    // an unlabelled column carries no meaning here
+      kind = 'date'; date = d
+    }
+
+    const dateKey = date ? dayKey(date, 0) : ''
+    if (kind === 'date') dateSlots.set(dateKey, date)
+    cols[C] = { label, kind, dateKey, date }
+    seenLabels.add(label)
+  }
+  if (!seenLabels.size) throw new Error('tidak ada kolom KPI yang dikenali')
+
+  /* 4 — read the drop points */
+  const rows: DpRow[] = []
+  const fallbackKey = agentKeyFromSheet(sheetName)
+  let lastAgent = '', lastCode = '', blanks = 0
+
+  for (let R = dataStart; R < m.length; R++) {
+    const name = txt(m[R][dpCol])
+    const nc = numCount(R)
+    if (!name && nc === 0) { if (++blanks > 8) break; continue }
+    blanks = 0
+    if (!name) continue
+    if (/合计|^total$|^jumlah|grand\s*total|^sum$/i.test(name)) continue
+
+    /* Agent + code are written once and merged down the whole block on some tabs
+       and repeated on every row on others — carry the last seen value forward so
+       both shapes produce the same result. */
+    const a = agentCol >= 0 ? txt(m[R][agentCol]) : ''
+    const c = codeCol >= 0 ? txt(m[R][codeCol]) : ''
+    if (a) lastAgent = a
+    if (c) lastCode = c
+
+    const vals: Record<string, DpKpiVals> = {}
+    for (const cStr of Object.keys(cols)) {
+      const C = Number(cStr)
+      const col = cols[C]
+      const v = cellNum(m[R][C])
+      if (v == null) continue
+      const slot = (vals[col.label] ??= { byDate: {}, mtd: null, target: null })
+      if (col.kind === 'date') slot.byDate[col.dateKey] = v
+      else if (col.kind === 'monthly') slot.mtd = v
+      else if (col.kind === 'target') slot.target = v
+    }
+
+    const code = normKey(lastCode) || fallbackKey
+    rows.push({
+      key: `${code || sheetName}::${normKey(name)}`,
+      name,
+      label: latin(name) || name,
+      agentKey: code || normKey(lastAgent) || sheetName,
+      agentLabel: latin(lastAgent) || lastAgent || code || sheetName,
+      agentCode: code,
+      isCp: /^cp[\s_-]/i.test(name.trim()),
+      sheet: sheetName,
+      vals,
+    })
+  }
+  if (!rows.length) throw new Error('tidak ditemukan baris drop point')
+
+  /* 5 — percent-scaling fallback (0.9140 stored without a % number-format) */
+  for (const label of seenLabels) {
+    const vs: number[] = []
+    for (const r of rows) {
+      const s = r.vals[label]
+      if (!s) continue
+      for (const k of Object.keys(s.byDate)) vs.push(Math.abs(s.byDate[k]))
+      if (s.mtd != null) vs.push(Math.abs(s.mtd))
+      if (s.target != null) vs.push(Math.abs(s.target))
+    }
+    if (vs.length >= 3 && Math.max(...vs) <= 1.0000001) {
+      for (const r of rows) {
+        const s = r.vals[label]
+        if (!s) continue
+        for (const k of Object.keys(s.byDate)) s.byDate[k] *= 100
+        if (s.mtd != null) s.mtd *= 100
+        if (s.target != null) s.target *= 100
+      }
+    }
+  }
+
+  return {
+    rows,
+    kpiCount: seenLabels.size,
+    dates: [...dateSlots.entries()].map(([key, date]) => ({ key, date })),
+  }
+}
+
+/* ------------------------------------------------- drop-point classification */
+
+/**
+ * What a drop point was actually doing on a given day.
+ *
+ *   closed  — every category reads zero. The site is shut; scoring it would drag
+ *             the agent's worst-five list down with sites that no longer exist.
+ *   pickup  — 06:30, 07:30 and 12:00 are all zero but something else is not.
+ *             No sprinter is based here, so the delivery categories are
+ *             structurally zero and a "0.00%" ranking would be meaningless.
+ *   active  — runs at least part of a delivery shift.
+ *
+ * Only `active` sites are eligible for the top-five and worst-five charts.
+ */
+export function dpStatusOf(dp: DpRow, dateKey: string): DpKind {
+  const read = (label: string): number | null => {
+    const s = dp.vals[label]
+    if (!s) return null
+    const v = s.byDate[dateKey]
+    return v == null ? null : v
+  }
+
+  const present = CANONICAL_ORDER.map(read).filter((v): v is number => v != null)
+  if (!present.length) return 'closed'
+  if (present.every((v) => v === 0)) return 'closed'
+
+  const sprinter = SPRINTER_LABELS.map(read)
+  if (sprinter.every((v) => v == null || v === 0)) return 'pickup'
+  return 'active'
+}
+
+export const DP_KIND_LABEL: Record<DpKind, string> = {
+  active: 'Aktif',
+  pickup: 'Pickup saja',
+  closed: 'Tutup',
+}
+
+/** Reading for one category on one day; `null` when the column is absent. */
+export function dpValue(dp: DpRow, label: string, dateKey: string): number | null {
+  const v = dp.vals[label]?.byDate[dateKey]
+  return v == null ? null : v
+}
+
+/** Target for this category *at this drop point* — its own column wins. */
+export function dpTargetFor(dp: DpRow, kpi: Kpi): number {
+  const own = dp.vals[kpi.label]?.target
+  if (own != null) return own
+  return targetFor(kpi, null)
+}
+
 /* --------------------------------------------------------- workbook parse */
 
 /** Parse every readable sheet and merge them into a single model. */
@@ -591,16 +909,40 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
   const rowByKey = new Map<string, AgentRow>()
   const rowOrder: AgentRow[] = []
   let totalRow: AgentRow | null = null
+  const dps: DpRow[] = []
+  const dpDateMap = new Map<string, Date | null>()
 
   wb.SheetNames.forEach((sheetName, sheetIdx) => {
-    let raw: RawSheet
-    try {
-      raw = parseOneSheet(wb.Sheets[sheetName], sheetIdx)
-    } catch (e) {
-      sheets.push({ name: sheetName, ok: false, reason: (e as Error).message, kpiCount: 0, agentCount: 0 })
+    const ws = wb.Sheets[sheetName]
+
+    /* per-agent drop-point tab — parsed into its own model, never merged into
+       the agent rows (see `looksLikeDpSheet`) */
+    if (looksLikeDpSheet(ws)) {
+      try {
+        const raw = parseDpSheet(ws, sheetName)
+        dps.push(...raw.rows)
+        for (const d of raw.dates) if (!dpDateMap.has(d.key)) dpDateMap.set(d.key, d.date)
+        sheets.push({
+          name: sheetName, ok: true, kind: 'dp',
+          kpiCount: raw.kpiCount, agentCount: raw.rows.length,
+        })
+      } catch (e) {
+        sheets.push({
+          name: sheetName, ok: false, kind: 'dp',
+          reason: (e as Error).message, kpiCount: 0, agentCount: 0,
+        })
+      }
       return
     }
-    sheets.push({ name: sheetName, ok: true, kpiCount: raw.kpis.length, agentCount: raw.rows.length })
+
+    let raw: RawSheet
+    try {
+      raw = parseOneSheet(ws, sheetIdx)
+    } catch (e) {
+      sheets.push({ name: sheetName, ok: false, kind: 'agent', reason: (e as Error).message, kpiCount: 0, agentCount: 0 })
+      return
+    }
+    sheets.push({ name: sheetName, ok: true, kind: 'agent', kpiCount: raw.kpis.length, agentCount: raw.rows.length })
 
     /* merge KPIs */
     for (const rk of raw.kpis) {
@@ -646,7 +988,7 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
 
   if (!kpis.length) {
     const why = sheets.filter((s) => !s.ok).map((s) => `“${s.name}”: ${s.reason}`).join(' · ')
-    throw new Error(`No readable sheet found. ${why || 'The workbook has no recognisable Area/Agent table.'}`)
+    throw new Error(`Tidak ada sheet yang dapat dibaca. ${why || 'Workbook ini tidak memiliki tabel Area/Agent yang dikenali.'}`)
   }
 
   /* sort each KPI's day columns oldest → newest (the file lists them newest first) */
@@ -741,10 +1083,66 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
   if (regional.length && regional.length !== rowOrder.length) totalRow = null
   const region = rows[0]?.area || REGION_LABEL
 
-  return { kpis, rows, region, dates, totalRow, sheets }
+  /**
+   * Attach every drop point to an agent that survived the regional filter.
+   *
+   * The join is on Kode Agent (`AGENT12`), which both levels carry, with the
+   * agent's own display name copied over the DP tab's — the tabs write
+   * "TANGERANG唐格朗" where the summary sheet writes "TANGERANG", and the agent
+   * picker has to show one name, not two.
+   */
+  const byCode = new Map<string, AgentRow>()
+  for (const r of rows) {
+    if (r.code) byCode.set(normKey(r.code), r)
+    byCode.set(r.key, r)
+  }
+  let matched = 0
+  for (const d of dps) {
+    const hit = byCode.get(d.agentKey)
+    if (!hit) continue
+    d.agentKey = hit.key
+    d.agentLabel = hit.label
+    matched++
+  }
+  /**
+   * Unmatched drop points are dropped only when the join demonstrably worked —
+   * they then belong to an agent outside this region. If *nothing* matched the
+   * join itself is broken (a renamed code column, a workbook with no summary
+   * tab), and silently discarding every drop point would take the whole section
+   * off the page with no explanation. In that case keep them as they came.
+   */
+  const keptDps = matched > 0
+    ? dps.filter((d) => byCode.has(d.agentKey) || rows.some((r) => r.key === d.agentKey))
+    : dps
+
+  const dpDates: DateSlot[] = [...dpDateMap.entries()]
+    .map(([key, date], i) => ({ key, date, seq: i }))
+    .sort((a, b) => (a.date && b.date ? +a.date - +b.date : a.seq - b.seq))
+
+  return { kpis, rows, region, dates, totalRow, sheets, dps: keptDps, dpDates }
 }
 
 /* ------------------------------------------------------------- selectors */
+
+/**
+ * The drop-point day to show for a given dashboard day.
+ *
+ * The agent tabs carry a week; the per-agent DP tabs carry only the last two
+ * days. Asking for 24/07 at DP level therefore has no answer, and returning
+ * nothing would blank the whole section for five of the seven selectable days.
+ * Instead we fall back to the newest DP day that is not after the one asked for,
+ * and failing that to the oldest one available — the caller says so on screen.
+ */
+export function resolveDpDate(dpDates: DateSlot[], want: DateSlot | null): DateSlot | null {
+  if (!dpDates.length) return null
+  if (!want) return dpDates[dpDates.length - 1]
+  const exact = dpDates.find((d) => d.key === want.key)
+  if (exact) return exact
+  if (!want.date) return dpDates[dpDates.length - 1]
+  let best: DateSlot | null = null
+  for (const d of dpDates) if (d.date && +d.date <= +want.date) best = d
+  return best ?? dpDates[0]
+}
 
 export function kpiSeries(kpi: Kpi, rec: AgentRow, dates: DateSlot[]): (number | null)[] {
   return dates.map((d) => {
@@ -780,31 +1178,31 @@ export function explain(
   const dir = kpi.lowerBetter ? '≤' : '≥'
   if (v == null) {
     return {
-      tone: 'na', title: 'No data',
-      lines: [`Nothing recorded for this day.`, `Target ${dir} ${target.toFixed(2)}%`],
+      tone: 'na', title: 'Tidak ada data',
+      lines: [`Tidak ada catatan untuk hari ini.`, `Target ${dir} ${target.toFixed(2)}%`],
     }
   }
 
   const ok = kpi.lowerBetter ? v <= target : v >= target
   const gap = Math.abs(v - target)
-  const lines = [`${v.toFixed(2)}% against target ${dir} ${target.toFixed(2)}%`]
+  const lines = [`${v.toFixed(2)}% terhadap target ${dir} ${target.toFixed(2)}%`]
 
   if (ok) {
     lines.push(kpi.lowerBetter
-      ? `${gap.toFixed(2)} points under the limit — safe.`
-      : `${gap.toFixed(2)} points above target — safe.`)
+      ? `${gap.toFixed(2)} poin di bawah batas — aman.`
+      : `${gap.toFixed(2)} poin di atas target — aman.`)
   } else {
     lines.push(kpi.lowerBetter
-      ? `${gap.toFixed(2)} points OVER the limit.`
-      : `Short by ${gap.toFixed(2)} points.`)
+      ? `${gap.toFixed(2)} poin MELEBIHI batas.`
+      : `Kurang ${gap.toFixed(2)} poin dari target.`)
   }
 
   if (prev != null) {
     const d = v - prev
-    if (Math.abs(d) < 0.005) lines.push(`Unchanged vs ${prevLabel}.`)
+    if (Math.abs(d) < 0.005) lines.push(`Tidak berubah dibanding ${prevLabel}.`)
     else {
       const better = kpi.lowerBetter ? d < 0 : d > 0
-      lines.push(`${better ? 'Improved' : 'Declined'} ${d > 0 ? '+' : ''}${d.toFixed(2)} vs ${prevLabel}.`)
+      lines.push(`${better ? 'Naik' : 'Turun'} ${d > 0 ? '+' : ''}${d.toFixed(2)} dibanding ${prevLabel}.`)
     }
   }
 
@@ -812,7 +1210,7 @@ export function explain(
 
   return {
     tone: ok ? 'ok' : 'bad',
-    title: ok ? 'On target' : kpi.lowerBetter ? 'Above limit' : 'Below target',
+    title: ok ? 'Sesuai target' : kpi.lowerBetter ? 'Di atas batas' : 'Di bawah target',
     lines,
   }
 }
@@ -879,7 +1277,7 @@ export async function exportPng(el: HTMLElement, filename: string): Promise<void
       tag.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
       tag.onload = () => resolve()
       tag.onerror = () => reject(new Error(
-        'Could not load the image library — you appear to be offline. Use Print / PDF instead.'))
+        'Pustaka gambar gagal dimuat — sepertinya Anda sedang offline. Gunakan Cetak / PDF sebagai gantinya.'))
       document.head.appendChild(tag)
     })
   }
@@ -913,11 +1311,11 @@ export async function exportPng(el: HTMLElement, filename: string): Promise<void
     })
 
     if (!canvas.width || !canvas.height) {
-      throw new Error('The snapshot came back empty. Use Print / PDF instead.')
+      throw new Error('Hasil tangkapan layar kosong. Gunakan Cetak / PDF sebagai gantinya.')
     }
 
     const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
-    if (!blob) throw new Error('The browser could not encode the image.')
+    if (!blob) throw new Error('Browser tidak dapat mengodekan gambar ini.')
     const url = URL.createObjectURL(blob)
     const a = document.createElement('a')
     a.href = url

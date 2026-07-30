@@ -24,6 +24,22 @@ body{
 }
 .wrap{max-width:1480px;margin:0 auto;padding:10px 14px 16px}
 
+/* ---------- Mandarin gloss on headings ----------
+   Lighter and slightly smaller than the Indonesian it sits beside, so a heading
+   still reads as one heading rather than two competing ones. Inside anything
+   narrow — a table header, a KPI card name, a stat label — it drops to its own
+   line, because those boxes have no horizontal room to spare. */
+.zh{
+  font-weight:600;font-size:.86em;letter-spacing:0;text-transform:none;
+  opacity:.6;margin-left:.45em;white-space:nowrap;
+}
+h1 .zh,h2 .zh,.panel > h3 .zh{opacity:.5}
+.panel.red > h3 .zh{opacity:.75}
+
+th .zh,.kname .zh,.dpstat .l .zh,.sumitem .lab .zh{
+  display:block;margin-left:0;margin-top:1px;font-size:.94em;opacity:.72;white-space:normal;
+}
+
 /* ---------- Top bar ---------- */
 .topbar{
   display:flex;align-items:center;gap:14px;
@@ -101,9 +117,11 @@ body{
   .kcard,.kcard.st-bad .dot,.tipbox{transition:none;animation:none}
 }
 .kcard .dot{position:absolute;top:12px;right:12px;width:10px;height:10px;border-radius:50%}
+/* min-height keeps every card's value row on the same baseline; it allows for
+   a two-line Indonesian name plus its Mandarin gloss underneath */
 .kcard .kname{
   font-size:10.5px;font-weight:800;letter-spacing:.5px;color:var(--ink-2);
-  text-transform:uppercase;padding-right:16px;line-height:1.35;min-height:28px;
+  text-transform:uppercase;padding-right:16px;line-height:1.35;min-height:44px;
 }
 .kcard .krow{display:flex;align-items:center;gap:9px;margin-top:6px}
 .kcard .kicon{font-size:20px;line-height:1}
@@ -244,6 +262,92 @@ tbody tr.st-bad .kpiname{color:var(--jt-red)}
 }
 .empty-mini{color:var(--ink-3);font-size:12px;padding:26px 0;text-align:center}
 
+/* ---------- DP / CP section ---------- */
+.dpsection{margin-top:16px}
+.dphead{
+  display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;
+  padding:0 2px 8px;border-bottom:2px solid var(--jt-red);margin-bottom:12px;
+}
+.dphead h2{margin:0;font-size:15px;font-weight:800;letter-spacing:.3px;color:#141821}
+.dphead h2 b{color:var(--jt-red)}
+.dphead .dpday{font-size:11.5px;color:var(--ink-3)}
+.dphead .dpday em{font-style:normal;color:#B47607}
+
+.dpstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px}
+.dpstat{
+  background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  padding:9px 13px;display:flex;flex-direction:column;gap:1px;border-left:3px solid var(--line);
+}
+.dpstat .n{font-size:23px;font-weight:800;letter-spacing:-.6px;line-height:1.15}
+.dpstat .l{font-size:10.5px;color:var(--ink-3);text-transform:uppercase;letter-spacing:.5px;line-height:1.35}
+.dpstat.good{border-left-color:var(--green)} .dpstat.good .n{color:var(--green)}
+.dpstat.warn{border-left-color:var(--amber)} .dpstat.warn .n{color:#B47607}
+.dpstat.bad {border-left-color:var(--jt-red)} .dpstat.bad  .n{color:var(--jt-red)}
+.dpstat.mute .n{color:var(--ink-3)}
+
+.row-dp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
+@media (max-width:900px){ .row-dp{grid-template-columns:1fr} }
+
+.btn.tiny{padding:3px 9px;font-size:11px;flex:none}
+
+/* ---------- DP / CP table ---------- */
+.dptable{margin-top:10px}
+.dpfilters{
+  display:flex;flex-wrap:wrap;gap:8px;align-items:center;
+  padding:9px 13px;border-bottom:1px solid var(--line);background:#FBFCFE;
+}
+.dpfilters input[type=text],.dpfilters select{
+  border:1px solid var(--line);border-radius:8px;padding:5px 9px;font-size:12px;
+  background:#fff;color:var(--ink);font-family:inherit;
+}
+.dpfilters input[type=text]{min-width:210px;flex:1;max-width:320px}
+.dpfilters .chk{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--ink-2);cursor:pointer}
+.dpfilters .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+.dpfilters .seg button{
+  border:none;background:#fff;color:var(--ink-2);padding:5px 11px;font-size:11.5px;
+  font-weight:700;cursor:pointer;font-family:inherit;
+}
+.dpfilters .seg button.on{background:var(--jt-red);color:#fff}
+
+/* The grid is wider than the panel by design: 8 category columns plus identity
+   never fit at full type size, and shrinking the type to make them fit is worse
+   than a scrollbar. The name column is pinned so a row stays identifiable while
+   scrolling sideways. */
+.dpscroll{overflow:auto;max-height:620px}
+table.dpgrid{font-size:11.5px;min-width:100%}
+table.dpgrid thead th{
+  position:sticky;top:0;z-index:3;cursor:pointer;user-select:none;
+  padding:7px 8px;white-space:nowrap;
+}
+table.dpgrid thead th:hover{background:var(--jt-red-dark)}
+table.dpgrid th.cat{max-width:96px;white-space:normal;line-height:1.25}
+table.dpgrid tbody td{padding:5px 8px;white-space:nowrap}
+table.dpgrid th.sticky,table.dpgrid td.sticky{position:sticky;left:0;z-index:2}
+table.dpgrid thead th.sticky{z-index:4}
+table.dpgrid tbody td.sticky{background:#fff}
+table.dpgrid tbody tr:nth-child(even) td.sticky{background:#FAFBFD}
+.dpname{font-weight:600;display:flex;align-items:center;gap:6px}
+.ptag{
+  display:inline-flex;align-items:center;justify-content:center;flex:none;
+  font-size:8.5px;font-weight:900;letter-spacing:.4px;border-radius:4px;padding:1px 4px;color:#fff;
+}
+.ptag.dp{background:#2E86DE} .ptag.cp{background:#8E44AD}
+.sbadge{
+  display:inline-block;font-size:9.5px;font-weight:800;letter-spacing:.3px;
+  border-radius:99px;padding:2px 8px;white-space:nowrap;
+}
+.sbadge.active{background:#E4F7EC;color:#0A7C3E}
+.sbadge.pickup{background:#FEF1DC;color:#8A5A08}
+.sbadge.closed{background:#EDEFF4;color:#6C7789}
+
+/* the heatmap: one colour per cell, read as a block down the column */
+td.hm{font-variant-numeric:tabular-nums;font-weight:600}
+td.hm.ok {background:#E9F8EF;color:#0A7C3E}
+td.hm.bad{background:#FDEAE8;color:#B81810}
+td.hm.off{color:#AEB6C4}
+tbody tr.k-closed td.sticky{color:#8A94A6}
+.dpmore{padding:9px 13px;border-top:1px solid var(--line);text-align:center}
+
 /* ---------- PNG snapshot mode ----------
    The snapshot must contain every panel that is on screen, so unlike the print
    sheet nothing is dropped here except the controls themselves (buttons, file
@@ -257,7 +361,16 @@ body.shooting .wrap{width:1480px;max-width:none;padding:14px 16px}
 
 body.shooting .toolbar,
 body.shooting .tipbox,
+body.shooting .dpfilters,
+body.shooting .dpmore,
 body.shooting .legend button.off{display:none !important}
+
+/* the DP list scrolls on screen; a scroll container photographs as its visible
+   slice only, so it is unrolled to full height for the shot */
+body.shooting .dpscroll{overflow:visible !important;max-height:none !important}
+body.shooting table.dpgrid thead th,
+body.shooting table.dpgrid th.sticky,
+body.shooting table.dpgrid td.sticky{position:static !important}
 
 /* fixed 4-up grid: auto-fit leaves a lone orphan card on the second row */
 body.shooting .cards{grid-template-columns:repeat(4,1fr)}
@@ -288,19 +401,26 @@ body.shooting .panel > h3 .hsel:hover{
 
   /* only the interactive chrome is dropped — every data panel is kept, so the
      PDF carries the same information as the on-screen dashboard */
-  .toolbar,.dropzone,.legend button.off,.filechip,.tipbox{display:none !important}
+  .toolbar,.dropzone,.legend button.off,.filechip,.tipbox,
+  .dpfilters,.dpmore{display:none !important}
+  .dpscroll{overflow:visible !important;max-height:none !important}
+  table.dpgrid thead th,table.dpgrid th.sticky,table.dpgrid td.sticky{position:static !important}
   .panel > h3 .hsel{border-color:transparent;background:transparent;-webkit-appearance:none;appearance:none;padding-left:0}
 
   /* THE page-break fix: a panel that straddled a break printed its header on one
      page and its chart on the next, which is why charts looked missing */
   .panel,.kcard,.sumitem,tr,svg,
-  .row-trend,.row-mid,.row-bot{break-inside:avoid !important; page-break-inside:avoid !important}
+  .row-trend,.row-mid,.row-bot,.row-dp,.dpstat{break-inside:avoid !important; page-break-inside:avoid !important}
+  /* the DP list is the one table allowed to run across pages — it can be
+     hundreds of rows long, and forcing it onto one page would shrink it away */
+  .dptable{break-inside:auto !important; page-break-inside:auto !important}
+  .dpsection{break-before:page; page-break-before:always}
 
   .panel,.kcard,.topbar{box-shadow:none !important;border:1px solid var(--line)}
   .panel,.panel .body{overflow:visible !important;max-height:none !important}
   .cards{grid-template-columns:repeat(4,1fr);gap:6px}
   .kcard{padding:8px 8px 4px}
-  .kcard .kname{font-size:8.5px;min-height:22px;padding-right:10px}
+  .kcard .kname{font-size:8.5px;min-height:34px;padding-right:10px}
   .kcard .kval{font-size:20px}
   .kcard .ktgt,.kcard .kmtd{font-size:9px}
   .kcard .spark{height:22px}
