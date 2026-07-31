@@ -6,25 +6,32 @@
  * whole section is scoped to whichever agent the toolbar has selected, and
  * pools every drop point in the region when that selection is ALL AGENTS.
  *
- * Two rules from the operation shape everything below (see `dpStatusOf`):
- * sites with no sprinter are structurally zero on the delivery categories, and
- * closed sites are zero on all of them. Neither is underperforming, so neither
- * may appear in a top-five or worst-five list — they are kept in the table with
- * a badge instead, because "why is this one missing?" is a question the table
- * has to be able to answer.
+ * What each site actually runs shapes everything below (see `dpStatusOf`):
+ * a pickup-only site is structurally zero on the delivery categories, a
+ * delivery-only site is structurally zero on the handover that feeds pickup,
+ * and a closed site is zero on all of them. None of those zeros is
+ * underperformance, so pickup-only and closed sites may not appear in a
+ * top-five or worst-five list — they are kept in the table with a badge
+ * instead, because "why is this one missing?" is a question the table has to be
+ * able to answer.
  */
 import { useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import {
-  CANONICAL_ORDER, CATEGORY_ZH, DP_KIND_LABEL, SPRINTER_LABELS, agentFull, agentZh, dpStatusOf,
-  dpTargetFor, dpValue, exportPng, fmtDate, fmtDateFull, isoDay,
+  BIZ_MODEL_LABEL, BIZ_MODEL_TAG, CANONICAL_ORDER, CATEGORY_ZH, DP_KIND_LABEL, DP_KIND_ZH,
+  SPRINTER_LABELS, agentFull, agentZh, dpStatusOf, dpTargetFor, dpValue, exportPng, fmtDate,
+  fmtDateFull, isRankable, isoDay,
 } from '../lib/jnt'
-import type { DateSlot, DpKind, DpRow, Kpi, Model } from '../lib/jnt'
+import type { BizModel, DateSlot, DpKind, DpRow, Kpi, Model } from '../lib/jnt'
 import { BarChart, HBarChart } from './Charts'
 import type { HBar } from './Charts'
 import Zh from './Zh'
 
 const TOP_N = 5
+
+/** Sort order for the Status column — by how much of the operation runs, so the
+ *  column reads as a scale instead of alphabetically (both, closed, delivery…). */
+const KIND_RANK: Record<DpKind, number> = { both: 0, delivery: 1, pickup: 2, closed: 3 }
 
 /** A drop point plus everything the view needs to have decided about it once. */
 interface Scored {
@@ -82,27 +89,34 @@ export default function DpSection({
   const scored = useMemo<Scored[]>(() => {
     const pool = allAgents ? model.dps : model.dps.filter((d) => d.agentKey === agentKey)
     return pool.map((dp) => {
+      const kind = dpStatusOf(dp, day.key)
       const vals: Record<string, number | null> = {}
       let onTarget = 0, n = 0
       for (const k of catKpis) {
         const v = dpValue(dp, k.label, day.key)
         vals[k.label] = v
         if (v == null) continue
+        /* A delivery-only site is zero on the categories it structurally does not
+           run, and counting those as misses would score it 4/8 for doing exactly
+           what it is there to do. Sites that run both flows keep every reading. */
+        if (kind === 'delivery' && v === 0) continue
         n++
         const t = dpTargetFor(dp, k)
         if (k.lowerBetter ? v <= t : v >= t) onTarget++
       }
-      return { dp, kind: dpStatusOf(dp, day.key), vals, onTarget, scored: n }
+      return { dp, kind, vals, onTarget, scored: n }
     })
   }, [model.dps, allAgents, agentKey, catKpis, day.key])
 
-  const active = useMemo(() => scored.filter((s) => s.kind === 'active'), [scored])
+  /** The sites that run a delivery shift — the only ones a ranking may draw from. */
+  const rankable = useMemo(() => scored.filter((s) => isRankable(s.kind)), [scored])
   const counts = useMemo(() => ({
     total: scored.length,
-    active: active.length,
+    both: scored.filter((s) => s.kind === 'both').length,
+    delivery: scored.filter((s) => s.kind === 'delivery').length,
     pickup: scored.filter((s) => s.kind === 'pickup').length,
     closed: scored.filter((s) => s.kind === 'closed').length,
-  }), [scored, active])
+  }), [scored])
 
   /**
    * The five best or worst sites for one category.
@@ -110,7 +124,7 @@ export default function DpSection({
    * Two exclusions, and they are different things:
    *
    *   `dpStatusOf` already removed the sites that do not run a delivery shift at
-   *   all — pickup-only and closed. Only `active` reaches here.
+   *   all — pickup-only and closed. Only `both` and `delivery` reach here.
    *
    *   This then drops sites reading exactly 0 *in the category being ranked*. A
    *   site can be active overall and still have no activity in one category —
@@ -124,7 +138,7 @@ export default function DpSection({
    */
   const ranked = (k: Kpi | null, worst: boolean): { s: Scored; v: number }[] => {
     if (!k) return []
-    const rows = active
+    const rows = rankable
       .map((s) => ({ s, v: s.vals[k.label] }))
       .filter((o): o is { s: Scored; v: number } => o.v != null && o.v !== 0)
     // "worst" means furthest from meeting the target, which flips for RETUR
@@ -133,9 +147,9 @@ export default function DpSection({
     return rows.slice(0, TOP_N)
   }
 
-  /** How many active sites the zero rule above kept out of a category's ranking. */
+  /** How many delivery-running sites the zero rule above kept out of a ranking. */
   const zeroCount = (k: Kpi | null) =>
-    k ? active.filter((s) => s.vals[k.label] === 0).length : 0
+    k ? rankable.filter((s) => s.vals[k.label] === 0).length : 0
 
   const rank = (k: Kpi | null, worst: boolean): HBar[] =>
     ranked(k, worst).map((o) => ({
@@ -145,14 +159,14 @@ export default function DpSection({
       value: o.v,
     }))
 
-  const topBars = useMemo(() => rank(topK, false), [active, topK, allAgents])
-  const worstBars = useMemo(() => rank(worstK, true), [active, worstK, allAgents])
+  const topBars = useMemo(() => rank(topK, false), [rankable, topK, allAgents])
+  const worstBars = useMemo(() => rank(worstK, true), [rankable, worstK, allAgents])
 
   /* below-target count per agent, for the region-wide view */
   const byAgent = useMemo(() => {
     if (!tableK) return { values: [] as (number | null)[], labels: [] as { top: string; sub?: string }[] }
     const acc = new Map<string, { label: string; bad: number; tot: number }>()
-    for (const s of active) {
+    for (const s of rankable) {
       const v = s.vals[tableK.label]
       if (v == null) continue
       const e = acc.get(s.dp.agentKey) ?? { label: s.dp.agentLabel, bad: 0, tot: 0 }
@@ -170,13 +184,14 @@ export default function DpSection({
         sub: `${agentZh(e.label)}${agentZh(e.label) ? ' · ' : ''}dari ${e.tot}`,
       })),
     }
-  }, [active, tableK])
+  }, [rankable, tableK])
 
   /* ---------------------------------------------------------- table state */
 
   const [q, setQ] = useState('')
   const [status, setStatus] = useState<StatusFilter>('all')
   const [type, setType] = useState<'all' | 'dp' | 'cp'>('all')
+  const [biz, setBiz] = useState<'all' | BizModel>('all')
   const [onlyBelow, setOnlyBelow] = useState(false)
   const [mode, setMode] = useState<ValueMode>('day')
   const [sortKey, setSortKey] = useState('__name__')
@@ -193,6 +208,7 @@ export default function DpSection({
       if (status !== 'all' && s.kind !== status) return false
       if (type === 'cp' && !s.dp.isCp) return false
       if (type === 'dp' && s.dp.isCp) return false
+      if (biz !== 'all' && s.dp.bizModel !== biz) return false
       if (needle && !`${s.dp.label} ${s.dp.agentLabel}`.toLowerCase().includes(needle)) return false
       if (onlyBelow && tableK) {
         const v = cell(s, tableK)
@@ -207,7 +223,10 @@ export default function DpSection({
     out = [...out].sort((a, b) => {
       if (sortKey === '__name__') return dir * a.dp.label.localeCompare(b.dp.label)
       if (sortKey === '__agent__') return dir * a.dp.agentLabel.localeCompare(b.dp.agentLabel)
-      if (sortKey === '__status__') return dir * a.kind.localeCompare(b.kind)
+      if (sortKey === '__status__') return dir * (KIND_RANK[a.kind] - KIND_RANK[b.kind])
+      if (sortKey === '__model__') {
+        return dir * BIZ_MODEL_LABEL[a.dp.bizModel].localeCompare(BIZ_MODEL_LABEL[b.dp.bizModel])
+      }
       if (sortKey === '__ontarget__') return dir * (a.onTarget - b.onTarget)
       const k = catKpis.find((x) => x.label === sortKey)
       if (!k) return 0
@@ -219,7 +238,7 @@ export default function DpSection({
       return dir * (av - bv)
     })
     return out
-  }, [scored, q, status, type, onlyBelow, tableK, sortKey, sortDir, mode, catKpis])
+  }, [scored, q, status, type, biz, onlyBelow, tableK, sortKey, sortDir, mode, catKpis])
 
   const shown = showAll ? filtered : filtered.slice(0, 40)
 
@@ -276,6 +295,7 @@ export default function DpSection({
       'DP / CP 网点',
       ...(allAgents ? ['Agen 代理区'] : []),
       'Jenis 类型',
+      'Model Bisnis 商业模式',
       'Status 状态',
       ...catKpis.map((k) => `${k.label}${zh(k)}`),
       'Sesuai target 达标数',
@@ -285,17 +305,18 @@ export default function DpSection({
       s.dp.label,
       ...(allAgents ? [agentFull(s.dp.agentLabel)] : []),
       s.dp.isCp ? 'CP' : 'DP',
-      DP_KIND_LABEL[s.kind],
+      BIZ_MODEL_LABEL[s.dp.bizModel],
+      `${DP_KIND_LABEL[s.kind]} ${DP_KIND_ZH[s.kind]}`,
       ...catKpis.map((k) => cell(s, k)),
-      /* only active sites are scored — see dpStatusOf */
-      s.kind === 'active' ? `${s.onTarget}/${s.scored}` : '',
+      /* only sites that run a delivery shift are scored — see dpStatusOf */
+      isRankable(s.kind) ? `${s.onTarget}/${s.scored}` : '',
     ])
 
     const ws = XLSX.utils.aoa_to_sheet([head, ...body])
 
     /* `0.00"%"` keeps the underlying value at 98.25 while showing "98.25%".
        A real percent format would multiply by 100 and print 9825%. */
-    const firstKpi = allAgents ? 4 : 3
+    const firstKpi = allAgents ? 5 : 4
     for (let R = 1; R <= body.length; R++) {
       for (let C = firstKpi; C < firstKpi + catKpis.length; C++) {
         const c = ws[XLSX.utils.encode_cell({ r: R, c: C })]
@@ -307,7 +328,8 @@ export default function DpSection({
       { wch: 28 },
       ...(allAgents ? [{ wch: 20 }] : []),
       { wch: 7 },
-      { wch: 12 },
+      { wch: 14 },
+      { wch: 24 },
       ...catKpis.map(() => ({ wch: 15 })),
       { wch: 14 },
     ]
@@ -371,13 +393,16 @@ export default function DpSection({
 
       <div className="dpstats">
         <Stat n={counts.total} lab="Total DP / CP" zh="网点总数" />
-        <Stat n={counts.active} lab="Aktif (masuk peringkat)" zh="运营中" tone="good" />
-        <Stat n={counts.pickup} lab="Pickup saja" zh="仅揽收" tone="warn"
-              hint="Tidak ada sprinter di sini — 06:30, 07:30 dan 12:00 semuanya nol, sehingga dikeluarkan dari peringkat." />
+        <Stat n={counts.both} lab="Delivery and Pick up" zh="派送及揽收" tone="good"
+              hint="Menjalankan pengantaran dan penjemputan. Masuk peringkat." />
+        <Stat n={counts.delivery} lab="Delivery Only" zh="仅派送" tone="good"
+              hint="TPTW bernilai nol — mengantar tetapi tidak menyerahkan paket ke alur penjemputan. Tetap masuk peringkat." />
+        <Stat n={counts.pickup} lab="Pick up Only" zh="仅揽收" tone="warn"
+              hint="Tidak ada sprinter di sini — 06:30 dan 07:30 keduanya nol, sehingga dikeluarkan dari peringkat." />
         <Stat n={counts.closed} lab="Tutup" zh="已关闭" tone="mute"
               hint="Semua kategori bernilai nol. Dikeluarkan dari peringkat." />
         <Stat
-          n={tableK ? active.filter((s) => { const v = s.vals[tableK.label]; if (v == null) return false; const t = dpTargetFor(s.dp, tableK); return tableK.lowerBetter ? v > t : v < t }).length : 0}
+          n={tableK ? rankable.filter((s) => { const v = s.vals[tableK.label]; if (v == null) return false; const t = dpTargetFor(s.dp, tableK); return tableK.lowerBetter ? v > t : v < t }).length : 0}
           lab={tableK ? `Di bawah target · ${tableK.label}` : 'Di bawah target'}
           zh="未达标"
           tone="bad"
@@ -449,14 +474,20 @@ export default function DpSection({
           />
           <select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} aria-label="Filter status">
             <option value="all">Semua status</option>
-            <option value="active">Aktif saja</option>
-            <option value="pickup">Pickup saja</option>
+            <option value="both">Delivery and Pick up</option>
+            <option value="delivery">Delivery Only</option>
+            <option value="pickup">Pick up Only</option>
             <option value="closed">Tutup</option>
           </select>
           <select value={type} onChange={(e) => setType(e.target.value as 'all' | 'dp' | 'cp')} aria-label="Filter jenis">
             <option value="all">DP dan CP</option>
             <option value="dp">Drop point</option>
             <option value="cp">Collection point</option>
+          </select>
+          <select value={biz} onChange={(e) => setBiz(e.target.value as 'all' | BizModel)} aria-label="Filter model bisnis">
+            <option value="all">Semua model bisnis</option>
+            <option value="franchise">Franchise</option>
+            <option value="agent">Agent</option>
           </select>
           <select
             value={tableK ? tableK.label : ''} onChange={(e) => setTableCat(e.target.value)}
@@ -487,6 +518,9 @@ export default function DpSection({
                   {allAgents && (
                     <th onClick={() => sortOn('__agent__')}>Agen{arrow('__agent__')}<Zh>代理区</Zh></th>
                   )}
+                  <th onClick={() => sortOn('__model__')}>
+                    Model Bisnis{arrow('__model__')}<Zh>商业模式</Zh>
+                  </th>
                   <th onClick={() => sortOn('__status__')}>Status{arrow('__status__')}<Zh>状态</Zh></th>
                   {catKpis.map((k) => (
                     <th key={k.label} className="num cat" onClick={() => sortOn(k.label)} title={k.label}>
@@ -502,24 +536,42 @@ export default function DpSection({
                 {shown.map((s) => (
                   <tr key={s.dp.key} className={`k-${s.kind}`}>
                     <td className="sticky dpname">
-                      <span className={`ptag ${s.dp.isCp ? 'cp' : 'dp'}`}>{s.dp.isCp ? 'CP' : 'DP'}</span>
+                      {/* the tag carries the business model, not the DP/CP split:
+                          the name is already prefixed CP_ where that matters, so
+                          the two letters are better spent on the thing the name
+                          does not tell you */}
+                      <span
+                        className={`ptag ${s.dp.bizModel || 'unknown'}`}
+                        title={`${BIZ_MODEL_LABEL[s.dp.bizModel]} · ${s.dp.isCp ? 'Collection point' : 'Drop point'}`}
+                      >
+                        {BIZ_MODEL_TAG[s.dp.bizModel]}
+                      </span>
                       {s.dp.label}
                     </td>
                     {allAgents && (
                       <td className="muted">{s.dp.agentLabel}<Zh>{agentZh(s.dp.agentLabel)}</Zh></td>
                     )}
+                    <td className="muted">{BIZ_MODEL_LABEL[s.dp.bizModel]}</td>
                     <td>
-                      <span className={`sbadge ${s.kind}`}>{DP_KIND_LABEL[s.kind]}</span>
+                      <span className={`sbadge ${s.kind}`} title={DP_KIND_ZH[s.kind]}>
+                        {DP_KIND_LABEL[s.kind]}
+                      </span>
                     </td>
                     {catKpis.map((k) => {
                       const v = cell(s, k)
                       if (v == null) return <td key={k.label} className="num muted">—</td>
                       const t = dpTargetFor(s.dp, k)
                       const ok = k.lowerBetter ? v <= t : v >= t
-                      /* pickup-only and closed sites are grey, not red: their
+                      /* Pickup-only and closed sites are grey, not red: their
                          zeros are structural, and colouring them as failures is
-                         exactly the false alarm this section exists to remove */
-                      const cls = s.kind === 'active' ? (ok ? 'hm ok' : 'hm bad') : 'hm off'
+                         exactly the false alarm this section exists to remove.
+                         A delivery-only site is the same story one cell at a
+                         time — only the categories it does not run read 0, so
+                         those go grey and the rest stay scored normally. */
+                      const structural = s.kind === 'delivery' && v === 0
+                      const cls = isRankable(s.kind) && !structural
+                        ? (ok ? 'hm ok' : 'hm bad')
+                        : 'hm off'
                       return (
                         <td key={k.label} className={`num ${cls}`} title={`${k.label} · target ${k.lowerBetter ? '≤' : '≥'} ${t.toFixed(2)}%`}>
                           {v.toFixed(2)}
@@ -527,14 +579,14 @@ export default function DpSection({
                       )
                     })}
                     <td className="num">
-                      {s.kind === 'active'
+                      {isRankable(s.kind)
                         ? `${s.onTarget}/${s.scored}`
                         : <span className="muted">—</span>}
                     </td>
                   </tr>
                 ))}
                 {!shown.length && (
-                  <tr><td colSpan={catKpis.length + (allAgents ? 4 : 3)} className="ctr muted" style={{ padding: 24 }}>
+                  <tr><td colSpan={catKpis.length + (allAgents ? 5 : 4)} className="ctr muted" style={{ padding: 24 }}>
                     Tidak ada yang cocok dengan filter ini.
                   </td></tr>
                 )}
@@ -554,13 +606,17 @@ export default function DpSection({
 
       <div className="note">
         Nilai yang ditampilkan: {mode === 'mtd' ? 'pencapaian bulanan' : dayLabel}.
-        {' '}Tiga hal dikeluarkan dari peringkat lima terbaik dan lima terburuk:
-        {' '}<b>Pickup saja</b> — nilai nol pada 06:30, 07:30 dan 12:00, berarti tidak ada sprinter;
-        {' '}<b>Tutup</b> — nilai nol pada semua kategori;
-        {' '}dan <b>DP/CP yang bernilai tepat 0,00% pada kategori yang sedang diperingkat</b> — itu berarti
-        kategorinya tidak berjalan hari itu, bukan performanya nol, jadi kalau ikut diperingkat ia akan
-        menguasai daftar terburuk setiap hari tanpa memberi informasi apa pun. Semuanya tetap muncul di
-        daftar di atas agar tidak ada yang hilang diam-diam.
+        {' '}Status ditentukan dari data hari itu:
+        {' '}<b>Pick up Only</b> — 06:30 dan 07:30 keduanya nol, berarti tidak ada sprinter di sini;
+        {' '}<b>Delivery Only</b> — TPTW bernilai nol, jadi paket diantar tetapi tidak diserahkan ke alur
+        penjemputan; {' '}<b>Delivery and Pick up</b> — semua kategori berjalan;
+        {' '}<b>Tutup</b> — nilai nol pada semua kategori.
+        {' '}Tanda <b>FR</b> / <b>AG</b> di depan nama adalah model bisnisnya: Franchise atau Agent.
+        {' '}Tiga hal dikeluarkan dari peringkat lima terbaik dan lima terburuk: <b>Pick up Only</b>,
+        {' '}<b>Tutup</b>, dan <b>DP/CP yang bernilai tepat 0,00% pada kategori yang sedang diperingkat</b>
+        {' '}— itu berarti kategorinya tidak berjalan hari itu, bukan performanya nol, jadi kalau ikut
+        diperingkat ia akan menguasai daftar terburuk setiap hari tanpa memberi informasi apa pun.
+        Semuanya tetap muncul di daftar di atas agar tidak ada yang hilang diam-diam.
       </div>
     </div>
   )

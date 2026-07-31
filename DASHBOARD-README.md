@@ -148,23 +148,42 @@ so the section follows whatever the agent picker is set to. Category names are r
 The DP tabs carry fewer days than the summary tabs. Picking a date they don't have shows the closest day
 they do have, and says so, rather than blanking the section.
 
-### Pickup-only and closed sites
+### What each site actually runs
 
-Two shapes of zero are not underperformance, and both are kept out of the rankings:
+The status badge says which halves of the operation a site was running that day. It is read off the data,
+in this order — each rule is a more specific answer than the one below it, so the first match wins:
 
 | Status | Rule | Why |
 | --- | --- | --- |
-| **Pickup only** | 06:30, 07:30 **and** 12:00 all read 0 | No sprinter is based there, so the delivery categories are structurally zero. A `0.00%` worst-five entry would be meaningless. |
-| **Closed** | every category reads 0 | The site is shut. |
-| **Active** | anything else | Eligible for the rankings. |
+| **Tutup** (closed) | every category reads 0 | The site is shut. Tested first: a closed site is zero on 06:30 and 07:30 too, so any later rule would mislabel it. |
+| **Pick up Only** | 06:30 **and** 07:30 both read 0 | Nobody clocks in and nothing leaves the warehouse, so no sprinter is based there — the site only takes parcels in. Every delivery category is then structurally zero, not bad. |
+| **Delivery Only** | TPTW reads 0 | Couriers deliver out of the site but it hands nothing over to the pickup flow. Tested after pickup-only, which is also zero on TPTW. |
+| **Delivery and Pick up** | anything else | Both flows run. |
 
-Both are still listed in the DP/CP table with a badge and their cells greyed rather than red — "why is
-this one missing from the chart?" has to have a visible answer.
+12:00 is deliberately **not** part of the pickup-only rule even though it is a sprinter category. It is a
+*result* — the share of the first ritase signed by noon — so a site whose couriers all clocked in and left
+on time can still read 0 there on a bad day. Attendance and warehouse-exit are the two that cannot be zero
+while a courier is present.
+
+**Pick up Only** and **Tutup** are kept out of the two ranking charts; **Delivery Only** and **Delivery and
+Pick up** are ranked. All four are still listed in the DP/CP table with a badge, and the structural zeros
+are greyed rather than reddened — "why is this one missing from the chart?" has to have a visible answer.
+A **Delivery Only** site is scored over the categories it actually runs, so the zeros it is *supposed* to
+have do not drag its "Sesuai target" ratio down.
+
+### Model bisnis: FR and AG
+
+The per-agent tabs carry a `商业模式 / Model Bisnis` column beside the drop-point name, saying whether the
+site is partner-run (**Franchise**) or ours (**Agent**). It shows up in three places: the two-letter tag in
+front of every name (**FR** / **AG**, grey **?** when the workbook does not say), its own sortable column,
+and a filter in the toolbar. The tag replaced the old DP/CP one because the name is already prefixed `CP_`
+where that distinction matters — the two letters are better spent on the thing the name does not tell you.
+The DP vs CP filter and the export's `Jenis` column are unchanged.
 
 ### The third exclusion: zero in the ranked category
 
-Status is judged across all eight categories, but a ranking looks at one. A site can be **active** and
-still read exactly `0` in the category being ranked — `CP_ARIF_RAHMAN_HAKIM` scores 100% at 07:30 and
+Status is judged across all eight categories, but a ranking looks at one. A site can run a delivery shift
+and still read exactly `0` in the category being ranked — `CP_ARIF_RAHMAN_HAKIM` scores 100% at 07:30 and
 12:00 but 0 at 06:30. In this report that 0 means *nothing happened in this category today*, not
 *performed at 0%*, so those rows are dropped from the top five and worst five as well. Left in, they
 would own the worst-five every single day and say nothing.
@@ -173,19 +192,21 @@ This applies to `RETUR COD` too, where low is good: a 0.00% return rate at a sit
 parcels is not the region's best performer, it is an empty cell wearing a medal.
 
 The exclusion is **only** applied to the two ranking charts. The status counters, the below-target count
-and the per-agent chart still count every active site, so a caption under each chart says how many rows
-the zero rule held back — otherwise the counters and the bars would disagree with no explanation.
+and the per-agent chart still count every delivery-running site, so a caption under each chart says how
+many rows the zero rule held back — otherwise the counters and the bars would disagree with no explanation.
 
 ### What the section shows
 
-- **Counters** — total, active, pickup-only, closed, and how many are below target in the chosen category
+- **Counters** — total, delivery-and-pickup, delivery-only, pickup-only, closed, and how many are below
+  target in the chosen category
 - **Top 5 / Worst 5** — horizontal bars, each chart with its **own** category dropdown, target line drawn
   in. "Worst" respects direction, so for `RETUR COD` it means the highest, not the lowest
 - **Below-target DP/CP by agent** — only in the all-agents view
 - **DP/CP list** — every site with all eight categories in one grid. Only the **misses** are tinted;
-  values that met their target stay plain, and the structural zeros of a pickup-only or closed site are
-  greyed rather than reddened. Search, status filter, DP vs CP filter, below-target-only filter, day vs
-  MTD toggle, sort on any column, and an Excel export of whatever the filters currently show
+  values that met their target stay plain, and the structural zeros of a pickup-only, delivery-only or
+  closed site are greyed rather than reddened. Search, status filter, DP vs CP filter, model-bisnis
+  filter, below-target-only filter, day vs MTD toggle, sort on any column, and an Excel export of
+  whatever the filters currently show
 
 The whole section is deliberately low-contrast: one accent colour, no uppercase tracking, no heavy
 weights beyond a single semibold for headings. The red is reserved for things that are actually wrong.

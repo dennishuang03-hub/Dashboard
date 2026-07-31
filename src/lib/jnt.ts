@@ -97,7 +97,14 @@ export interface DpKpiVals {
 }
 
 /** How much of the operation a drop point actually runs — see `dpStatusOf`. */
-export type DpKind = 'active' | 'pickup' | 'closed'
+export type DpKind = 'both' | 'delivery' | 'pickup' | 'closed'
+
+/**
+ * Who runs the site: a partner-owned franchise, or J&T's own agent network.
+ * `''` when the workbook's "Model Bisnis" column is absent or blank — older
+ * files simply do not carry it, and an unknown model must not be guessed.
+ */
+export type BizModel = 'franchise' | 'agent' | ''
 
 export interface DpRow {
   /** unique across the workbook: `${agentKey}::${name}` */
@@ -109,6 +116,8 @@ export interface DpRow {
   agentCode: string
   /** the file prefixes collection points with `CP_`; everything else is a drop point */
   isCp: boolean
+  /** from the workbook's "商业模式 Model Bisnis" column; `''` when not stated */
+  bizModel: BizModel
   sheet: string
   /** canonical KPI label → readings */
   vals: Record<string, DpKpiVals>
@@ -381,15 +390,48 @@ export function agentFull(label: string): string {
 }
 
 /**
- * The three categories a *sprinter* (courier) drives. A drop point that scores
- * zero on all three is not underperforming — it has no couriers at all and only
- * only takes parcels in at the collection counter. See `dpStatusOf`.
+ * The three categories a *sprinter* (courier) drives — attendance, leaving the
+ * warehouse, and the first-ritase signature. Used for the default chart
+ * category; the classification itself reads the narrower lists below.
  */
 export const SPRINTER_LABELS = [
   '06:30 ABSENSI',
   '07:30 KELUAR GUDANG',
   'TTD PAKET JAM 12:00',
 ]
+
+/**
+ * The two categories that say whether a sprinter is *based* at the site: does
+ * anyone clock in, and does anything leave the warehouse. Zero on both means no
+ * courier works out of here, so the site can only be taking parcels in.
+ *
+ * 12:00 is deliberately not on this list even though it is a sprinter category.
+ * It is a *result* — the share of the first ritase signed by noon — so a site
+ * whose couriers all clocked in and left on time can still read 0 there on a bad
+ * day. Including it made those days look like "no sprinter at all". Attendance
+ * and warehouse-exit are the two that cannot be zero while a courier is present.
+ */
+export const PICKUP_ONLY_LABELS = [
+  '06:30 ABSENSI',
+  '07:30 KELUAR GUDANG',
+]
+
+/**
+ * Handover-on-time: the category that only moves when the site passes parcels
+ * on to the pickup flow. Zero here on a site that is otherwise running means it
+ * delivers but does not collect.
+ */
+export const DELIVERY_ONLY_LABEL = 'TPTW (ON TIME)'
+
+/**
+ * The kinds that run a delivery shift, and so are the only ones a top-five or
+ * worst-five may draw from. `pickup` and `closed` are structurally zero on the
+ * delivery categories and would own every worst-five without meaning anything.
+ */
+export const DP_RANKABLE: readonly DpKind[] = ['both', 'delivery']
+
+/** Does this site run a delivery shift, i.e. may it appear in a ranking? */
+export const isRankable = (kind: DpKind): boolean => DP_RANKABLE.includes(kind)
 
 /**
  * KPIs pre-selected for the trend chart. Named explicitly so that reordering
@@ -696,6 +738,21 @@ function normKey(s: string): string {
 const DP_HEADER_RE = /drop\s*point|网点|dp\s*\/\s*cp/i
 const CODE_HEADER_RE = /kode|code|编码|\bkd\b/i
 const AGENT_HEADER_RE = /agent|agen\b|代理区/i
+const MODEL_HEADER_RE = /model\s*bisnis|商业模式|business\s*model/i
+
+/**
+ * `Franchise` / `Agent` out of the workbook's "Model Bisnis" column.
+ *
+ * `franchise` is tested first: `AGENT_HEADER_RE`-style words are the looser
+ * match, and a value like "Franchise Agent" belongs to the partner, not to us.
+ * Anything unrecognised comes back `''` rather than being forced into one of the
+ * two — a wrong tag on the row is worse than a visibly missing one.
+ */
+function bizModelOf(s: string): BizModel {
+  if (/franchise|frenchise|waralaba|加盟|\bfr\b/i.test(s)) return 'franchise'
+  if (/agent|agen|自营|直营|\bag\b/i.test(s)) return 'agent'
+  return ''
+}
 
 /**
  * A per-agent tab lists drop points, not agents, and must NOT be merged into the
@@ -768,6 +825,21 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
 
   const nHdr = dataStart - headerRow
   if (nHdr < 2) throw new Error('blok judul terlalu dangkal untuk memuat nama KPI')
+
+  /* 2a — the "Model Bisnis" column, which sits to the *right* of the drop-point
+     name rather than with the other identity columns, so the step-1b scan does
+     not reach it. Searched across the whole header block and both sides of
+     `dpCol`: it is one merged cell in the files seen so far, but the block is
+     only a few rows deep and a full sweep costs nothing. Run before step 2b,
+     which overwrites blanks in the header block and would smear the title along
+     the row. It stays out of the KPI scan on its own — "MODEL BISNIS" is not in
+     CANONICAL_ORDER, so step 3 drops it like any other unknown column. */
+  let modelCol = -1
+  for (let R = headerRow; R < dataStart && modelCol < 0; R++) {
+    for (let C = 0; C <= lastC; C++) {
+      if (MODEL_HEADER_RE.test(txt(m[R][C]))) { modelCol = C; break }
+    }
+  }
 
   /* 2b — close every hole in the header block (see parseOneSheet, step 2b) */
   for (let R = headerRow; R < dataStart - 1; R++) {
@@ -857,6 +929,7 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
       agentLabel: latin(lastAgent) || lastAgent || code || sheetName,
       agentCode: code,
       isCp: /^cp[\s_-]/i.test(name.trim()),
+      bizModel: modelCol >= 0 ? bizModelOf(txt(m[R][modelCol])) : '',
       sheet: sheetName,
       vals,
     })
@@ -896,18 +969,24 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
 /**
  * What a drop point was actually doing on a given day.
  *
- *   closed  — every one of the eight categories reads 0. The site is shut.
- *   pickup  — 06:30, 07:30 and 12:00 all read 0, but something else does not.
- *             No sprinter is based here, so the delivery categories are
- *             structurally zero rather than bad.
- *   active  — at least one of 06:30 / 07:30 / 12:00 is above zero.
+ *   closed   — every one of the eight categories reads 0. The site is shut.
+ *   pickup   — 06:30 *and* 07:30 both read 0. Nobody clocks in and nothing
+ *              leaves the warehouse here, so no sprinter is based at the site:
+ *              it only takes parcels in over the counter. Every delivery
+ *              category is then structurally zero rather than bad.
+ *   delivery — TPTW reads 0. Couriers deliver out of this site but it hands
+ *              nothing over to the pickup flow, so the pickup categories are
+ *              the structural zeros instead.
+ *   both     — the site runs a delivery shift *and* a pickup flow.
  *
- * Only `active` sites are ranked. Both other kinds would otherwise fill the
- * worst-five with 0.00% rows that no supervisor can act on.
+ * Order matters twice over. A closed site reads 0 on 06:30 and 07:30 as well,
+ * so the all-zero test has to run first or every closed site would come back
+ * "pickup only". And a pickup-only site hands nothing over either, so its TPTW
+ * is 0 too — the pickup test has to beat the delivery test for the same reason.
+ * In both pairs the earlier answer is the more specific one, so it wins.
  *
- * Order matters: a closed site is zero on the three sprinter categories too, so
- * the all-zero test has to run first or every closed site would be mislabelled
- * "pickup only". `closed` is the more specific answer, so it wins.
+ * Sites that run a delivery shift (`both` and `delivery`) are the ones ranked;
+ * see `DP_RANKABLE`.
  */
 export function dpStatusOf(dp: DpRow, dateKey: string): DpKind {
   const read = (label: string): number | null => {
@@ -920,21 +999,45 @@ export function dpStatusOf(dp: DpRow, dateKey: string): DpKind {
   if (!all.length) return 'closed'          // nothing recorded at all — unrankable either way
   if (all.every((v) => v === 0)) return 'closed'
 
-  /* pickup only — 0 on 06:30, 07:30 and 12:00 */
-  const sprinter = SPRINTER_LABELS.map(read)
-  /* Guard: if the workbook carried none of the three columns there is nothing to
-     test, and treating "absent" as "zero" would quietly mark every single site
-     pickup-only and leave both ranking charts empty. */
-  if (sprinter.every((v) => v == null)) return 'active'
-  if (sprinter.every((v) => v == null || v === 0)) return 'pickup'
+  /* pickup only — 0 on both 06:30 and 07:30 */
+  const shift = PICKUP_ONLY_LABELS.map(read)
+  /* Guard: if the workbook carried neither column there is nothing to test, and
+     treating "absent" as "zero" would quietly mark every single site pickup-only
+     and leave both ranking charts empty. Same for TPTW below. */
+  if (shift.some((v) => v != null) && shift.every((v) => v == null || v === 0)) return 'pickup'
 
-  return 'active'
+  /* delivery only — 0 on TPTW, the handover that feeds the pickup flow */
+  if (read(DELIVERY_ONLY_LABEL) === 0) return 'delivery'
+
+  return 'both'
 }
 
 export const DP_KIND_LABEL: Record<DpKind, string> = {
-  active: 'Aktif',
-  pickup: 'Pickup saja',
+  both: 'Delivery and Pick up',
+  delivery: 'Delivery Only',
+  pickup: 'Pick up Only',
   closed: 'Tutup',
+}
+
+export const DP_KIND_ZH: Record<DpKind, string> = {
+  both: '派送及揽收',
+  delivery: '仅派送',
+  pickup: '仅揽收',
+  closed: '已关闭',
+}
+
+/** Model bisnis as it should read on screen and in the export. */
+export const BIZ_MODEL_LABEL: Record<BizModel, string> = {
+  franchise: 'Franchise',
+  agent: 'Agent',
+  '': '—',
+}
+
+/** The two-letter tag on the front of a drop-point name. */
+export const BIZ_MODEL_TAG: Record<BizModel, string> = {
+  franchise: 'FR',
+  agent: 'AG',
+  '': '?',
 }
 
 /** Reading for one category on one day; `null` when the column is absent. */

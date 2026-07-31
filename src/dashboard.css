@@ -345,14 +345,22 @@ table.dpgrid tbody tr:nth-child(even) td.sticky{background:#FAFBFD}
   min-width:24px;font-size:9.5px;font-weight:700;letter-spacing:.3px;
   border-radius:4px;padding:2px 5px;background:#1D6FC0;color:#fff;
 }
-/* a shade darker than the palette blue: white text at 9.5px needs the extra
-   contrast, and it also balances the weight of the purple beside it */
-.ptag.cp{background:#8E44AD}
+/* FR / AG — the business model out of the workbook. Two distinct hues rather
+   than two shades of one, because this is the tag you scan a column for; both
+   are dark enough to carry white text at 9.5px. Grey when the file did not say,
+   so an unknown model reads as missing instead of as one of the two. */
+.ptag.franchise{background:#8E44AD}
+.ptag.agent{background:#1D6FC0}
+.ptag.unknown{background:#98A1B0}
 .sbadge{
   display:inline-block;font-size:10px;font-weight:500;
   border-radius:99px;padding:2px 8px;white-space:nowrap;
 }
-.sbadge.active{background:#EDF6F1;color:#2A7A52}
+/* green for the two kinds that run a delivery shift and are ranked, amber for
+   pickup-only and grey for closed — the same "is this in the ranking?" reading
+   the stat cards above the table use */
+.sbadge.both{background:#EDF6F1;color:#2A7A52}
+.sbadge.delivery{background:#EAF2FA;color:#1B5C99}
 .sbadge.pickup{background:#FBF3E4;color:#8A5A08}
 .sbadge.closed{background:#F1F3F7;color:#798394}
 
