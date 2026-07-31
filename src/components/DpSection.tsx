@@ -29,6 +29,13 @@ import Zh from './Zh'
 
 const TOP_N = 5
 
+/**
+ * Sentinel category: rank on how many of the eight KPIs the site met, rather
+ * than on one KPI's percentage. Not a `Kpi`, so it lives in the dropdown's value
+ * space instead — no real category can collide with it.
+ */
+const TOTAL_CAT = '__total__'
+
 /** Sort order for the Status column — by how much of the operation runs, so the
  *  column reads as a scale instead of alphabetically (both, closed, delivery…). */
 const KIND_RANK: Record<DpKind, number> = { both: 0, delivery: 1, pickup: 2, closed: 3 }
@@ -42,6 +49,13 @@ interface Scored {
   /** categories met, out of those with a reading */
   onTarget: number
   scored: number
+  /**
+   * Total distance from target across the scored categories, signed so positive
+   * is good (`v - target`, flipped for RETUR). Only a tiebreak: on a count of
+   * eight, ties are the rule rather than the exception, and without it "worst
+   * five" would be five arbitrary sites out of the twenty that all missed three.
+   */
+  margin: number
 }
 
 type StatusFilter = 'all' | DpKind
@@ -79,9 +93,14 @@ export default function DpSection({
   const [worstCat, setWorstCat] = useState('')
   const [tableCat, setTableCat] = useState('')
 
+  /* "Semua KPI" is not a category, so it cannot resolve to a `Kpi` — the two
+     ranking charts carry a flag instead, and their `Kpi` goes null. */
+  const topTotal = topCat === TOTAL_CAT
+  const worstTotal = worstCat === TOTAL_CAT
+
   // resolved rather than stored, so a newly loaded file falls back on its own
-  const topK = catKpis.find((k) => k.label === topCat) ?? defaultCat
-  const worstK = catKpis.find((k) => k.label === worstCat) ?? defaultCat
+  const topK = topTotal ? null : (catKpis.find((k) => k.label === topCat) ?? defaultCat)
+  const worstK = worstTotal ? null : (catKpis.find((k) => k.label === worstCat) ?? defaultCat)
   const tableK = catKpis.find((k) => k.label === tableCat) ?? defaultCat
 
   /* -------------------------------------------------------------- scoring */
@@ -91,7 +110,7 @@ export default function DpSection({
     return pool.map((dp) => {
       const kind = dpStatusOf(dp, day.key)
       const vals: Record<string, number | null> = {}
-      let onTarget = 0, n = 0
+      let onTarget = 0, n = 0, margin = 0
       for (const k of catKpis) {
         const v = dpValue(dp, k.label, day.key)
         vals[k.label] = v
@@ -103,8 +122,9 @@ export default function DpSection({
         n++
         const t = dpTargetFor(dp, k)
         if (k.lowerBetter ? v <= t : v >= t) onTarget++
+        margin += k.lowerBetter ? t - v : v - t
       }
-      return { dp, kind, vals, onTarget, scored: n }
+      return { dp, kind, vals, onTarget, scored: n, margin }
     })
   }, [model.dps, allAgents, agentKey, catKpis, day.key])
 
@@ -159,8 +179,53 @@ export default function DpSection({
       value: o.v,
     }))
 
-  const topBars = useMemo(() => rank(topK, false), [rankable, topK, allAgents])
-  const worstBars = useMemo(() => rank(worstK, true), [rankable, worstK, allAgents])
+  /**
+   * The same two charts, ranked on the whole scorecard instead of one category:
+   * how many of the eight KPIs the site met.
+   *
+   * The counts are the ones already in the table's "Sesuai target" column, so a
+   * bar reading 6 / 8 and the row reading 6/8 can never disagree — a chart that
+   * contradicts the table underneath it is worse than no chart.
+   *
+   * The two charts measure opposite things on purpose. Worst counts the misses,
+   * best counts the hits, so in both the bar grows in the direction the title
+   * promises; a "best" chart drawn on misses would give its winner no bar at all.
+   *
+   * Sites with nothing scored are dropped — a site with no readings has met 0 of
+   * 0, which is not an achievement or a failure. The zero rule that applies to a
+   * single-category ranking does not: a 0 here is a real miss on a real KPI, and
+   * the site is being judged on eight of them rather than on that one.
+   */
+  const rankTotal = (worst: boolean): HBar[] => {
+    const rows = rankable.filter((s) => s.scored > 0)
+    rows.sort((a, b) => {
+      const av = worst ? a.scored - a.onTarget : a.onTarget
+      const bv = worst ? b.scored - b.onTarget : b.onTarget
+      if (av !== bv) return bv - av
+      // equal counts: the one further from its targets is the worse site
+      return worst ? a.margin - b.margin : b.margin - a.margin
+    })
+    return rows.slice(0, TOP_N).map((s) => {
+      const missed = s.scored - s.onTarget
+      return {
+        name: s.dp.label,
+        sub: allAgents ? agentFull(s.dp.agentLabel) : undefined,
+        value: worst ? missed : s.onTarget,
+        label: `${worst ? missed : s.onTarget} / ${s.scored}`,
+        // red for anything short of a clean sheet, in both charts
+        bad: missed > 0,
+      }
+    })
+  }
+
+  const topBars = useMemo(
+    () => (topTotal ? rankTotal(false) : rank(topK, false)),
+    [rankable, topK, topTotal, allAgents],
+  )
+  const worstBars = useMemo(
+    () => (worstTotal ? rankTotal(true) : rank(worstK, true)),
+    [rankable, worstK, worstTotal, allAgents],
+  )
 
   /* below-target count per agent, for the region-wide view */
   const byAgent = useMemo(() => {
@@ -361,11 +426,12 @@ export default function DpSection({
 
   /* a plain function, not a nested component: React would remount a component
      declared inside render on every keystroke and the select would lose focus */
-  const catSelect = (value: Kpi | null, onChange: (v: string) => void, id: string) => (
+  const catSelect = (cur: string, onChange: (v: string) => void, id: string, withTotal = false) => (
     <select
-      className="hsel" value={value ? value.label : ''} aria-label={`Kategori yang ditampilkan pada ${id}`}
+      className="hsel" value={cur} aria-label={`Kategori yang ditampilkan pada ${id}`}
       onChange={(e) => onChange(e.target.value)}
     >
+      {withTotal && <option value={TOTAL_CAT}>SEMUA KPI · jumlah sesuai target</option>}
       {catKpis.map((k) => <option key={k.label} value={k.label}>{k.label}</option>)}
     </select>
   )
@@ -410,7 +476,7 @@ export default function DpSection({
         <div className="panel">
           <h3>
             <span className="ptitle">{TOP_N} DP / CP Terbaik <Zh>前五名网点</Zh></span>
-            {catSelect(topK, setTopCat, 'grafik lima terbaik')}
+            {catSelect(topTotal ? TOTAL_CAT : (topK?.label ?? ''), setTopCat, 'grafik lima terbaik', true)}
           </h3>
           <div className="body">
             <HBarChart
@@ -418,14 +484,14 @@ export default function DpSection({
               targetLine={topK ? dpTargetFor(scored[0]?.dp ?? model.dps[0], topK) : null}
               lowerBetter={topK?.lowerBetter}
             />
-            <ZeroNote n={zeroCount(topK)} />
+            {topTotal ? <TotalNote worst={false} /> : <ZeroNote n={zeroCount(topK)} />}
           </div>
         </div>
 
         <div className="panel">
           <h3>
             <span className="ptitle">{TOP_N} DP / CP Terburuk <Zh>后五名网点</Zh></span>
-            {catSelect(worstK, setWorstCat, 'grafik lima terburuk')}
+            {catSelect(worstTotal ? TOTAL_CAT : (worstK?.label ?? ''), setWorstCat, 'grafik lima terburuk', true)}
           </h3>
           <div className="body">
             <HBarChart
@@ -433,7 +499,7 @@ export default function DpSection({
               targetLine={worstK ? dpTargetFor(scored[0]?.dp ?? model.dps[0], worstK) : null}
               lowerBetter={worstK?.lowerBetter}
             />
-            <ZeroNote n={zeroCount(worstK)} />
+            {worstTotal ? <TotalNote worst /> : <ZeroNote n={zeroCount(worstK)} />}
           </div>
         </div>
       </div>
@@ -443,7 +509,7 @@ export default function DpSection({
           <div className="panel">
             <h3>
               <span className="ptitle">DP / CP di Bawah Target per Agen <Zh>各代理区未达标网点</Zh></span>
-              {catSelect(tableK, setTableCat, 'grafik per agen')}
+              {catSelect(tableK?.label ?? '', setTableCat, 'grafik per agen')}
             </h3>
             <div className="body">
               <BarChart values={byAgent.values} labels={byAgent.labels} w={1100} h={260} />
@@ -620,6 +686,24 @@ export default function DpSection({
  * target" but only two bars — and a silent exclusion is the kind of thing that
  * costs someone twenty minutes and a phone call.
  */
+/**
+ * Says what the bars count when the ranking is over all eight KPIs.
+ *
+ * Without it "6 / 8" is ambiguous in exactly the way that matters — six met or
+ * six missed? — and the two charts genuinely do count opposite things.
+ */
+function TotalNote({ worst }: { worst: boolean }) {
+  return (
+    <div className="chartnote">
+      {worst
+        ? 'Jumlah KPI yang di bawah target, dari KPI yang ada nilainya — makin panjang makin buruk.'
+        : 'Jumlah KPI yang sudah sesuai target, dari KPI yang ada nilainya — makin panjang makin baik.'}
+      {' '}Angka ini sama dengan kolom <b>Sesuai target</b> di tabel bawah. Bila jumlahnya seri,
+      urutannya ditentukan oleh seberapa jauh nilainya dari target.
+    </div>
+  )
+}
+
 function ZeroNote({ n }: { n: number }) {
   if (!n) return null
   return (

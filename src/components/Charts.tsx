@@ -231,7 +231,16 @@ export function BarChart({
 
 /* -------------------------------------------------- horizontal bar chart */
 
-export interface HBar { name: string; sub?: string; value: number }
+export interface HBar {
+  name: string
+  sub?: string
+  value: number
+  /** printed at the end of the bar instead of `value` as a percentage — the
+   *  ranking can be a count ("6 / 8"), which a `%` suffix would misdescribe */
+  label?: string
+  /** forces the bar's colour when there is no target line to judge it against */
+  bad?: boolean
+}
 
 /**
  * Ranked bars laid out horizontally.
@@ -277,7 +286,9 @@ export function HBarChart({
       {bars.map((b, i) => {
         const y = P.t + i * rowH
         const cy = y + rowH / 2
-        const ok = targetLine == null ? true : lowerBetter ? b.value <= targetLine : b.value >= targetLine
+        const ok = b.bad != null
+          ? !b.bad
+          : targetLine == null ? true : lowerBetter ? b.value <= targetLine : b.value >= targetLine
         const x = X(b.value)
         return (
           <g key={`${b.name}-${i}`}>
@@ -295,7 +306,7 @@ export function HBarChart({
               fill={ok ? '#3FB37A' : '#E2231A'}
             />
             <text x={x + 7} y={cy + 4} fontSize={11.5} fontWeight={500} fill={ok ? '#2A7A52' : '#B81810'}>
-              {b.value.toFixed(2)}%
+              {b.label ?? `${b.value.toFixed(2)}%`}
             </text>
           </g>
         )

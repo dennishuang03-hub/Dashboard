@@ -205,12 +205,41 @@ The exclusion is **only** applied to the two ranking charts. The status counters
 and the per-agent chart still count every delivery-running site, so a caption under each chart says how
 many rows the zero rule held back — otherwise the counters and the bars would disagree with no explanation.
 
+### Ranking on the whole scorecard
+
+Picking one category answers "who is worst at 06:30?". **SEMUA KPI · jumlah sesuai target** answers the
+broader question the eight categories are there to support: *which site is failing on the most fronts?*
+It counts, per site, how many of the eight KPIs met their target, and ranks on that count.
+
+The counts are the ones already in the table's **Sesuai target** column, computed once and shared, so a
+bar reading `6 / 8` and the row reading `6/8` can never drift apart — a chart that contradicts the table
+beneath it is worse than no chart at all.
+
+The two charts count **opposite things**, on purpose: worst-five counts misses, best-five counts hits. In
+both, the bar grows in the direction the title promises. A best-five drawn on misses would give its
+winner no bar at all, which reads as missing data rather than as a clean sheet. The caption under each
+chart says which is which, because `6 / 8` alone is ambiguous in exactly the way that matters.
+
+**Ties are the normal case,** not the exception — on a count of eight, a dozen sites can all sit at three
+misses. So the count is only the first sort key; sites level on it are then ordered by total distance from
+target, summed across the eight categories and signed so positive is good. Two sites both missing three
+KPIs are not equally bad, and without the tiebreak "worst five" would be five arbitrary picks out of
+twenty.
+
+Only sites that run a delivery shift are ranked, as everywhere else. Sites with nothing scored are
+dropped — met 0 of 0 is neither an achievement nor a failure. The **zero rule** below does *not* apply
+here: a `0` in one category is a real miss on a real KPI, and the site is being judged on eight of them
+rather than on that one. A bar is green only for a clean sheet; anything short of it is red, the same
+binary the rest of the dashboard uses.
+
 ### What the section shows
 
 - **Counters** — total, delivery-and-pickup, delivery-only, pickup-only, closed, and how many are below
   target in the chosen category
 - **Top 5 / Worst 5** — horizontal bars, each chart with its **own** category dropdown, target line drawn
-  in. "Worst" respects direction, so for `RETUR COD` it means the highest, not the lowest
+  in. "Worst" respects direction, so for `RETUR COD` it means the highest, not the lowest. The first
+  entry in that dropdown, **SEMUA KPI · jumlah sesuai target**, ranks on the whole scorecard instead —
+  see below
 - **Below-target DP/CP by agent** — only in the all-agents view
 - **DP/CP list** — every site with all eight categories in one grid. Only the **misses** are tinted;
   values that met their target stay plain, and the structural zeros of a pickup-only, delivery-only or
