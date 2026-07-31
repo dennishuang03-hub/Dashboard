@@ -486,15 +486,13 @@ export default function DpSection({
             <option value="franchise">Franchise</option>
             <option value="agent">Agent</option>
           </select>
-          <select
-            value={tableK ? tableK.label : ''} onChange={(e) => setTableCat(e.target.value)}
-            aria-label="Kategori yang dipakai filter di bawah target"
-          >
-            {catKpis.map((k) => <option key={k.label} value={k.label}>{k.label}</option>)}
-          </select>
+          {/* The category this checkbox measures against is named in the label
+              rather than sitting beside it as its own select. On its own that
+              select changed nothing you could see — it only parameterised this
+              checkbox — so it read as a filter that did not filter. */}
           <label className="chk">
             <input type="checkbox" checked={onlyBelow} onChange={(e) => setOnlyBelow(e.target.checked)} />
-            Hanya di bawah target
+            Hanya di bawah target{tableK ? ` · ${tableK.label}` : ''}
           </label>
           <div className="seg">
             <button className={mode === 'day' ? 'on' : ''} onClick={() => setMode('day')}>
