@@ -738,7 +738,10 @@ function normKey(s: string): string {
 const DP_HEADER_RE = /drop\s*point|网点|dp\s*\/\s*cp/i
 const CODE_HEADER_RE = /kode|code|编码|\bkd\b/i
 const AGENT_HEADER_RE = /agent|agen\b|代理区/i
-const MODEL_HEADER_RE = /model\s*bisnis|商业模式|business\s*model/i
+/* Loose on purpose: the title is written "商业模式 Model Bisnis" in the files seen
+   so far, but "Bisnis" or "模式" alone is unambiguous in a header block whose only
+   other columns are an agent, a code, a site name and eight percentage KPIs. */
+const MODEL_HEADER_RE = /model\s*bisnis|bisnis|商业模式|模式|business\s*model/i
 
 /**
  * `Franchise` / `Agent` out of the workbook's "Model Bisnis" column.
@@ -753,6 +756,15 @@ function bizModelOf(s: string): BizModel {
   if (/agent|agen|自营|直营|\bag\b/i.test(s)) return 'agent'
   return ''
 }
+
+/**
+ * Strict form, used only to *identify* the column by its contents: the cell has
+ * to be the word itself, not merely contain it. `bizModelOf` is deliberately
+ * loose so it can read a value once the column is known, but that looseness
+ * would hand the job to `Kode Agent` — every one of whose cells reads "AGENT12".
+ */
+const isBizModelWord = (s: string): boolean =>
+  /^(franchise|frenchise|waralaba|agent|agen|加盟|自营|直营)$/i.test(s.trim())
 
 /**
  * A per-agent tab lists drop points, not agents, and must NOT be merged into the
@@ -828,14 +840,16 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
 
   /* 2a — the "Model Bisnis" column, which sits to the *right* of the drop-point
      name rather than with the other identity columns, so the step-1b scan does
-     not reach it. Searched across the whole header block and both sides of
-     `dpCol`: it is one merged cell in the files seen so far, but the block is
-     only a few rows deep and a full sweep costs nothing. Run before step 2b,
-     which overwrites blanks in the header block and would smear the title along
-     the row. It stays out of the KPI scan on its own — "MODEL BISNIS" is not in
-     CANONICAL_ORDER, so step 3 drops it like any other unknown column. */
+     not reach it.
+     The sweep starts at row 0, not at `headerRow`. `headerRow` is wherever the
+     *网点* title happens to sit, and a title one row higher than that — its merge
+     starting earlier, or a spare banner row above the block — put the column out
+     of reach and every site came back "?". Run before step 2b, which overwrites
+     blanks in the header block and would smear the title along the row. It stays
+     out of the KPI scan on its own: "MODEL BISNIS" is not in CANONICAL_ORDER, so
+     step 3 drops it like any other unknown column. */
   let modelCol = -1
-  for (let R = headerRow; R < dataStart && modelCol < 0; R++) {
+  for (let R = 0; R < dataStart && modelCol < 0; R++) {
     for (let C = 0; C <= lastC; C++) {
       if (MODEL_HEADER_RE.test(txt(m[R][C]))) { modelCol = C; break }
     }
@@ -886,6 +900,31 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
     seenLabels.add(label)
   }
   if (!seenLabels.size) throw new Error('tidak ada kolom KPI yang dikenali')
+
+  /* 3b — model bisnis by content, when no header matched.
+     The header is the fast path, but it is also the fragile one: a renamed title,
+     a typo, or a column carrying the value with no title at all leaves every site
+     tagged "?" with nothing to say why. "Franchise" and "Agent" are distinctive
+     enough to recognise on sight, so fall back to reading the data.
+     Only columns step 3 did not claim as a KPI are considered, and a column has
+     to be *mostly* these two words — a majority of its non-empty cells — before
+     it is accepted, so a stray note column cannot win the job. */
+  if (modelCol < 0) {
+    const probeEnd = Math.min(m.length, dataStart + 60)
+    let bestCol = -1, bestHits = 0
+    for (let C = 0; C <= lastC; C++) {
+      if (cols[C] || C === dpCol || C === agentCol || C === codeCol) continue
+      let hits = 0, filled = 0
+      for (let R = dataStart; R < probeEnd; R++) {
+        const s = txt(m[R]?.[C] ?? null)
+        if (!s) continue
+        filled++
+        if (isBizModelWord(s)) hits++
+      }
+      if (filled >= 2 && hits * 2 > filled && hits > bestHits) { bestHits = hits; bestCol = C }
+    }
+    modelCol = bestCol
+  }
 
   /* 4 — read the drop points */
   const rows: DpRow[] = []

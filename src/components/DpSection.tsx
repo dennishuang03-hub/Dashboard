@@ -224,9 +224,6 @@ export default function DpSection({
       if (sortKey === '__name__') return dir * a.dp.label.localeCompare(b.dp.label)
       if (sortKey === '__agent__') return dir * a.dp.agentLabel.localeCompare(b.dp.agentLabel)
       if (sortKey === '__status__') return dir * (KIND_RANK[a.kind] - KIND_RANK[b.kind])
-      if (sortKey === '__model__') {
-        return dir * BIZ_MODEL_LABEL[a.dp.bizModel].localeCompare(BIZ_MODEL_LABEL[b.dp.bizModel])
-      }
       if (sortKey === '__ontarget__') return dir * (a.onTarget - b.onTarget)
       const k = catKpis.find((x) => x.label === sortKey)
       if (!k) return 0
@@ -518,9 +515,6 @@ export default function DpSection({
                   {allAgents && (
                     <th onClick={() => sortOn('__agent__')}>Agen{arrow('__agent__')}<Zh>代理区</Zh></th>
                   )}
-                  <th onClick={() => sortOn('__model__')}>
-                    Model Bisnis{arrow('__model__')}<Zh>商业模式</Zh>
-                  </th>
                   <th onClick={() => sortOn('__status__')}>Status{arrow('__status__')}<Zh>状态</Zh></th>
                   {catKpis.map((k) => (
                     <th key={k.label} className="num cat" onClick={() => sortOn(k.label)} title={k.label}>
@@ -551,7 +545,6 @@ export default function DpSection({
                     {allAgents && (
                       <td className="muted">{s.dp.agentLabel}<Zh>{agentZh(s.dp.agentLabel)}</Zh></td>
                     )}
-                    <td className="muted">{BIZ_MODEL_LABEL[s.dp.bizModel]}</td>
                     <td>
                       <span className={`sbadge ${s.kind}`} title={DP_KIND_ZH[s.kind]}>
                         {DP_KIND_LABEL[s.kind]}
@@ -586,7 +579,7 @@ export default function DpSection({
                   </tr>
                 ))}
                 {!shown.length && (
-                  <tr><td colSpan={catKpis.length + (allAgents ? 5 : 4)} className="ctr muted" style={{ padding: 24 }}>
+                  <tr><td colSpan={catKpis.length + (allAgents ? 4 : 3)} className="ctr muted" style={{ padding: 24 }}>
                     Tidak ada yang cocok dengan filter ini.
                   </td></tr>
                 )}

@@ -174,11 +174,21 @@ have do not drag its "Sesuai target" ratio down.
 ### Model bisnis: FR and AG
 
 The per-agent tabs carry a `商业模式 / Model Bisnis` column beside the drop-point name, saying whether the
-site is partner-run (**Franchise**) or ours (**Agent**). It shows up in three places: the two-letter tag in
-front of every name (**FR** / **AG**, grey **?** when the workbook does not say), its own sortable column,
-and a filter in the toolbar. The tag replaced the old DP/CP one because the name is already prefixed `CP_`
-where that distinction matters — the two letters are better spent on the thing the name does not tell you.
-The DP vs CP filter and the export's `Jenis` column are unchanged.
+site is partner-run (**Franchise**) or ours (**Agent**). On screen it is the two-letter tag in front of
+every name — **FR** / **AG**, grey **?** when the workbook does not say — plus a filter in the toolbar.
+There is no separate column: the tag already carries it in space the table was spending anyway. The tag
+replaced the old DP/CP one because the name is already prefixed `CP_` where that distinction matters, so
+the two letters are better spent on the thing the name does not tell you. The Excel export *does* keep a
+`Model Bisnis` column, because a spreadsheet has no tag to read it off. The DP vs CP filter and the
+export's `Jenis` column are unchanged.
+
+**Finding the column** is done twice over, because a header-only match is fragile — one renamed title and
+every site silently reads `?`. First the header block is swept from row 0 (not from the 网点 row: that
+title's merge can start lower than the Model Bisnis one, which put the column out of reach) for
+`Model Bisnis` / `商业模式` / `Bisnis` / `模式`. If nothing matches, the columns step 3 did not claim as a
+KPI are read instead, and one is accepted when a **majority** of its non-empty cells are exactly the word
+`Franchise` or `Agent`. The match there is strict — "contains" would have handed the job to `Kode Agent`,
+whose every cell reads `AGENT12`.
 
 ### The third exclusion: zero in the ranked category
 
