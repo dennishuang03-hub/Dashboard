@@ -15,12 +15,12 @@
  * instead, because "why is this one missing?" is a question the table has to be
  * able to answer.
  */
-import { useMemo, useRef, useState } from 'react'
+import { useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import {
   BIZ_MODEL_LABEL, BIZ_MODEL_TAG, CANONICAL_ORDER, CATEGORY_ZH, DP_KIND_LABEL, DP_KIND_ZH,
   SPRINTER_LABELS, agentFull, agentZh, dpStatusOf, dpTargetFor, dpValue, exportPng, fmtDate,
-  fmtDateFull, isRankable, isoDay,
+  fmtDateFull, isRankable, isoDay, sectionOf,
 } from '../lib/jnt'
 import type { BizModel, DateSlot, DpKind, DpRow, Kpi, Model } from '../lib/jnt'
 import { BarChart, HBarChart } from './Charts'
@@ -88,6 +88,37 @@ export default function DpSection({
     [kpis],
   )
   const defaultCat = catKpis.find((k) => k.label === SPRINTER_LABELS[0]) ?? catKpis[0] ?? null
+
+  /**
+   * `catKpis` split into contiguous runs, one per section, for the header band.
+   *
+   * Built by walking the columns rather than by filtering per section, so the
+   * band can only ever describe the columns actually underneath it. Filtering
+   * would silently produce a colSpan that no longer matches if a workbook ever
+   * interleaved the two halves.
+   */
+  const catRuns = useMemo(() => {
+    const runs: { id: string; label: string; zh: string; kpis: Kpi[] }[] = []
+    for (const k of catKpis) {
+      const sec = sectionOf(k.label)
+      const id = sec?.id ?? 'lain'
+      const last = runs[runs.length - 1]
+      if (last && last.id === id) last.kpis.push(k)
+      else runs.push({ id, label: sec?.label ?? 'Lainnya', zh: sec?.zh ?? '其他', kpis: [k] })
+    }
+    return runs
+  }, [catKpis])
+
+  /** Labels that open a section run — they carry the vertical rule between halves. */
+  const seamLabels = useMemo(() => {
+    const out = new Set<string>()
+    let seen = 0
+    for (const run of catRuns) {
+      if (seen > 0) out.add(run.kpis[0].label)
+      seen += run.kpis.length
+    }
+    return out
+  }, [catRuns])
 
   const [topCat, setTopCat] = useState('')
   const [worstCat, setWorstCat] = useState('')
@@ -263,6 +294,31 @@ export default function DpSection({
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [showAll, setShowAll] = useState(false)
   const tableRef = useRef<HTMLDivElement>(null)
+  const secRowRef = useRef<HTMLTableRowElement>(null)
+
+  /**
+   * Publish the section band's real height as `--secrow-h`, which is what the
+   * category row sticks below.
+   *
+   * `position:sticky` needs a length, and a hardcoded one is a guess that is
+   * wrong the moment anything changes the row's height — a border, a font size,
+   * browser zoom, a longer section name wrapping to two lines. Guessing 30px
+   * against an actual 31.5px left the band overlapping the header beneath it by
+   * a pixel and a half. Measuring costs one ResizeObserver and cannot drift.
+   */
+  useLayoutEffect(() => {
+    const row = secRowRef.current
+    if (!row) return
+    const table = row.closest('table') as HTMLElement | null
+    if (!table) return
+    const apply = () => {
+      table.style.setProperty('--secrow-h', `${row.getBoundingClientRect().height}px`)
+    }
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(row)
+    return () => ro.disconnect()
+  }, [catRuns, allAgents])
 
   const cell = (s: Scored, k: Kpi): number | null =>
     mode === 'mtd' ? (s.dp.vals[k.label]?.mtd ?? null) : s.vals[k.label]
@@ -572,7 +628,26 @@ export default function DpSection({
           <div className="dpscroll">
             <table className="dpgrid">
               <thead>
-                <tr>
+                {/* Section band. `catKpis` is already in section order (it is
+                    filtered from CANONICAL_ORDER, which is built out of the
+                    sections), so the runs are contiguous and a colSpan is
+                    enough — no reordering needed here. */}
+                <tr className="secrow" ref={secRowRef}>
+                  <th className="sticky" />
+                  {allAgents && <th />}
+                  <th />
+                  {catRuns.map((run, i) => (
+                    <th
+                      key={run.id}
+                      className={`secband s-${run.id}${i > 0 ? ' seam' : ''}`}
+                      colSpan={run.kpis.length}
+                    >
+                      {run.label}<Zh>{run.zh}</Zh>
+                    </th>
+                  ))}
+                  <th />
+                </tr>
+                <tr className="catrow">
                   <th className="sticky" onClick={() => sortOn('__name__')}>
                     DP / CP{arrow('__name__')}<Zh>网点</Zh>
                   </th>
@@ -581,7 +656,11 @@ export default function DpSection({
                   )}
                   <th onClick={() => sortOn('__status__')}>Status{arrow('__status__')}<Zh>状态</Zh></th>
                   {catKpis.map((k) => (
-                    <th key={k.label} className="num cat" onClick={() => sortOn(k.label)} title={k.label}>
+                    <th
+                      key={k.label}
+                      className={`num cat${seamLabels.has(k.label) ? ' seam' : ''}`}
+                      onClick={() => sortOn(k.label)} title={k.label}
+                    >
                       {k.label}{arrow(k.label)}<Zh>{CATEGORY_ZH[k.label] ?? ''}</Zh>
                     </th>
                   ))}
@@ -615,8 +694,9 @@ export default function DpSection({
                       </span>
                     </td>
                     {catKpis.map((k) => {
+                      const seam = seamLabels.has(k.label) ? ' seam' : ''
                       const v = cell(s, k)
-                      if (v == null) return <td key={k.label} className="num muted">—</td>
+                      if (v == null) return <td key={k.label} className={`num muted${seam}`}>—</td>
                       const t = dpTargetFor(s.dp, k)
                       const ok = k.lowerBetter ? v <= t : v >= t
                       /* Pickup-only and closed sites are grey, not red: their
@@ -630,7 +710,7 @@ export default function DpSection({
                         ? (ok ? 'hm ok' : 'hm bad')
                         : 'hm off'
                       return (
-                        <td key={k.label} className={`num ${cls}`} title={`${k.label} · target ${k.lowerBetter ? '≤' : '≥'} ${t.toFixed(2)}%`}>
+                        <td key={k.label} className={`num ${cls}${seam}`} title={`${k.label} · target ${k.lowerBetter ? '≤' : '≥'} ${t.toFixed(2)}%`}>
                           {v.toFixed(2)}
                         </td>
                       )

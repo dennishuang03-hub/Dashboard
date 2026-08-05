@@ -325,21 +325,67 @@ const ALIASES: [RegExp, string][] = [
   [/签收|\bttd\b/i, 'TTD'],
 ]
 
+export interface KpiSection {
+  id: string
+  label: string
+  zh: string
+  /** canonical labels, in the order they should appear inside the section */
+  labels: string[]
+}
+
+/**
+ * The eight categories in two halves.
+ *
+ * The first four are all *punctuality* — did the courier clock in, leave the
+ * warehouse, sign by noon, hand over on time. Every one is a clock reading, and
+ * a site failing them is failing at the same thing four times over.
+ *
+ * The second four are *completion and quality* — how much of the day's volume
+ * was signed for, and how the non-platform work went. A site can be flawless on
+ * one half and poor on the other, which is exactly why they are worth separating:
+ * eight cards in an undifferentiated row made that pattern invisible.
+ */
+export const KPI_SECTIONS: KpiSection[] = [
+  {
+    id: 'ketepatan',
+    label: 'Ketepatan Waktu',
+    zh: '准点率',
+    labels: [
+      '06:30 ABSENSI',
+      '07:30 KELUAR GUDANG',
+      'TTD PAKET JAM 12:00',
+      'TPTW (ON TIME)',
+    ],
+  },
+  {
+    id: 'penyelesaian',
+    label: 'Penyelesaian & Kualitas',
+    zh: '签收与质量',
+    labels: [
+      'TTD RITASE 2',
+      'PERSENTASE TTD',
+      'PICKUP NON-ECOMMERCE',
+      'RETUR COD NON-ECOMMERCE',
+    ],
+  },
+]
+
 /**
  * The categories that actually exist in the report, in display order. Anything
  * a file contains that isn't on this list is still parsed but stays hidden, so
  * an extra column in a future workbook can't push the dashboard out of shape.
+ *
+ * Derived from `KPI_SECTIONS` rather than written out again: display order *is*
+ * section order, and two hand-maintained lists would eventually disagree about
+ * where TPTW sits — leaving a card in one section and its table column in the
+ * other.
  */
-export const CANONICAL_ORDER = [
-  '06:30 ABSENSI',
-  '07:30 KELUAR GUDANG',
-  'TTD PAKET JAM 12:00',
-  'TTD RITASE 2',
-  'TPTW (ON TIME)',
-  'PERSENTASE TTD',
-  'PICKUP NON-ECOMMERCE',
-  'RETUR COD NON-ECOMMERCE',
-]
+export const CANONICAL_ORDER: string[] = KPI_SECTIONS.flatMap((s) => s.labels)
+
+/** Which half a category belongs to; `null` for a column no section claims. */
+export function sectionOf(label: string): KpiSection | null {
+  return KPI_SECTIONS.find((s) => s.labels.includes(label)) ?? null
+}
 
 /**
  * Mandarin name for each category, lifted verbatim from the workbook's own

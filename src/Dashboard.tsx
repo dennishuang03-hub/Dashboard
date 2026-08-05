@@ -1,9 +1,9 @@
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
-  BAR_CHOICES, CATEGORY_ZH, PALETTE, STATUS_COLOR, agentFull, agentZh, averageRows, dayName, explain,
-  fmtDate, fmtDateFull, iconFor, exportPng, isoDay, kpiSeries, parseWorkbook, pct, readWorkbook,
-  resolveDpDate, statusOf, targetFor,
+  BAR_CHOICES, CATEGORY_ZH, KPI_SECTIONS, PALETTE, STATUS_COLOR, agentFull, agentZh, averageRows,
+  dayName, explain, fmtDate, fmtDateFull, iconFor, exportPng, isoDay, kpiSeries, parseWorkbook, pct,
+  readWorkbook, resolveDpDate, statusOf, targetFor,
 } from './lib/jnt'
 import type { AgentRow, DateSlot, Explanation, Kpi, Model, Status } from './lib/jnt'
 import { BarChart, LineChart, Sparkline } from './components/Charts'
@@ -11,6 +11,28 @@ import type { AxisLabel } from './components/Charts'
 import DpSection from './components/DpSection'
 import Zh from './components/Zh'
 import './dashboard.css'
+
+/* ------------------------------------------------------- bundled workbook */
+
+/**
+ * The report shipped with the code, so the dashboard opens with data instead of
+ * with a file picker. Drop a workbook into `src/data/` and it loads on startup;
+ * the Unggah Excel button still overrides it for a one-off look at another file.
+ *
+ * `import.meta.glob` rather than a plain `import` precisely because the folder
+ * may be empty: a static import of a missing file fails the build, while a glob
+ * that matches nothing is `{}` and simply leaves the drop zone showing. That
+ * matters — the repo has no workbook committed to it, and a build that only
+ * works once someone adds one is a trap.
+ *
+ * Everything still happens in the browser. The file is served as a static asset
+ * from the same origin and parsed client-side; nothing is uploaded anywhere.
+ */
+const BUNDLED = import.meta.glob('./data/*.{xlsx,xlsm,xls,csv}', {
+  query: '?url', import: 'default', eager: true,
+}) as Record<string, string>
+
+const bundledEntry = Object.entries(BUNDLED).sort(([a], [b]) => a.localeCompare(b))[0] ?? null
 
 /* --------------------------------------------------------------- helpers */
 
@@ -52,6 +74,9 @@ export default function Dashboard() {
   const [dateIdx, setDateIdx] = useState(0)
   const [barKey, setBarKey] = useState('')
   const [hot, setHot] = useState(false)
+  // true only while the bundled file is in flight, so the drop zone does not
+  // flash up for a moment before the data it was asking for arrives anyway
+  const [booting, setBooting] = useState(bundledEntry != null)
   const [tick, force] = useState(0)      // Kpi objects are edited in place
 
   const fileRef = useRef<HTMLInputElement>(null)
@@ -60,27 +85,52 @@ export default function Dashboard() {
 
   /* ------------------------------------------------------------ loading */
 
+  /** One path in for both sources — an upload and the bundled file differ only
+   *  in how the bytes arrive, never in how they are read. */
+  const loadBuffer = useCallback((buf: ArrayBuffer, name: string) => {
+    try {
+      const mdl = parseWorkbook(readWorkbook(buf))
+      setModel(mdl)
+      setFileName(name)
+      setAgentKey('TOTAL')
+      setBarKey('')
+      setDateIdx(Math.max(0, mdl.dates.length - 1))
+      setErr('')
+    } catch (ex) {
+      setModel(null)
+      setErr((ex as Error).message)
+    }
+  }, [])
+
   const handleFile = useCallback((f: File | undefined | null) => {
     if (!f) return
     const reader = new FileReader()
-    reader.onload = (e) => {
-      try {
-        const wb = readWorkbook(e.target!.result as ArrayBuffer)
-        const mdl = parseWorkbook(wb)
-        setModel(mdl)
-        setFileName(f.name)
-        setAgentKey('TOTAL')
-        setBarKey('')
-        setDateIdx(Math.max(0, mdl.dates.length - 1))
-        setErr('')
-      } catch (ex) {
-        setModel(null)
-        setErr((ex as Error).message)
-      }
-    }
+    reader.onload = (e) => loadBuffer(e.target!.result as ArrayBuffer, f.name)
     reader.onerror = () => setErr('Browser menolak membuka file ini.')
     reader.readAsArrayBuffer(f)
-  }, [])
+  }, [loadBuffer])
+
+  /* Load the bundled workbook once on startup. `cancelled` guards the unmount:
+     without it a fast navigate-away lands a setState on a dead component. */
+  useEffect(() => {
+    /* no bundled file: `booting` already initialised to false, so there is
+       nothing to unset — setting it here would just be a cascading render */
+    if (!bundledEntry) return
+    let cancelled = false
+    const [path, url] = bundledEntry
+    const name = path.split('/').pop() || 'laporan.xlsx'
+    fetch(url)
+      .then((r) => {
+        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
+        return r.arrayBuffer()
+      })
+      .then((buf) => { if (!cancelled) loadBuffer(buf, name) })
+      .catch((ex) => {
+        if (!cancelled) setErr(`File bawaan “${name}” tidak dapat dibaca: ${(ex as Error).message}`)
+      })
+      .finally(() => { if (!cancelled) setBooting(false) })
+    return () => { cancelled = true }
+  }, [loadBuffer])
 
   const picker = (
     <input
@@ -149,6 +199,15 @@ export default function Dashboard() {
 
   /* -------------------------------------------------------- empty state */
 
+  if (booting) {
+    return (
+      <div className="wrap">
+        <TopBar meta="Memuat laporan bawaan…" />
+        <div className="dropzone"><h2>Memuat data… <Zh>正在加载</Zh></h2></div>
+      </div>
+    )
+  }
+
   if (!model || !current) {
     return (
       <div className="wrap">
@@ -171,7 +230,12 @@ export default function Dashboard() {
           </p>
           <button className="btn primary" onClick={() => fileRef.current?.click()}>Pilih file…</button>
           {picker}
-          <div className="lock">Didukung: .xlsx · .xlsm · .xls · .csv</div>
+          <div className="lock">
+            Didukung: .xlsx · .xlsm · .xls · .csv
+            <br />
+            Agar tidak perlu mengunggah setiap kali, simpan workbook di{' '}
+            <b>src/data/</b> — file di folder itu dimuat otomatis saat dashboard dibuka.
+          </div>
         </div>
       </div>
     )
@@ -253,9 +317,9 @@ export default function Dashboard() {
         </div>
       )}
 
-      {/* -------- KPI cards -------- */}
-      <div className="cards">
-        {kpis.map((k) => {
+      {/* -------- KPI cards, one block per section -------- */}
+      {(() => {
+        const card = (k: Kpi) => {
           const ki = model.kpis.indexOf(k)
           const series = kpiSeries(k, current.rec, dates)
           const v = series[di]
@@ -284,8 +348,42 @@ export default function Dashboard() {
               <TipBox ex={ex} placement="below" />
             </div>
           )
-        })}
-      </div>
+        }
+
+        /* Anything the file carries that no section claims still gets shown —
+           an unfamiliar column must never vanish just because it is unfamiliar. */
+        const claimed = new Set(KPI_SECTIONS.flatMap((s) => s.labels))
+        const extras = kpis.filter((k) => !claimed.has(k.label))
+
+        return (
+          <>
+            {KPI_SECTIONS.map((sec, i) => {
+              const mine = kpis.filter((k) => sec.labels.includes(k.label))
+              if (!mine.length) return null
+              return (
+                <section className="kpisec" key={sec.id}>
+                  <h2 className="sechead">
+                    <span className="secnum">{i + 1}</span>
+                    <span className="sectext">{sec.label}<Zh>{sec.zh}</Zh></span>
+                    <span className="seccount">{mine.length} KPI</span>
+                  </h2>
+                  <div className="cards">{mine.map(card)}</div>
+                </section>
+              )
+            })}
+            {extras.length > 0 && (
+              <section className="kpisec">
+                <h2 className="sechead">
+                  <span className="secnum">+</span>
+                  <span className="sectext">Lainnya<Zh>其他</Zh></span>
+                  <span className="seccount">{extras.length} KPI</span>
+                </h2>
+                <div className="cards">{extras.map(card)}</div>
+              </section>
+            )}
+          </>
+        )
+      })()}
 
       {/* -------- trend, full width -------- */}
       <div className="row-trend">

@@ -1,28 +1,38 @@
 /* J&T Daily Agent Performance Dashboard */
 
+/* ---------- J&T black + red ----------
+   The brand is red on black on white. Chrome — top bar, panel headers, section
+   bands — is black; red is the accent that marks what matters and the fill on
+   table headers; data surfaces stay white, because a wall of numbers reversed
+   out of black is slower to read and this is a sheet someone scans every
+   morning. Type is a step up in both size and weight throughout: the previous
+   13px/500 was sized for a laptop at arm's length, not a screen across a desk. */
 :root{
   --jt-red:#E2231A;
   --jt-red-dark:#B81810;
-  --green:#00A650;
+  --jt-black:#12151A;
+  --jt-black-2:#1D222B;
+  --green:#00913F;
   --amber:#F5A623;
   --red-soft:#FDECEB;
-  --ink:#1F2430;
-  --ink-2:#5A6474;
-  --ink-3:#8A94A6;
-  --line:#E6E9EF;
-  --bg:#F4F6FA;
+  --ink:#12151A;
+  --ink-2:#4A5462;
+  --ink-3:#77818F;
+  --line:#DFE3EA;
+  --bg:#F2F4F8;
   --card:#FFFFFF;
   --radius:12px;
-  --shadow:0 1px 3px rgba(16,24,40,.06), 0 4px 14px rgba(16,24,40,.05);
+  --shadow:0 1px 3px rgba(16,24,40,.08), 0 4px 14px rgba(16,24,40,.06);
 }
 
 *{box-sizing:border-box}
 html,body,#root{margin:0;padding:0;min-height:100%}
 body{
   font-family:"Segoe UI",Inter,-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
-  background:var(--bg);color:var(--ink);font-size:13px;-webkit-font-smoothing:antialiased;
+  background:var(--bg);color:var(--ink);font-size:14.5px;font-weight:500;
+  -webkit-font-smoothing:antialiased;
 }
-.wrap{max-width:1480px;margin:0 auto;padding:10px 14px 16px}
+.wrap{max-width:1480px;margin:0 auto;padding:10px 14px 20px}
 
 /* ---------- Mandarin gloss on headings ----------
    Lighter and slightly smaller than the Indonesian it sits beside, so a heading
@@ -30,10 +40,11 @@ body{
    narrow — a table header, a KPI card name, a stat label — it drops to its own
    line, because those boxes have no horizontal room to spare. */
 .zh{
-  font-weight:400;font-size:.86em;letter-spacing:0;text-transform:none;
-  opacity:.55;margin-left:.45em;white-space:nowrap;
+  font-weight:500;font-size:.85em;letter-spacing:0;text-transform:none;
+  opacity:.6;margin-left:.45em;white-space:nowrap;
 }
-.panel.red > h3 .zh,thead th .zh{opacity:.72}
+/* on the dark chrome the gloss is white-on-black, where .6 reads as grey mush */
+.panel.red > h3 .zh,.panel > h3 .zh,thead th .zh,.topbar .zh,.sechead .zh{opacity:.78}
 
 th .zh,.kname .zh,.dpstat .l .zh,.sumitem .lab .zh{
   display:block;margin-left:0;margin-top:1px;font-size:.94em;white-space:normal;
@@ -45,8 +56,8 @@ tbody td .zh{opacity:.85}
 /* ---------- Top bar ---------- */
 .topbar{
   display:flex;align-items:center;gap:14px;
-  background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
-  overflow:hidden;margin-bottom:10px;
+  background:var(--jt-black);color:#fff;border-radius:var(--radius);box-shadow:var(--shadow);
+  overflow:hidden;margin-bottom:10px;border-bottom:3px solid var(--jt-red);
 }
 /* The plate hugs the wordmark: the SVG viewBox is already cropped to the
    letters, so only this small optical padding is left. */
@@ -55,10 +66,10 @@ tbody td .zh{opacity:.85}
   display:flex;align-items:center;justify-content:center;padding:0 18px;
 }
 .logo .jtlogo{display:block;width:146px;height:auto}
-.titleblock{flex:1;padding:9px 0;text-align:center}
-.titleblock h1{margin:0;font-size:19px;font-weight:600;letter-spacing:.2px;color:#141821}
-.titleblock .meta{margin-top:3px;color:var(--ink-2);font-size:12px}
-.titleblock .meta b{color:var(--ink)}
+.titleblock{flex:1;padding:11px 0;text-align:center}
+.titleblock h1{margin:0;font-size:23px;font-weight:800;letter-spacing:.2px;color:#fff}
+.titleblock .meta{margin-top:4px;color:#B7C0CC;font-size:13.5px;font-weight:500}
+.titleblock .meta b{color:#fff;font-weight:700}
 /* the title block no longer shares the bar with the agent picker, so give it
    the full width between the logo and the right edge */
 .topbar .titleblock{padding-right:14px}
@@ -70,23 +81,26 @@ tbody td .zh{opacity:.85}
   padding:9px 12px;margin-bottom:10px;
 }
 .field{display:flex;flex-direction:column;gap:3px}
-.field label{font-size:10.5px;color:var(--ink-3);letter-spacing:.1px}
+.field label{font-size:11.5px;font-weight:700;color:var(--ink-3);letter-spacing:.2px}
 .field select,.field input[type=text]{
-  border:1px solid var(--line);border-radius:8px;padding:6px 9px;font-size:12.5px;
+  border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font-size:14px;font-weight:600;
   background:#fff;color:var(--ink);min-width:150px;font-family:inherit;
 }
 /* the agent picker is the primary filter on the bar — agent names are long, so
    it gets more room and heavier type than the neighbouring date select */
-.field select.agentsel{min-width:250px;max-width:340px;font-size:13px;font-weight:600}
+.field select.agentsel{min-width:260px;max-width:360px;font-size:14.5px;font-weight:700}
 .btn{
-  border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;
-  padding:7px 13px;font-size:12.5px;font-weight:500;cursor:pointer;font-family:inherit;
+  border:1.5px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;
+  padding:8px 14px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;
 }
-.btn:hover{background:#F7F8FB}
+.btn:hover{background:#F7F8FB;border-color:#C4CBD6}
 .btn.primary{background:var(--jt-red);border-color:var(--jt-red);color:#fff}
-.btn.primary:hover{background:var(--jt-red-dark)}
+.btn.primary:hover{background:var(--jt-red-dark);border-color:var(--jt-red-dark)}
 .spacer{flex:1}
-.filechip{font-size:11.5px;color:var(--ink-2);background:#F1F3F8;border-radius:99px;padding:5px 11px;white-space:nowrap}
+.filechip{
+  font-size:12.5px;font-weight:600;color:#fff;background:var(--jt-black-2);
+  border-radius:99px;padding:6px 13px;white-space:nowrap;
+}
 
 /* ---------- Drop zone ---------- */
 .dropzone{
@@ -98,8 +112,30 @@ tbody td .zh{opacity:.85}
 .dropzone p{margin:0 auto 16px;color:var(--ink-2);max-width:640px;line-height:1.6}
 .dropzone .lock{margin-top:16px;font-size:11.5px;color:var(--ink-3)}
 
+/* ---------- Section band ----------
+   The eight KPIs split into punctuality and completion/quality. A black bar with
+   a red numeral: heavy enough to break the card grid into two readable halves
+   from across a desk, which an all-caps grey caption was not. */
+.kpisec{margin-bottom:14px}
+.sechead{
+  display:flex;align-items:center;gap:11px;margin:0 0 8px;
+  background:var(--jt-black);color:#fff;border-radius:10px;
+  padding:9px 14px;border-left:5px solid var(--jt-red);
+  font-size:16px;font-weight:800;letter-spacing:.2px;
+}
+.sechead .secnum{
+  display:inline-flex;align-items:center;justify-content:center;flex:none;
+  width:26px;height:26px;border-radius:7px;background:var(--jt-red);color:#fff;
+  font-size:15px;font-weight:800;
+}
+.sechead .sectext{flex:1;min-width:0}
+.sechead .seccount{
+  flex:none;font-size:12px;font-weight:700;color:#C3CAD6;
+  background:rgba(255,255,255,.10);border-radius:99px;padding:3px 10px;
+}
+
 /* ---------- KPI cards ---------- */
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(188px,1fr));gap:10px;margin-bottom:10px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
 .kcard{
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
   padding:10px 12px 7px;position:relative;border-top:3px solid transparent;
@@ -120,21 +156,22 @@ tbody td .zh{opacity:.85}
 /* min-height keeps every card's value row on the same baseline; it allows for
    a two-line name plus its Mandarin gloss underneath */
 .kcard .kname{
-  font-size:10.5px;font-weight:600;letter-spacing:.2px;color:var(--ink-2);
-  padding-right:16px;line-height:1.35;min-height:42px;
+  font-size:12.5px;font-weight:800;letter-spacing:.2px;color:var(--ink);
+  padding-right:18px;line-height:1.3;min-height:46px;
 }
 .kcard .krow{display:flex;align-items:center;gap:9px;margin-top:6px}
-.kcard .kicon{font-size:18px;line-height:1;opacity:.75}
-.kcard .kval{font-size:26px;font-weight:600;letter-spacing:-.4px;line-height:1}
-.kcard .ktgt{font-size:11px;color:var(--ink-3);margin-top:3px}
-.kcard .kmtd{font-size:10.5px;color:var(--ink-3);margin-top:2px;min-height:14px}
+.kcard .kicon{font-size:20px;line-height:1;opacity:.75}
+.kcard .kval{font-size:33px;font-weight:800;letter-spacing:-.7px;line-height:1}
+.kcard .ktgt{font-size:12.5px;font-weight:700;color:var(--ink-2);margin-top:5px}
+.kcard .kmtd{font-size:12px;font-weight:600;color:var(--ink-3);margin-top:3px;min-height:16px}
 .kcard .kcmp{
-  display:flex;justify-content:space-between;align-items:center;font-size:11px;color:var(--ink-2);
-  border-top:1px solid var(--line);margin-top:8px;padding-top:6px;
+  display:flex;justify-content:space-between;align-items:center;
+  font-size:12.5px;font-weight:600;color:var(--ink-2);
+  border-top:1px solid var(--line);margin-top:9px;padding-top:7px;
 }
-.up{color:var(--green);font-weight:600}
-.down{color:var(--jt-red);font-weight:600}
-.flat{color:var(--ink-3);font-weight:500}
+.up{color:var(--green);font-weight:800}
+.down{color:var(--jt-red);font-weight:800}
+.flat{color:var(--ink-3);font-weight:700}
 .spark{display:block;width:100%;height:30px;margin-top:4px}
 
 /* ---------- Panels ---------- */
@@ -146,20 +183,23 @@ tbody td .zh{opacity:.85}
 /* Sentence case, no tracking. The titles are already written the way they should
    read; uppercasing them in CSS only made eight panels shout at once. */
 .panel > h3{
-  margin:0;padding:8px 13px;font-size:13px;font-weight:600;letter-spacing:0;
-  color:var(--ink);border-bottom:1px solid var(--line);
+  margin:0;padding:10px 14px;font-size:15px;font-weight:800;letter-spacing:.1px;
+  background:var(--jt-black);color:#fff;border-bottom:3px solid var(--jt-red);
   border-radius:var(--radius) var(--radius) 0 0;
-  display:flex;align-items:center;gap:12px;min-height:34px;
+  display:flex;align-items:center;gap:12px;min-height:40px;
 }
 .panel > h3 .ptitle{flex:1;min-width:0}
 /* in-header control (the bar-chart KPI switcher): normal case and weight, so it
    reads as something you can click rather than as part of the heading */
 .panel > h3 .hsel{
-  flex:none;max-width:60%;font-family:inherit;font-size:11.5px;font-weight:500;
-  text-transform:none;letter-spacing:0;color:var(--ink);background:#fff;
-  border:1px solid var(--line);border-radius:7px;padding:4px 8px;cursor:pointer;
+  flex:none;max-width:60%;font-family:inherit;font-size:13px;font-weight:700;
+  text-transform:none;letter-spacing:0;color:#fff;background:rgba(255,255,255,.12);
+  border:1.5px solid rgba(255,255,255,.28);border-radius:7px;padding:5px 9px;cursor:pointer;
 }
-.panel > h3 .hsel:hover{border-color:#C9D0DD}
+.panel > h3 .hsel:hover{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.45)}
+/* the popup list is rendered by the OS in its own colours — force dark text so
+   the options are not white-on-white once the menu opens */
+.panel > h3 .hsel option{color:var(--ink);background:#fff}
 /* re-round the bottom corners now that the panel no longer clips */
 .panel .body table tbody tr:last-child td:first-child{border-bottom-left-radius:var(--radius)}
 .panel .body table tbody tr:last-child td:last-child{border-bottom-right-radius:var(--radius)}
@@ -175,12 +215,12 @@ tbody td .zh{opacity:.85}
 @media (max-width:760px){ .row-mid{grid-template-columns:1fr} }
 
 /* ---------- Tables ---------- */
-table{width:100%;border-collapse:collapse;font-size:12px}
+table{width:100%;border-collapse:collapse;font-size:13.5px;font-weight:600}
 thead th{
-  background:var(--jt-red);color:#fff;text-align:left;padding:8px 10px;font-size:11px;
-  letter-spacing:.1px;font-weight:600;
+  background:var(--jt-red);color:#fff;text-align:left;padding:9px 10px;font-size:12.5px;
+  letter-spacing:.2px;font-weight:800;
 }
-tbody td{padding:8px 10px;border-bottom:1px solid var(--line)}
+tbody td{padding:9px 10px;border-bottom:1px solid var(--line)}
 tbody tr:last-child td{border-bottom:none}
 tbody tr:nth-child(even){background:#FAFBFD}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
@@ -257,7 +297,8 @@ tbody tr.st-bad td{background:#FFF7F6}
 tbody tr.st-bad .kpiname{color:var(--jt-red)}
 
 .muted{color:var(--ink-3)}
-.note{font-size:11px;color:var(--ink-3);margin-top:10px;line-height:1.5}
+.note{font-size:12.5px;font-weight:500;color:var(--ink-2);margin-top:10px;line-height:1.55}
+.note b{font-weight:800;color:var(--ink)}
 .err{
   background:var(--red-soft);border:1px solid #F6C6C3;color:#9B1C15;
   border-radius:10px;padding:11px 14px;margin-bottom:12px;font-size:12.5px;line-height:1.55;
@@ -270,9 +311,9 @@ tbody tr.st-bad .kpiname{color:var(--jt-red)}
   display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;
   padding:0 2px 7px;border-bottom:1px solid var(--line);margin-bottom:12px;
 }
-.dphead h2{margin:0;font-size:14.5px;font-weight:600;letter-spacing:.1px;color:#141821}
-.dphead h2 b{color:var(--jt-red);font-weight:600}
-.dphead .dpday{font-size:11.5px;color:var(--ink-3)}
+.dphead h2{margin:0;font-size:18px;font-weight:800;letter-spacing:.1px;color:var(--ink)}
+.dphead h2 b{color:var(--jt-red);font-weight:800}
+.dphead .dpday{font-size:13px;font-weight:600;color:var(--ink-3)}
 .dphead .dpday em{font-style:normal;color:#B47607}
 
 /* The number carries the colour; the card itself stays plain. Five tinted,
@@ -282,8 +323,13 @@ tbody tr.st-bad .kpiname{color:var(--jt-red)}
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
   padding:9px 13px;display:flex;flex-direction:column;gap:2px;
 }
-.dpstat .n{font-size:21px;font-weight:600;letter-spacing:-.3px;line-height:1.15}
-.dpstat .l{font-size:11px;color:var(--ink-3);line-height:1.35}
+.dpstat{border-left:4px solid var(--jt-black)}
+.dpstat.good{border-left-color:var(--green)}
+.dpstat.warn{border-left-color:#B47607}
+.dpstat.bad {border-left-color:var(--jt-red)}
+.dpstat.mute{border-left-color:#C4CBD6}
+.dpstat .n{font-size:28px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
+.dpstat .l{font-size:12.5px;font-weight:700;color:var(--ink-2);line-height:1.3}
 .dpstat.good .n{color:var(--green)}
 .dpstat.warn .n{color:#B47607}
 .dpstat.bad  .n{color:var(--jt-red)}
@@ -294,11 +340,17 @@ tbody tr.st-bad .kpiname{color:var(--jt-red)}
 /* caption under a ranking chart — explains an exclusion, so it stays visible in
    the PNG and the print sheet rather than being treated as chrome */
 .chartnote{
-  font-size:10.5px;color:var(--ink-3);line-height:1.45;
-  padding-top:7px;margin-top:7px;border-top:1px solid var(--line);
+  font-size:12px;font-weight:500;color:var(--ink-2);line-height:1.5;
+  padding-top:8px;margin-top:8px;border-top:1px solid var(--line);
 }
+.chartnote b{font-weight:800;color:var(--ink)}
 
-.btn.tiny{padding:3px 9px;font-size:11px;flex:none}
+/* inside the now-black panel header, so it has to read on dark like .hsel does */
+.btn.tiny{
+  padding:4px 10px;font-size:12.5px;font-weight:700;flex:none;
+  background:rgba(255,255,255,.12);color:#fff;border-color:rgba(255,255,255,.28);
+}
+.btn.tiny:hover{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.45)}
 
 /* ---------- DP / CP table ---------- */
 .dptable{margin-top:10px}
@@ -307,43 +359,64 @@ tbody tr.st-bad .kpiname{color:var(--jt-red)}
   padding:9px 13px;border-bottom:1px solid var(--line);background:#FBFCFE;
 }
 .dpfilters input[type=text],.dpfilters select{
-  border:1px solid var(--line);border-radius:8px;padding:5px 9px;font-size:12px;
+  border:1.5px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13.5px;font-weight:600;
   background:#fff;color:var(--ink);font-family:inherit;
 }
-.dpfilters input[type=text]{min-width:210px;flex:1;max-width:320px}
-.dpfilters .chk{display:flex;align-items:center;gap:5px;font-size:12px;color:var(--ink-2);cursor:pointer}
-.dpfilters .seg{display:flex;border:1px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
-.dpfilters .seg button{
-  border:none;background:#fff;color:var(--ink-2);padding:5px 11px;font-size:11.5px;
-  font-weight:500;cursor:pointer;font-family:inherit;
+.dpfilters input[type=text]{min-width:220px;flex:1;max-width:330px}
+.dpfilters .chk{
+  display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;
+  color:var(--ink-2);cursor:pointer;
 }
-.dpfilters .seg button.on{background:var(--jt-red);color:#fff;font-weight:600}
+.dpfilters .seg{display:flex;border:1.5px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+.dpfilters .seg button{
+  border:none;background:#fff;color:var(--ink-2);padding:6px 12px;font-size:13px;
+  font-weight:700;cursor:pointer;font-family:inherit;
+}
+.dpfilters .seg button.on{background:var(--jt-red);color:#fff;font-weight:800}
 
 /* The grid is wider than the panel by design: 8 category columns plus identity
    never fit at full type size, and shrinking the type to make them fit is worse
    than a scrollbar. The name column is pinned so a row stays identifiable while
    scrolling sideways. */
-.dpscroll{overflow:auto;max-height:620px}
-table.dpgrid{font-size:11.5px;min-width:100%}
+.dpscroll{overflow:auto;max-height:680px}
+table.dpgrid{font-size:13px;min-width:100%}
 table.dpgrid thead th{
-  position:sticky;top:0;z-index:3;cursor:pointer;user-select:none;
-  padding:7px 8px;white-space:nowrap;
+  position:sticky;z-index:3;cursor:pointer;user-select:none;
+  padding:8px 9px;white-space:nowrap;
 }
-table.dpgrid thead th:hover{background:var(--jt-red-dark)}
-table.dpgrid th.cat{max-width:96px;white-space:normal;line-height:1.25}
-table.dpgrid tbody td{padding:5px 8px;white-space:nowrap}
+/* Two sticky header rows. The band's height is pinned so the category row can be
+   offset by exactly that much — `top` takes a length, not "whatever is above me",
+   so a band free to grow would leave a gap or overlap as rows scrolled under it. */
+table.dpgrid thead tr.secrow th{
+  top:0;height:30px;padding:0 9px;background:var(--jt-black);
+  font-size:12.5px;font-weight:800;letter-spacing:.4px;text-align:center;cursor:default;
+}
+/* the fallback only covers the first paint; DpSection measures the band and
+   overwrites --secrow-h, because the real height moves with border and font */
+table.dpgrid thead tr.catrow th{top:var(--secrow-h,30px)}
+table.dpgrid thead tr.secrow th:hover{background:var(--jt-black)}
+/* the two halves are told apart by a red underline vs a white one, not by two
+   different fills — the band has to stay black to read as one bar */
+table.dpgrid thead tr.secrow th.secband{border-bottom:3px solid var(--jt-red)}
+table.dpgrid thead tr.secrow th.s-penyelesaian{border-bottom-color:#8A94A6}
+/* the seam between the two halves, carried down through the body so a column can
+   be traced back to its section without scrolling up to the band */
+table.dpgrid thead th.seam,table.dpgrid tbody td.seam{border-left:2px solid #B9C1CE}
+table.dpgrid thead th:not(.secband):hover{background:var(--jt-red-dark)}
+table.dpgrid th.cat{max-width:104px;white-space:normal;line-height:1.25}
+table.dpgrid tbody td{padding:6px 9px;white-space:nowrap}
 table.dpgrid th.sticky,table.dpgrid td.sticky{position:sticky;left:0;z-index:2}
 table.dpgrid thead th.sticky{z-index:4}
 table.dpgrid tbody td.sticky{background:#fff}
 table.dpgrid tbody tr:nth-child(even) td.sticky{background:#FAFBFD}
-.dpname{font-weight:500;display:flex;align-items:center;gap:7px}
+.dpname{font-weight:700;display:flex;align-items:center;gap:8px}
 /* Solid fill, because this is the one thing on the row you scan for rather than
    read. A fixed min-width keeps the two tags the same size so the names below
    them stay in a straight column instead of stepping in and out. */
 .ptag{
   display:inline-flex;align-items:center;justify-content:center;flex:none;
-  min-width:24px;font-size:9.5px;font-weight:700;letter-spacing:.3px;
-  border-radius:4px;padding:2px 5px;background:#1D6FC0;color:#fff;
+  min-width:28px;font-size:11px;font-weight:800;letter-spacing:.4px;
+  border-radius:4px;padding:3px 6px;background:#1D6FC0;color:#fff;
 }
 /* FR / AG — the business model out of the workbook. Two distinct hues rather
    than two shades of one, because this is the tag you scan a column for; both
@@ -353,8 +426,8 @@ table.dpgrid tbody tr:nth-child(even) td.sticky{background:#FAFBFD}
 .ptag.agent{background:#1D6FC0}
 .ptag.unknown{background:#98A1B0}
 .sbadge{
-  display:inline-block;font-size:10px;font-weight:500;
-  border-radius:99px;padding:2px 8px;white-space:nowrap;
+  display:inline-block;font-size:12px;font-weight:700;
+  border-radius:99px;padding:3px 10px;white-space:nowrap;
 }
 /* green for the two kinds that run a delivery shift and are ranked, amber for
    pickup-only and grey for closed — the same "is this in the ranking?" reading
@@ -370,12 +443,12 @@ table.dpgrid tbody tr:nth-child(even) td.sticky{background:#FAFBFD}
    The tint is deliberately strong enough to pick out from across a desk, and
    paired with a dark red rather than the brand red so the number on top of it
    stays comfortable to read. */
-td.hm{font-variant-numeric:tabular-nums}
+td.hm{font-variant-numeric:tabular-nums;font-weight:600}
 td.hm.ok {color:var(--ink)}
-td.hm.bad{background:#F9D3CF;color:#96150E;font-weight:600}
-td.hm.off{color:#B3BAC7}
+td.hm.bad{background:#F9D3CF;color:#8E1109;font-weight:800}
+td.hm.off{color:#AAB2C0;font-weight:500}
 tbody tr.k-closed td.sticky{color:#8A94A6}
-.dpmore{padding:9px 13px;border-top:1px solid var(--line);text-align:center}
+.dpmore{padding:10px 13px;border-top:1px solid var(--line);text-align:center}
 
 /* ---------- PNG snapshot mode ----------
    The snapshot must contain every panel that is on screen, so unlike the print
@@ -462,6 +535,8 @@ body.shoot-table .dptable{margin-top:0}
      page and its chart on the next, which is why charts looked missing */
   .panel,.kcard,.sumitem,tr,svg,
   .row-trend,.row-mid,.row-bot,.row-dp,.dpstat{break-inside:avoid !important; page-break-inside:avoid !important}
+  /* a section band stranded at the foot of a page labels nothing */
+  .sechead{break-after:avoid !important; page-break-after:avoid !important}
   /* the DP list is the one table allowed to run across pages — it can be
      hundreds of rows long, and forcing it onto one page would shrink it away */
   .dptable{break-inside:auto !important; page-break-inside:auto !important}
