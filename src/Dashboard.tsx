@@ -34,6 +34,26 @@ const BUNDLED = import.meta.glob('./data/*.{xlsx,xlsm,xls,csv}', {
 
 const bundledEntry = Object.entries(BUNDLED).sort(([a], [b]) => a.localeCompare(b))[0] ?? null
 
+/**
+ * The brand mark out of `src/assets`, replacing the drawn SVG fallback.
+ *
+ * Globbed for the same reason the workbook is: the repo does not carry the
+ * image, and a static import of a file that is not there fails the build.
+ * Anything with "logo" in the name matches — `hero.png`, `react.svg` and
+ * `vite.svg` sit in the same folder and must not be mistaken for it.
+ */
+const LOGOS = import.meta.glob('./assets/*.{png,jpg,jpeg,svg,webp}', {
+  query: '?url', import: 'default', eager: true,
+}) as Record<string, string>
+
+const logoUrl: string | null = (() => {
+  const named = Object.entries(LOGOS).filter(([p]) => /logo/i.test(p))
+  if (!named.length) return null
+  // an exact JT-Express-Logo.* beats any other file that merely says "logo"
+  const exact = named.find(([p]) => /jt[-_ ]?express[-_ ]?logo/i.test(p))
+  return (exact ?? named.sort(([a], [b]) => a.localeCompare(b))[0])[1]
+})()
+
 /* --------------------------------------------------------------- helpers */
 
 function Badge({ st }: { st: Status }) {
@@ -545,6 +565,13 @@ export default function Dashboard() {
  * dead margin around it.
  */
 function JntLogo() {
+  /* The real mark, when it is there. Same reasoning as the bundled workbook: a
+     static `import` of a missing file fails the build, so anyone cloning before
+     adding the image would get nothing to run. The glob leaves the drawn
+     fallback below in place instead. Any *logo*.{png,jpg,svg,webp} in
+     src/assets is picked up; JT-Express-Logo.png wins if several match. */
+  if (logoUrl) return <img className="jtlogo" src={logoUrl} alt="J&T Express" />
+
   const FONT = "'Arial Black','Arial Bold','Helvetica Neue',Arial,sans-serif"
   return (
     <svg className="jtlogo" viewBox="0 0 262 58" role="img" aria-label="J&T Express">

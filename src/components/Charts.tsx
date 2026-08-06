@@ -72,8 +72,8 @@ export function LineChart({
     <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
       {ticks.map((v, i) => (
         <g key={`t${i}`}>
-          <line x1={P.l} y1={Y(v)} x2={w - P.r} y2={Y(v)} stroke="#EDF0F5" strokeWidth={1} />
-          <text x={P.l - 9} y={Y(v) + 4} textAnchor="end" fontSize={12} fill="#8A94A6">
+          <line x1={P.l} y1={Y(v)} x2={w - P.r} y2={Y(v)} stroke="var(--c-grid)" strokeWidth={1} />
+          <text x={P.l - 9} y={Y(v) + 4} textAnchor="end" fontSize={12} fill="var(--c-axis-2)">
             {v.toFixed(0)}%
           </text>
         </g>
@@ -81,9 +81,9 @@ export function LineChart({
 
       {labels.map((l, i) => (
         <g key={`x${i}`}>
-          <text x={X(i)} y={h - P.b + 20} textAnchor="middle" fontSize={13} fill="#5A6474">{l.top}</text>
+          <text x={X(i)} y={h - P.b + 20} textAnchor="middle" fontSize={13} fill="var(--c-axis)">{l.top}</text>
           {l.sub && (
-            <text x={X(i)} y={h - P.b + 36} textAnchor="middle" fontSize={11} fill="#A6AEBD">{l.sub}</text>
+            <text x={X(i)} y={h - P.b + 36} textAnchor="middle" fontSize={11} fill="var(--c-axis-2)">{l.sub}</text>
           )}
         </g>
       ))}
@@ -103,7 +103,7 @@ export function LineChart({
               />
             )}
             {pts.map((p, i) => (
-              <circle key={i} cx={p.x} cy={p.y} r={4} fill="#fff" stroke={s.color} strokeWidth={2.5} />
+              <circle key={i} cx={p.x} cy={p.y} r={4} fill="var(--c-halo)" stroke={s.color} strokeWidth={2.5} />
             ))}
           </g>
         )
@@ -116,7 +116,7 @@ export function LineChart({
             <text
               key={k} x={X(i)} y={o.ly} textAnchor="middle"
               fontSize={12} fontWeight={600} fill={o.color}
-              stroke="#fff" strokeWidth={3.5} paintOrder="stroke" strokeLinejoin="round"
+              stroke="var(--c-halo)" strokeWidth={3.5} paintOrder="stroke" strokeLinejoin="round"
             >
               {o.v.toFixed(2)}%
             </text>
@@ -127,8 +127,8 @@ export function LineChart({
       {targetLine != null && targetLine >= min && targetLine <= max && (
         <g>
           <line x1={P.l} y1={Y(targetLine)} x2={w - P.r} y2={Y(targetLine)}
-                stroke="#E2231A" strokeWidth={1.2} strokeDasharray="5 4" />
-          <text x={w - P.r} y={Y(targetLine) - 6} textAnchor="end" fontSize={11} fill="#E2231A">
+                stroke="var(--c-bad)" strokeWidth={1.2} strokeDasharray="5 4" />
+          <text x={w - P.r} y={Y(targetLine) - 6} textAnchor="end" fontSize={11} fill="var(--c-bad)">
             Target {targetLine.toFixed(2)}%
           </text>
         </g>
@@ -169,8 +169,8 @@ export function BarChart({
     <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
       {ticks.map((v, i) => (
         <g key={`t${i}`}>
-          <line x1={P.l} y1={Y(v)} x2={w - P.r} y2={Y(v)} stroke="#EDF0F5" />
-          <text x={P.l - 8} y={Y(v) + 4} textAnchor="end" fontSize={12} fill="#8A94A6">
+          <line x1={P.l} y1={Y(v)} x2={w - P.r} y2={Y(v)} stroke="var(--c-grid)" />
+          <text x={P.l - 8} y={Y(v) + 4} textAnchor="end" fontSize={12} fill="var(--c-axis-2)">
             {v.toFixed(1)}%
           </text>
         </g>
@@ -189,21 +189,21 @@ export function BarChart({
                 <rect
                   x={cx - bw / 2} y={Y(val)} width={bw}
                   height={Math.max(1, h - P.b - Y(val))} rx={2.5}
-                  fill={ok ? '#00A650' : '#E2231A'}
+                  fill={ok ? 'var(--c-ok)' : 'var(--c-bad)'}
                 />
                 <text
                   x={cx} y={Y(val) - 7} textAnchor="middle" fontSize={12} fontWeight={500}
-                  fill="#3B4453" stroke="#fff" strokeWidth={3.5} paintOrder="stroke" strokeLinejoin="round"
+                  fill="var(--c-axis)" stroke="var(--c-halo)" strokeWidth={3.5} paintOrder="stroke" strokeLinejoin="round"
                 >
                   {val.toFixed(2)}%
                 </text>
               </>
             )}
-            <text x={cx} y={h - P.b + 20} textAnchor="middle" fontSize={13} fill="#5A6474">
+            <text x={cx} y={h - P.b + 20} textAnchor="middle" fontSize={13} fill="var(--c-axis)">
               {lab.top}
             </text>
             {lab.sub && (
-              <text x={cx} y={h - P.b + 36} textAnchor="middle" fontSize={11} fill="#A6AEBD">
+              <text x={cx} y={h - P.b + 36} textAnchor="middle" fontSize={11} fill="var(--c-axis-2)">
                 {lab.sub}
               </text>
             )}
@@ -214,13 +214,13 @@ export function BarChart({
       {targetLine != null && targetLine <= max && (
         <g>
           <line x1={P.l} y1={Y(targetLine)} x2={w - P.r} y2={Y(targetLine)}
-                stroke="#E2231A" strokeWidth={1.2} strokeDasharray="5 4" />
+                stroke="var(--c-bad)" strokeWidth={1.2} strokeDasharray="5 4" />
           {/* The caption used to sit on the line at the right edge, where it
               landed on top of the last bar's value label. It now lives above the
               plot area, which no bar and no value label can reach. */}
           <line x1={P.l} y1={P.t - 13} x2={P.l + 16} y2={P.t - 13}
-                stroke="#E2231A" strokeWidth={1.2} strokeDasharray="5 4" />
-          <text x={P.l + 22} y={P.t - 9} textAnchor="start" fontSize={11} fill="#E2231A">
+                stroke="var(--c-bad)" strokeWidth={1.2} strokeDasharray="5 4" />
+          <text x={P.l + 22} y={P.t - 9} textAnchor="start" fontSize={11} fill="var(--c-bad)">
             Target {lowerBetter ? '≤ ' : '≥ '}{targetLine.toFixed(2)}%
           </text>
         </g>
@@ -292,20 +292,20 @@ export function HBarChart({
         const x = X(b.value)
         return (
           <g key={`${b.name}-${i}`}>
-            <line x1={P.l} y1={y + rowH - 0.5} x2={w - P.r} y2={y + rowH - 0.5} stroke="#F2F4F8" />
-            <text x={P.l - 10} y={b.sub ? cy - 2 : cy + 4} textAnchor="end" fontSize={11.5} fill="#3B4453" fontWeight={500}>
+            <line x1={P.l} y1={y + rowH - 0.5} x2={w - P.r} y2={y + rowH - 0.5} stroke="var(--c-grid)" />
+            <text x={P.l - 10} y={b.sub ? cy - 2 : cy + 4} textAnchor="end" fontSize={11.5} fill="var(--c-axis)" fontWeight={500}>
               {clip(b.name, 24)}
             </text>
             {b.sub && (
-              <text x={P.l - 10} y={cy + 10} textAnchor="end" fontSize={9.5} fill="#A6AEBD">
+              <text x={P.l - 10} y={cy + 10} textAnchor="end" fontSize={9.5} fill="var(--c-axis-2)">
                 {clip(b.sub, 28)}
               </text>
             )}
             <rect
               x={P.l} y={cy - 7} width={Math.max(2, x - P.l)} height={14} rx={3}
-              fill={ok ? '#3FB37A' : '#E2231A'}
+              fill={ok ? 'var(--c-ok)' : 'var(--c-bad)'}
             />
-            <text x={x + 7} y={cy + 4} fontSize={11.5} fontWeight={500} fill={ok ? '#2A7A52' : '#B81810'}>
+            <text x={x + 7} y={cy + 4} fontSize={11.5} fontWeight={500} fill={ok ? 'var(--c-ok-ink)' : 'var(--c-bad-ink)'}>
               {b.label ?? `${b.value.toFixed(2)}%`}
             </text>
           </g>
@@ -316,9 +316,9 @@ export function HBarChart({
         <g>
           <line
             x1={X(targetLine)} y1={P.t} x2={X(targetLine)} y2={h - P.b}
-            stroke="#E2231A" strokeWidth={1.2} strokeDasharray="5 4"
+            stroke="var(--c-bad)" strokeWidth={1.2} strokeDasharray="5 4"
           />
-          <text x={X(targetLine)} y={h - P.b + 14} textAnchor="middle" fontSize={10.5} fill="#E2231A">
+          <text x={X(targetLine)} y={h - P.b + 14} textAnchor="middle" fontSize={10.5} fill="var(--c-bad)">
             Target {lowerBetter ? '≤ ' : '≥ '}{targetLine.toFixed(2)}%
           </text>
         </g>

@@ -1,57 +1,78 @@
 /* J&T Daily Agent Performance Dashboard */
 
-/* ---------- J&T black + red ----------
-   The brand is red on black on white. Chrome — top bar, panel headers, section
-   bands — is black; red is the accent that marks what matters and the fill on
-   table headers; data surfaces stay white, because a wall of numbers reversed
-   out of black is slower to read and this is a sheet someone scans every
-   morning. Type is a step up in both size and weight throughout: the previous
-   13px/500 was sized for a laptop at arm's length, not a screen across a desk. */
+/* ---------- J&T dark, after JMS ----------
+   Near-black page, one step lighter for panels, one more for inputs and rows —
+   three greys is enough to build the whole hierarchy, and it keeps the red for
+   the things that actually mean something.
+
+   Two things dark mode forces that light mode let us ignore. Saturated brand
+   colours go muddy on black, so green and red are lifted (#00A650 -> #2ED573)
+   for anything that has to read at a glance. And thin type disappears, so the
+   floor is 600 and body text steps up again: the numbers in a KPI box are the
+   whole point of the box, and they are read from across a desk. */
 :root{
   --jt-red:#E2231A;
   --jt-red-dark:#B81810;
-  --jt-black:#12151A;
-  --jt-black-2:#1D222B;
-  --green:#00913F;
-  --amber:#F5A623;
-  --red-soft:#FDECEB;
-  --ink:#12151A;
-  --ink-2:#4A5462;
-  --ink-3:#77818F;
-  --line:#DFE3EA;
-  --bg:#F2F4F8;
-  --card:#FFFFFF;
+  --jt-red-lit:#FF4438;              /* red that survives a black background */
+  --jt-black:#0D0D0D;
+  --jt-black-2:#2E2E2E;
+  --green:#2ED573;
+  --amber:#FFB020;
+  --red-soft:#3A1512;
+  --ink:#F2F2F2;
+  --ink-2:#B9B9B9;
+  --ink-3:#8C8C8C;
+  --line:#383838;
+  --bg:#141414;
+  --card:#1F1F1F;
+  --card-2:#272727;                  /* inputs, table header seams, raised rows */
+  --card-3:#303030;                  /* hover */
   --radius:12px;
-  --shadow:0 1px 3px rgba(16,24,40,.08), 0 4px 14px rgba(16,24,40,.06);
+  --shadow:0 1px 3px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.38);
+
+  /* consumed by the SVG charts, which have no stylesheet of their own */
+  --c-grid:#333333;
+  --c-axis:#C9C9C9;
+  --c-axis-2:#8C8C8C;
+  --c-halo:#1F1F1F;                  /* the knock-out behind chart value labels */
+  --c-ok:#2ED573;
+  --c-bad:#FF4438;
+  --c-ok-ink:#5BE79A;
+  --c-bad-ink:#FF7A70;
 }
 
 *{box-sizing:border-box}
 html,body,#root{margin:0;padding:0;min-height:100%}
 body{
   font-family:"Segoe UI",Inter,-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
-  background:var(--bg);color:var(--ink);font-size:14.5px;font-weight:500;
+  background:var(--bg);color:var(--ink);font-size:15px;font-weight:600;
   -webkit-font-smoothing:antialiased;
 }
 .wrap{max-width:1480px;margin:0 auto;padding:10px 14px 20px}
+::selection{background:var(--jt-red);color:#fff}
 
 /* ---------- Mandarin gloss on headings ----------
    Lighter and slightly smaller than the Indonesian it sits beside, so a heading
    still reads as one heading rather than two competing ones. Inside anything
    narrow — a table header, a KPI card name, a stat label — it drops to its own
    line, because those boxes have no horizontal room to spare. */
+/* The Mandarin is a second reading of the same heading, not a footnote — a
+   supervisor who reads the Chinese needs it at the same size the Indonesian is
+   at, near enough. It was .85em at .6 opacity, which on a dark background came
+   out as small grey mush; it is now .92em at .8, and never below 12px. */
 .zh{
-  font-weight:500;font-size:.85em;letter-spacing:0;text-transform:none;
-  opacity:.6;margin-left:.45em;white-space:nowrap;
+  font-weight:600;font-size:.92em;letter-spacing:0;text-transform:none;
+  opacity:.8;margin-left:.5em;white-space:nowrap;
 }
-/* on the dark chrome the gloss is white-on-black, where .6 reads as grey mush */
-.panel.red > h3 .zh,.panel > h3 .zh,thead th .zh,.topbar .zh,.sechead .zh{opacity:.78}
+.panel.red > h3 .zh,.panel > h3 .zh,thead th .zh,.topbar .zh,.sechead .zh{opacity:.88}
 
 th .zh,.kname .zh,.dpstat .l .zh,.sumitem .lab .zh{
-  display:block;margin-left:0;margin-top:1px;font-size:.94em;white-space:normal;
+  display:block;margin-left:0;margin-top:2px;font-size:.95em;white-space:normal;
 }
-/* inside a table body the gloss sits on already-muted grey, and .55 on top of
-   that fades it out of legibility */
-tbody td .zh{opacity:.85}
+.kname .zh{font-size:13.5px;opacity:.85}
+.dpstat .l .zh{font-size:12.5px}
+thead th .zh{font-size:12.5px}
+tbody td .zh{opacity:.9}
 
 /* ---------- Top bar ---------- */
 .topbar{
@@ -66,6 +87,13 @@ tbody td .zh{opacity:.85}
   display:flex;align-items:center;justify-content:center;padding:0 18px;
 }
 .logo .jtlogo{display:block;width:146px;height:auto}
+/* A supplied PNG is whatever shape it is, so it is fitted by height and allowed
+   to size its own width — `width:146px` would squash a square mark. The red
+   plate is dropped for an image file: a supplied logo usually carries its own
+   background or its own colour, and forcing it onto red is how you get a red
+   box inside a red box. */
+.logo:has(img.jtlogo){background:var(--jt-black);padding:0 16px}
+.logo img.jtlogo{width:auto;max-width:190px;height:44px;object-fit:contain}
 .titleblock{flex:1;padding:11px 0;text-align:center}
 .titleblock h1{margin:0;font-size:23px;font-weight:800;letter-spacing:.2px;color:#fff}
 .titleblock .meta{margin-top:4px;color:#B7C0CC;font-size:13.5px;font-weight:500}
@@ -84,16 +112,16 @@ tbody td .zh{opacity:.85}
 .field label{font-size:11.5px;font-weight:700;color:var(--ink-3);letter-spacing:.2px}
 .field select,.field input[type=text]{
   border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font-size:14px;font-weight:600;
-  background:#fff;color:var(--ink);min-width:150px;font-family:inherit;
+  background:var(--card-2);color:var(--ink);min-width:150px;font-family:inherit;
 }
 /* the agent picker is the primary filter on the bar — agent names are long, so
    it gets more room and heavier type than the neighbouring date select */
 .field select.agentsel{min-width:260px;max-width:360px;font-size:14.5px;font-weight:700}
 .btn{
-  border:1.5px solid var(--line);background:#fff;color:var(--ink);border-radius:8px;
+  border:1.5px solid var(--line);background:var(--card-2);color:var(--ink);border-radius:8px;
   padding:8px 14px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;
 }
-.btn:hover{background:#F7F8FB;border-color:#C4CBD6}
+.btn:hover{background:var(--card-3);border-color:#4A4A4A}
 .btn.primary{background:var(--jt-red);border-color:var(--jt-red);color:#fff}
 .btn.primary:hover{background:var(--jt-red-dark);border-color:var(--jt-red-dark)}
 .spacer{flex:1}
@@ -104,10 +132,10 @@ tbody td .zh{opacity:.85}
 
 /* ---------- Drop zone ---------- */
 .dropzone{
-  border:2px dashed #CBD3E1;border-radius:16px;background:var(--card);
+  border:2px dashed #454545;border-radius:16px;background:var(--card);
   padding:56px 24px;text-align:center;margin-bottom:14px;transition:.15s;
 }
-.dropzone.hot{border-color:var(--jt-red);background:#FFF6F5}
+.dropzone.hot{border-color:var(--jt-red);background:#2A1614}
 .dropzone h2{margin:0 0 6px;font-size:19px}
 .dropzone p{margin:0 auto 16px;color:var(--ink-2);max-width:640px;line-height:1.6}
 .dropzone .lock{margin-top:16px;font-size:11.5px;color:var(--ink-3)}
@@ -135,7 +163,7 @@ tbody td .zh{opacity:.85}
 }
 
 /* ---------- KPI cards ---------- */
-.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:10px}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));gap:11px}
 .kcard{
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
   padding:10px 12px 7px;position:relative;border-top:3px solid transparent;
@@ -143,10 +171,10 @@ tbody td .zh{opacity:.85}
 }
 /* z-index is required: the hover transform creates a stacking context, and without
    it the tooltip would be painted underneath the panels further down the page. */
-.kcard:hover{transform:translateY(-2px);box-shadow:0 3px 8px rgba(16,24,40,.08),0 12px 26px rgba(16,24,40,.10);z-index:50}
+.kcard:hover{transform:translateY(-2px);box-shadow:0 4px 10px rgba(0,0,0,.55),0 14px 30px rgba(0,0,0,.45);z-index:50}
 /* below target — a light tint is enough to find the card; the red value and the
    red top border already say what is wrong, so nothing here pulses or flashes */
-.kcard.st-bad{background:#FFF9F8}
+.kcard.st-bad{background:#2A1715}
 @media (prefers-reduced-motion:reduce){
   .kcard,.tipbox{transition:none;animation:none}
 }
@@ -156,18 +184,18 @@ tbody td .zh{opacity:.85}
 /* min-height keeps every card's value row on the same baseline; it allows for
    a two-line name plus its Mandarin gloss underneath */
 .kcard .kname{
-  font-size:12.5px;font-weight:800;letter-spacing:.2px;color:var(--ink);
-  padding-right:18px;line-height:1.3;min-height:46px;
+  font-size:15px;font-weight:800;letter-spacing:.2px;color:var(--ink);
+  padding-right:20px;line-height:1.28;min-height:56px;
 }
-.kcard .krow{display:flex;align-items:center;gap:9px;margin-top:6px}
-.kcard .kicon{font-size:20px;line-height:1;opacity:.75}
-.kcard .kval{font-size:33px;font-weight:800;letter-spacing:-.7px;line-height:1}
-.kcard .ktgt{font-size:12.5px;font-weight:700;color:var(--ink-2);margin-top:5px}
-.kcard .kmtd{font-size:12px;font-weight:600;color:var(--ink-3);margin-top:3px;min-height:16px}
+.kcard .krow{display:flex;align-items:center;gap:10px;margin-top:8px}
+.kcard .kicon{font-size:23px;line-height:1;opacity:.8}
+.kcard .kval{font-size:40px;font-weight:800;letter-spacing:-1px;line-height:1}
+.kcard .ktgt{font-size:14.5px;font-weight:700;color:var(--ink-2);margin-top:7px}
+.kcard .kmtd{font-size:13.5px;font-weight:700;color:var(--ink-3);margin-top:4px;min-height:18px}
 .kcard .kcmp{
   display:flex;justify-content:space-between;align-items:center;
-  font-size:12.5px;font-weight:600;color:var(--ink-2);
-  border-top:1px solid var(--line);margin-top:9px;padding-top:7px;
+  font-size:14px;font-weight:700;color:var(--ink-2);
+  border-top:1px solid var(--line);margin-top:10px;padding-top:8px;
 }
 .up{color:var(--green);font-weight:800}
 .down{color:var(--jt-red);font-weight:800}
@@ -184,7 +212,7 @@ tbody td .zh{opacity:.85}
    read; uppercasing them in CSS only made eight panels shout at once. */
 .panel > h3{
   margin:0;padding:10px 14px;font-size:15px;font-weight:800;letter-spacing:.1px;
-  background:var(--jt-black);color:#fff;border-bottom:3px solid var(--jt-red);
+  background:var(--card-2);color:#fff;border-bottom:3px solid var(--jt-red);
   border-radius:var(--radius) var(--radius) 0 0;
   display:flex;align-items:center;gap:12px;min-height:40px;
 }
@@ -199,7 +227,7 @@ tbody td .zh{opacity:.85}
 .panel > h3 .hsel:hover{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.45)}
 /* the popup list is rendered by the OS in its own colours — force dark text so
    the options are not white-on-white once the menu opens */
-.panel > h3 .hsel option{color:var(--ink);background:#fff}
+.panel > h3 .hsel option{color:var(--ink);background:var(--card-2)}
 /* re-round the bottom corners now that the panel no longer clips */
 .panel .body table tbody tr:last-child td:first-child{border-bottom-left-radius:var(--radius)}
 .panel .body table tbody tr:last-child td:last-child{border-bottom-right-radius:var(--radius)}
@@ -222,7 +250,7 @@ thead th{
 }
 tbody td{padding:9px 10px;border-bottom:1px solid var(--line)}
 tbody tr:last-child td{border-bottom:none}
-tbody tr:nth-child(even){background:#FAFBFD}
+tbody tr:nth-child(even){background:#242424}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 td.ctr,th.ctr{text-align:center}
 .kpiname{font-weight:500}
@@ -256,7 +284,7 @@ td.ctr,th.ctr{text-align:center}
 .val.poor .strong{color:var(--jt-red)}
 
 .warnbox{
-  background:#FEF4E4;border:1px solid #F3D8A6;color:#8A5A08;
+  background:#33280F;border:1px solid #5C4A1C;color:#FFCE6A;
   border-radius:10px;padding:9px 14px;margin-bottom:12px;font-size:12px;line-height:1.5;
 }
 
@@ -265,14 +293,14 @@ td.ctr,th.ctr{text-align:center}
 span.tip{display:inline-block}
 .tipbox{
   position:absolute;z-index:60;width:238px;
-  background:#1F2430;color:#EDF0F5;border-radius:10px;padding:9px 11px;
+  background:#000;color:#F2F2F2;border:1px solid #4A4A4A;border-radius:10px;padding:10px 12px;
   font-size:11px;line-height:1.55;font-weight:400;text-transform:none;letter-spacing:0;
   text-align:left;white-space:normal;
   box-shadow:0 10px 28px rgba(16,24,40,.26);
   opacity:0;pointer-events:none;
   transition:opacity .16s ease, transform .2s cubic-bezier(.2,.9,.3,1.4);
 }
-.tipbox::after{content:"";position:absolute;width:9px;height:9px;background:#1F2430;transform:rotate(45deg)}
+.tipbox::after{content:"";position:absolute;width:9px;height:9px;background:#000;border:1px solid #4A4A4A;transform:rotate(45deg)}
 
 .tipbox.tip-below{top:calc(100% - 4px);left:14px;transform:translateY(5px) scale(.96);transform-origin:top left}
 .tipbox.tip-below::after{top:-4px;left:16px}
@@ -293,14 +321,14 @@ span.tip{display:inline-block}
 .tipline:first-of-type{color:#fff;font-weight:500}
 
 /* below-target rows */
-tbody tr.st-bad td{background:#FFF7F6}
+tbody tr.st-bad td{background:#2A1614}
 tbody tr.st-bad .kpiname{color:var(--jt-red)}
 
 .muted{color:var(--ink-3)}
 .note{font-size:12.5px;font-weight:500;color:var(--ink-2);margin-top:10px;line-height:1.55}
 .note b{font-weight:800;color:var(--ink)}
 .err{
-  background:var(--red-soft);border:1px solid #F6C6C3;color:#9B1C15;
+  background:var(--red-soft);border:1px solid #6E2620;color:#FF8C82;
   border-radius:10px;padding:11px 14px;margin-bottom:12px;font-size:12.5px;line-height:1.55;
 }
 .empty-mini{color:var(--ink-3);font-size:12px;padding:26px 0;text-align:center}
@@ -323,13 +351,13 @@ tbody tr.st-bad .kpiname{color:var(--jt-red)}
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
   padding:9px 13px;display:flex;flex-direction:column;gap:2px;
 }
-.dpstat{border-left:4px solid var(--jt-black)}
+.dpstat{border-left:4px solid #4A4A4A}
 .dpstat.good{border-left-color:var(--green)}
 .dpstat.warn{border-left-color:#B47607}
 .dpstat.bad {border-left-color:var(--jt-red)}
 .dpstat.mute{border-left-color:#C4CBD6}
-.dpstat .n{font-size:28px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
-.dpstat .l{font-size:12.5px;font-weight:700;color:var(--ink-2);line-height:1.3}
+.dpstat .n{font-size:31px;font-weight:800;letter-spacing:-.5px;line-height:1.1}
+.dpstat .l{font-size:13.5px;font-weight:700;color:var(--ink-2);line-height:1.3}
 .dpstat.good .n{color:var(--green)}
 .dpstat.warn .n{color:#B47607}
 .dpstat.bad  .n{color:var(--jt-red)}
@@ -356,20 +384,20 @@ tbody tr.st-bad .kpiname{color:var(--jt-red)}
 .dptable{margin-top:10px}
 .dpfilters{
   display:flex;flex-wrap:wrap;gap:8px;align-items:center;
-  padding:9px 13px;border-bottom:1px solid var(--line);background:#FBFCFE;
+  padding:9px 13px;border-bottom:1px solid var(--line);background:var(--card-2);
 }
 .dpfilters input[type=text],.dpfilters select{
   border:1.5px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13.5px;font-weight:600;
-  background:#fff;color:var(--ink);font-family:inherit;
+  background:var(--card);color:var(--ink);font-family:inherit;
 }
 .dpfilters input[type=text]{min-width:220px;flex:1;max-width:330px}
 .dpfilters .chk{
   display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;
   color:var(--ink-2);cursor:pointer;
 }
-.dpfilters .seg{display:flex;border:1.5px solid var(--line);border-radius:8px;overflow:hidden;background:#fff}
+.dpfilters .seg{display:flex;border:1.5px solid var(--line);border-radius:8px;overflow:hidden;background:var(--card)}
 .dpfilters .seg button{
-  border:none;background:#fff;color:var(--ink-2);padding:6px 12px;font-size:13px;
+  border:none;background:var(--card);color:var(--ink-2);padding:6px 12px;font-size:13px;
   font-weight:700;cursor:pointer;font-family:inherit;
 }
 .dpfilters .seg button.on{background:var(--jt-red);color:#fff;font-weight:800}
@@ -379,7 +407,7 @@ tbody tr.st-bad .kpiname{color:var(--jt-red)}
    than a scrollbar. The name column is pinned so a row stays identifiable while
    scrolling sideways. */
 .dpscroll{overflow:auto;max-height:680px}
-table.dpgrid{font-size:13px;min-width:100%}
+table.dpgrid{font-size:14px;min-width:100%}
 table.dpgrid thead th{
   position:sticky;z-index:3;cursor:pointer;user-select:none;
   padding:8px 9px;white-space:nowrap;
@@ -398,17 +426,17 @@ table.dpgrid thead tr.secrow th:hover{background:var(--jt-black)}
 /* the two halves are told apart by a red underline vs a white one, not by two
    different fills — the band has to stay black to read as one bar */
 table.dpgrid thead tr.secrow th.secband{border-bottom:3px solid var(--jt-red)}
-table.dpgrid thead tr.secrow th.s-penyelesaian{border-bottom-color:#8A94A6}
+table.dpgrid thead tr.secrow th.s-penyelesaian{border-bottom-color:#6E6E6E}
 /* the seam between the two halves, carried down through the body so a column can
    be traced back to its section without scrolling up to the band */
-table.dpgrid thead th.seam,table.dpgrid tbody td.seam{border-left:2px solid #B9C1CE}
+table.dpgrid thead th.seam,table.dpgrid tbody td.seam{border-left:2px solid #4A4A4A}
 table.dpgrid thead th:not(.secband):hover{background:var(--jt-red-dark)}
 table.dpgrid th.cat{max-width:104px;white-space:normal;line-height:1.25}
 table.dpgrid tbody td{padding:6px 9px;white-space:nowrap}
 table.dpgrid th.sticky,table.dpgrid td.sticky{position:sticky;left:0;z-index:2}
 table.dpgrid thead th.sticky{z-index:4}
-table.dpgrid tbody td.sticky{background:#fff}
-table.dpgrid tbody tr:nth-child(even) td.sticky{background:#FAFBFD}
+table.dpgrid tbody td.sticky{background:var(--card)}
+table.dpgrid tbody tr:nth-child(even) td.sticky{background:#242424}
 .dpname{font-weight:700;display:flex;align-items:center;gap:8px}
 /* Solid fill, because this is the one thing on the row you scan for rather than
    read. A fixed min-width keeps the two tags the same size so the names below
@@ -426,16 +454,16 @@ table.dpgrid tbody tr:nth-child(even) td.sticky{background:#FAFBFD}
 .ptag.agent{background:#1D6FC0}
 .ptag.unknown{background:#98A1B0}
 .sbadge{
-  display:inline-block;font-size:12px;font-weight:700;
+  display:inline-block;font-size:12.5px;font-weight:700;
   border-radius:99px;padding:3px 10px;white-space:nowrap;
 }
 /* green for the two kinds that run a delivery shift and are ranked, amber for
    pickup-only and grey for closed — the same "is this in the ranking?" reading
    the stat cards above the table use */
-.sbadge.both{background:#EDF6F1;color:#2A7A52}
-.sbadge.delivery{background:#EAF2FA;color:#1B5C99}
-.sbadge.pickup{background:#FBF3E4;color:#8A5A08}
-.sbadge.closed{background:#F1F3F7;color:#798394}
+.sbadge.both{background:#15321F;color:#5BE79A}
+.sbadge.delivery{background:#14283B;color:#7CC0FF}
+.sbadge.pickup{background:#33280F;color:#FFCE6A}
+.sbadge.closed{background:#2B2B2B;color:#A5A5A5}
 
 /* Only the misses are tinted. Colouring the passes as well turned the grid into
    a wall of green that took just as long to read as plain numbers — the point
@@ -445,9 +473,9 @@ table.dpgrid tbody tr:nth-child(even) td.sticky{background:#FAFBFD}
    stays comfortable to read. */
 td.hm{font-variant-numeric:tabular-nums;font-weight:600}
 td.hm.ok {color:var(--ink)}
-td.hm.bad{background:#F9D3CF;color:#8E1109;font-weight:800}
-td.hm.off{color:#AAB2C0;font-weight:500}
-tbody tr.k-closed td.sticky{color:#8A94A6}
+td.hm.bad{background:#4A1512;color:#FF8C82;font-weight:800}
+td.hm.off{color:#6E6E6E;font-weight:600}
+tbody tr.k-closed td.sticky{color:#7E7E7E}
 .dpmore{padding:10px 13px;border-top:1px solid var(--line);text-align:center}
 
 /* ---------- PNG snapshot mode ----------
@@ -518,7 +546,30 @@ body.shoot-table .dptable{margin-top:0}
      red table headers and the green/red status colours entirely */
   @page{ size:A4 landscape; margin:8mm }
   *{-webkit-print-color-adjust:exact !important; print-color-adjust:exact !important}
-  html,body{background:#fff}
+
+  /* Back to light on paper. The screen theme is near-black end to end, which on
+     an office laser is a soaked, unreadable page and most of a toner cartridge.
+     Flipping the tokens does almost all of it, because the components read from
+     them; only the handful of surfaces with literal dark values need naming. */
+  :root{
+    --bg:#fff; --card:#fff; --card-2:#F4F6FA; --card-3:#EDF0F5;
+    --ink:#12151A; --ink-2:#4A5462; --ink-3:#6B7480; --line:#DFE3EA;
+    --jt-black:#12151A; --jt-black-2:#2A2F38; --green:#00913F;
+    --c-grid:#EDF0F5; --c-axis:#5A6474; --c-axis-2:#8A94A6; --c-halo:#fff;
+    --c-ok:#00A650; --c-bad:#E2231A; --c-ok-ink:#2A7A52; --c-bad-ink:#B81810;
+  }
+  html,body{background:#fff;color:var(--ink)}
+  tbody tr:nth-child(even),
+  table.dpgrid tbody tr:nth-child(even) td.sticky{background:#FAFBFD !important}
+  table.dpgrid tbody td.sticky{background:#fff !important}
+  td.hm.bad{background:#F9D3CF !important;color:#8E1109 !important}
+  td.hm.off{color:#AAB2C0 !important}
+  tbody tr.st-bad td,.kcard.st-bad{background:#FFF7F6 !important}
+  .sbadge.both{background:#EDF6F1 !important;color:#2A7A52 !important}
+  .sbadge.delivery{background:#EAF2FA !important;color:#1B5C99 !important}
+  .sbadge.pickup{background:#FBF3E4 !important;color:#8A5A08 !important}
+  .sbadge.closed{background:#F1F3F7 !important;color:#798394 !important}
+  .warnbox{background:#FEF4E4 !important;border-color:#F3D8A6 !important;color:#8A5A08 !important}
 
   /* zoom (not transform) so the layout actually reflows to the smaller size */
   .wrap{max-width:none;padding:0;zoom:.62}
