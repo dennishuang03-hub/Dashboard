@@ -29,20 +29,23 @@ import './dashboard.css'
  * from the same origin and parsed client-side; nothing is uploaded anywhere.
  * It is also *public* once deployed — see src/assets/Data/README.md.
  */
-const WORKBOOK_DIRS = ['src/assets/Data/', 'src/assets/', 'src/data/']
-
 /*
- * Deliberately `**` and several roots rather than one exact folder.
+ * Anywhere under `src/`, whatever the folder is called.
  *
- * A single `./assets/Data/*` glob is a trap across two machines: Windows and
- * macOS match `Data`, `data` and `DATA` alike, so a folder named any of them
- * works locally — while Vercel builds on Linux, where only the exact spelling
- * matches. The result is a dashboard that loads at home and shows an upload
- * screen in production, with nothing on screen saying why. Matching the whole
- * subtree costs nothing and removes the class of bug.
+ * This started as the exact path `./assets/Data/*` and has now missed twice for
+ * two different reasons — a folder one level up (`src/Data`), and the fact that
+ * Windows matches `Data`/`data`/`DATA` alike while the Linux build machine does
+ * not. Both failures look identical from the outside: a dashboard that works at
+ * home and shows an upload screen in production.
+ *
+ * The location was never load-bearing. A spreadsheet under `src/` is data for
+ * this dashboard and nothing else — no other code here imports one — so the
+ * honest rule is "find the workbook", not "find the workbook in the one folder
+ * I happened to name". Both cases are listed because the glob matcher compares
+ * names literally even where the filesystem would not.
  */
 const BUNDLED = import.meta.glob(
-  ['./assets/**/*.{xlsx,xlsm,xls,csv,XLSX,XLSM,XLS,CSV}', './data/**/*.{xlsx,xlsm,xls,csv,XLSX,XLSM,XLS,CSV}'],
+  './**/*.{xlsx,xlsm,xls,csv,XLSX,XLSM,XLS,CSV}',
   { query: '?url', import: 'default', eager: true },
 ) as Record<string, string>
 
@@ -275,12 +278,9 @@ export default function Dashboard() {
             Didukung: .xlsx · .xlsm · .xls · .csv
             <br />
             <b>Tidak ada workbook bawaan pada build ini.</b> Agar dashboard langsung terbuka
-            tanpa unggah, taruh file Excel di <b>src/assets/Data/</b> lalu{' '}
-            <b>commit dan push</b> file itu — build hanya melihat file yang ada di repo,
-            bukan yang ada di komputer Anda. Folder yang dicari:{' '}
-            {WORKBOOK_DIRS.map((d, i) => (
-              <span key={d}>{i > 0 ? ' · ' : ''}<code>{d}</code></span>
-            ))}
+            tanpa unggah, taruh file Excel di mana saja di dalam <b>src/</b>{' '}
+            (misalnya <code>src/Data/</code>) lalu <b>commit dan push</b> file itu — build
+            hanya melihat file yang ada di repo, bukan yang ada di komputer Anda.
           </div>
         </div>
       </div>
