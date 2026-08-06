@@ -15,20 +15,21 @@ import './dashboard.css'
 /* ------------------------------------------------------- bundled workbook */
 
 /**
- * The report shipped with the code, so the dashboard opens with data instead of
- * with a file picker. Drop a workbook into `src/data/` and it loads on startup;
- * the Unggah Excel button still overrides it for a one-off look at another file.
+ * The report shipped with the code, so opening the site *is* opening the
+ * dashboard — no picker, no upload. Drop a workbook into `src/assets/Data/` and
+ * it loads on startup; the Unggah Excel button still overrides it for a one-off
+ * look at another file, until the next refresh.
  *
  * `import.meta.glob` rather than a plain `import` precisely because the folder
  * may be empty: a static import of a missing file fails the build, while a glob
- * that matches nothing is `{}` and simply leaves the drop zone showing. That
- * matters — the repo has no workbook committed to it, and a build that only
- * works once someone adds one is a trap.
+ * that matches nothing is `{}` and simply leaves the drop zone showing. A build
+ * that only works once someone adds a file is a trap.
  *
  * Everything still happens in the browser. The file is served as a static asset
  * from the same origin and parsed client-side; nothing is uploaded anywhere.
+ * It is also *public* once deployed — see src/assets/Data/README.md.
  */
-const BUNDLED = import.meta.glob('./data/*.{xlsx,xlsm,xls,csv}', {
+const BUNDLED = import.meta.glob('./assets/Data/*.{xlsx,xlsm,xls,csv}', {
   query: '?url', import: 'default', eager: true,
 }) as Record<string, string>
 
@@ -254,7 +255,7 @@ export default function Dashboard() {
             Didukung: .xlsx · .xlsm · .xls · .csv
             <br />
             Agar tidak perlu mengunggah setiap kali, simpan workbook di{' '}
-            <b>src/data/</b> — file di folder itu dimuat otomatis saat dashboard dibuka.
+            <b>src/assets/Data/</b> — file di folder itu dimuat otomatis saat dashboard dibuka.
           </div>
         </div>
       </div>
