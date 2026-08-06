@@ -207,6 +207,12 @@ tbody td .zh{opacity:.9}
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
   display:flex;flex-direction:column;
   overflow:visible;               /* tooltips must be able to escape the panel */
+  /* A grid item is `min-width:auto` by default, i.e. "never smaller than my
+     content" — which silently overrules any overflow container inside it. The
+     panel grew to its widest chart instead of letting `.body` scroll, and the
+     whole page scrolled sideways with it. This is the fix for that, and it has
+     to live on the item, not the track. */
+  min-width:0;
 }
 /* Sentence case, no tracking. The titles are already written the way they should
    read; uppercasing them in CSS only made eight panels shout at once. */
@@ -540,6 +546,87 @@ body.shoot-table .wrap > *:not(.dpsection){display:none !important}
 body.shoot-table .dpsection > *:not(.dptable){display:none !important}
 body.shoot-table .wrap{width:max-content;max-width:none;padding:0}
 body.shoot-table .dptable{margin-top:0}
+
+/* ---------- Phones ----------
+   Three things were actually wrong, not just tight.
+
+   The page scrolled sideways: 477px of content in a 390px viewport. The causes
+   were a nowrap file chip, the summary tables, and `.sumitem .lab` pinned to
+   150px. Sideways scroll on a dashboard is the worst of it — you lose the right
+   edge of every row and nothing tells you it is there.
+
+   The top bar took a third of the screen: logo plate stretched full height
+   beside a title wrapping to three lines. It stacks now.
+
+   And the charts have a wide viewBox — 1100x300 for the trend — which at 390px
+   renders about 106px tall, a flat unreadable smear. Squashing is worse than
+   scrolling here, so the panel body scrolls and the chart keeps a usable size.
+   That is deliberate: a chart you can pan is readable, a chart scaled to a
+   sixth of its height is not. */
+@media (max-width:640px){
+  .wrap{padding:8px 10px 16px}
+
+  .topbar{flex-direction:column;align-items:stretch;gap:0}
+  .logo{padding:10px 0}
+  .logo .jtlogo{width:118px}
+  .logo img.jtlogo{height:34px;max-width:160px}
+  .titleblock,.topbar .titleblock{padding:10px 12px;text-align:center}
+  .titleblock h1{font-size:17px;line-height:1.25}
+  .titleblock .meta{font-size:12.5px;line-height:1.55}
+
+  /* every control full width or a clean half — the default flex row left
+     orphaned buttons on their own lines */
+  .toolbar{gap:8px;padding:9px 10px}
+  .field{flex:1 1 100%}
+  .field select,.field input[type=text],.field select.agentsel{
+    width:100%;min-width:0;max-width:none;
+  }
+  .toolbar .btn{flex:1 1 calc(50% - 4px)}
+  .toolbar .btn.primary{flex:1 1 100%}
+  .spacer{display:none}
+  .filechip{flex:1 1 100%;white-space:normal;text-align:center;line-height:1.5}
+
+  .sechead{font-size:14.5px;padding:8px 11px;gap:9px}
+  .sechead .secnum{width:23px;height:23px;font-size:13.5px}
+  .sechead .seccount{font-size:11px;padding:2px 8px}
+  .cards{grid-template-columns:1fr;gap:9px}
+
+  .row-mid,.row-bot,.row-dp{grid-template-columns:1fr}
+  .panel > h3{padding:9px 11px;gap:8px;font-size:14px;min-height:0;flex-wrap:wrap}
+  .panel > h3 .ptitle{flex:1 1 100%}
+  .panel > h3 .hsel{flex:1 1 100%;max-width:none}
+  .panel .body{padding:9px 10px;overflow-x:auto}
+  .panel .body > svg{min-width:520px}
+  .panel .body table{min-width:480px}
+  /* the DP list already has its own scroller in .dpscroll; a second one around
+     it would trap the sticky headers between two scroll contexts */
+  .dptable .body{overflow:visible}
+  .dptable .body table{min-width:0}
+
+  .dphead h2{font-size:15.5px}
+  .dpstats{grid-template-columns:1fr 1fr;gap:8px}
+  .dpstat{padding:8px 11px}
+  .dpstat .n{font-size:25px}
+  .dpstat .l{font-size:12px}
+
+  .dpfilters{gap:7px;padding:9px 10px}
+  .dpfilters input[type=text]{flex:1 1 100%;max-width:none;min-width:0}
+  .dpfilters select{flex:1 1 calc(50% - 4px);min-width:0}
+  .dpfilters .chk,.dpfilters .seg{flex:1 1 100%}
+  .dpfilters .seg{justify-content:stretch}
+  .dpfilters .seg button{flex:1}
+  .dpscroll{max-height:70vh}
+  /* The category headings wrap to four or five lines at this width, and every
+     row in the grid inherits that height — a 240px red block before a single
+     figure. The grid already scrolls sideways, so one line each costs nothing
+     and buys back most of the screen. */
+  table.dpgrid th.cat{max-width:none;white-space:nowrap}
+
+  .sumitem .lab{width:auto;min-width:104px;flex:0 1 auto}
+  .dropzone{padding:32px 16px}
+  .dropzone h2{font-size:16.5px}
+  .dropzone p{font-size:13.5px}
+}
 
 @media print{
   /* landscape and colour-accurate: without print-color-adjust Chrome drops the
