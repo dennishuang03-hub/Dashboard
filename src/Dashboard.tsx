@@ -29,11 +29,28 @@ import './dashboard.css'
  * from the same origin and parsed client-side; nothing is uploaded anywhere.
  * It is also *public* once deployed — see src/assets/Data/README.md.
  */
-const BUNDLED = import.meta.glob('./assets/Data/*.{xlsx,xlsm,xls,csv}', {
-  query: '?url', import: 'default', eager: true,
-}) as Record<string, string>
+const WORKBOOK_DIRS = ['src/assets/Data/', 'src/assets/', 'src/data/']
 
-const bundledEntry = Object.entries(BUNDLED).sort(([a], [b]) => a.localeCompare(b))[0] ?? null
+/*
+ * Deliberately `**` and several roots rather than one exact folder.
+ *
+ * A single `./assets/Data/*` glob is a trap across two machines: Windows and
+ * macOS match `Data`, `data` and `DATA` alike, so a folder named any of them
+ * works locally — while Vercel builds on Linux, where only the exact spelling
+ * matches. The result is a dashboard that loads at home and shows an upload
+ * screen in production, with nothing on screen saying why. Matching the whole
+ * subtree costs nothing and removes the class of bug.
+ */
+const BUNDLED = import.meta.glob(
+  ['./assets/**/*.{xlsx,xlsm,xls,csv,XLSX,XLSM,XLS,CSV}', './data/**/*.{xlsx,xlsm,xls,csv,XLSX,XLSM,XLS,CSV}'],
+  { query: '?url', import: 'default', eager: true },
+) as Record<string, string>
+
+/* A case-insensitive filesystem can report one file under two spellings; the
+   same URL twice would otherwise look like two candidate workbooks. */
+const bundledEntry = [...new Map(
+  Object.entries(BUNDLED).map(([path, url]) => [url, [path, url] as [string, string]]),
+).values()].sort(([a], [b]) => a.localeCompare(b))[0] ?? null
 
 /**
  * The brand mark out of `src/assets`, replacing the drawn SVG fallback.
@@ -251,11 +268,19 @@ export default function Dashboard() {
           </p>
           <button className="btn primary" onClick={() => fileRef.current?.click()}>Pilih file…</button>
           {picker}
+          {/* Why the upload screen is showing at all. Without this the failure is
+              silent and indistinguishable from "the feature was never built" —
+              which is exactly how it looked on the first deploy. */}
           <div className="lock">
             Didukung: .xlsx · .xlsm · .xls · .csv
             <br />
-            Agar tidak perlu mengunggah setiap kali, simpan workbook di{' '}
-            <b>src/assets/Data/</b> — file di folder itu dimuat otomatis saat dashboard dibuka.
+            <b>Tidak ada workbook bawaan pada build ini.</b> Agar dashboard langsung terbuka
+            tanpa unggah, taruh file Excel di <b>src/assets/Data/</b> lalu{' '}
+            <b>commit dan push</b> file itu — build hanya melihat file yang ada di repo,
+            bukan yang ada di komputer Anda. Folder yang dicari:{' '}
+            {WORKBOOK_DIRS.map((d, i) => (
+              <span key={d}>{i > 0 ? ' · ' : ''}<code>{d}</code></span>
+            ))}
           </div>
         </div>
       </div>
