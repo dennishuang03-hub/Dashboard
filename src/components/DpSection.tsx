@@ -501,10 +501,21 @@ export default function DpSection({
 
   return (
     <div className="dpsection">
+      {/* Part B of the page. Deliberately the same red plate and the same weight
+          as the "Data Agen" band above it — see `.partband` in dashboard.css.
+          The subtitle spells out the unit of the rows below, because that is the
+          one thing that separates this half from the one before it: everything
+          up there is an agent, everything down here is a single counter. */}
       <div className="dphead">
-        <h2>
-          Performa DP / CP <Zh>网点绩效</Zh> — <b>{scope}<Zh>{allAgents ? '' : agentZh(agentLabel)}</Zh></b>
-        </h2>
+        <span className="partnum">B</span>
+        <span className="dptitles">
+          <h2>
+            Performa DP / CP <Zh>网点绩效</Zh> — <b>{scope}<Zh>{allAgents ? '' : agentZh(agentLabel)}</Zh></b>
+          </h2>
+          <span className="partsub">
+            Rincian per drop point &amp; collection point — satu baris = satu lokasi
+          </span>
+        </span>
         <span className="dpday">
           {dayLabel}
           {wanted && wanted.key !== day.key && (

@@ -397,6 +397,19 @@ export default function Dashboard({
         </div>
       )}
 
+      {/* Opens the first of the page's two reports. Its counterpart is the
+          `.dphead` band inside DpSection — the two are deliberately identical in
+          weight, because they mark the same level of the document. */}
+      <div className="partband">
+        <span className="partnum">A</span>
+        <span className="parttext">
+          <span className="parttitle">Data Agen<Zh>代理区数据</Zh></span>
+          <span className="partsub">
+            Performa tingkat agen — {model.region} · {model.rows.length} agen · {dates.length} hari
+          </span>
+        </span>
+      </div>
+
       {/* -------- KPI cards, one block per section -------- */}
       {(() => {
         const card = (k: Kpi) => {

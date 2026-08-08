@@ -162,6 +162,40 @@ tbody td .zh{opacity:.9}
 .dropzone p{margin:0 auto 16px;color:var(--ink-2);max-width:640px;line-height:1.6}
 .dropzone .lock{margin-top:16px;font-size:11.5px;color:var(--ink-3)}
 
+/* ---------- Part band ----------
+   The page is really two reports stacked on one another: everything above is
+   per *agent*, everything below is per *drop point*. Reading the second as a
+   continuation of the first is the mistake worth designing against, because the
+   two look alike — same red tables, same percentages, same eight categories —
+   and a number that means "one agent's ten cities" sitting next to one that
+   means "one city's hundred counters is a wrong conclusion waiting to happen.
+
+   So each part opens with a solid red band. The KPI sub-sections keep their
+   black bands with red numerals, which now reads one level down rather than as a
+   peer: red band = which report you are in, black band = which half of it. */
+.partband{
+  display:flex;align-items:center;gap:13px;
+  background:var(--jt-red);color:#fff;border-radius:12px;box-shadow:var(--shadow);
+  padding:12px 16px;margin:0 0 12px;
+}
+/* `.dphead` is the same band wearing a different class — it lives in DpSection
+   and carries the DP part's own title, so the shared pieces are named for both
+   rather than duplicated. */
+.partband .partnum,
+.dphead .partnum{
+  display:inline-flex;align-items:center;justify-content:center;flex:none;
+  width:30px;height:30px;border-radius:8px;
+  background:rgba(0,0,0,.30);font-size:15px;font-weight:800;color:#fff;
+}
+.partband .parttext{flex:1;min-width:0}
+.partband .parttitle{display:block;font-size:17px;font-weight:800;letter-spacing:.2px}
+.partband .partsub{
+  display:block;margin-top:2px;font-size:12.5px;font-weight:600;line-height:1.4;
+  color:rgba(255,255,255,.86);
+}
+.partband .zh,
+.dphead .zh{opacity:.92}
+
 /* ---------- Section band ----------
    The eight KPIs split into punctuality and completion/quality. A black bar with
    a red numeral: heavy enough to break the card grid into two readable halves
@@ -361,16 +395,37 @@ tbody tr.st-bad .kpiname{color:var(--jt-red)}
 }
 .empty-mini{color:var(--ink-3);font-size:12px;padding:26px 0;text-align:center}
 
-/* ---------- DP / CP section ---------- */
-.dpsection{margin-top:16px}
-.dphead{
-  display:flex;flex-wrap:wrap;align-items:baseline;gap:6px 14px;
-  padding:0 2px 7px;border-bottom:1px solid var(--line);margin-bottom:12px;
+/* ---------- DP / CP section ----------
+   A hard stop before the second report: a rule the full width of the page and
+   real space either side of it. The band alone announced the new part; the rule
+   is what says the previous one has *ended*, which is the half that was missing
+   when the two sections simply followed each other. */
+.dpsection{
+  margin-top:26px;padding-top:22px;
+  border-top:2px solid var(--line);
 }
-.dphead h2{margin:0;font-size:18px;font-weight:800;letter-spacing:.1px;color:var(--ink)}
-.dphead h2 b{color:var(--jt-red);font-weight:800}
-.dphead .dpday{font-size:13px;font-weight:600;color:var(--ink-3)}
-.dphead .dpday em{font-style:normal;color:#B47607}
+/* The DP part's own band. Same red plate as `.partband` — this heading is not a
+   panel title, it is the opening of the second half of the page, and it should
+   carry the same weight as the one that opened the first. */
+.dphead{
+  display:flex;align-items:center;gap:13px;flex-wrap:nowrap;
+  background:var(--jt-red);color:#fff;border-radius:12px;box-shadow:var(--shadow);
+  padding:12px 16px;margin-bottom:12px;
+}
+.dphead .dptitles{flex:1;min-width:0}
+.dphead h2{
+  margin:0;font-size:17px;font-weight:800;letter-spacing:.2px;color:#fff;
+}
+/* was --jt-red, which is now the background it sits on */
+.dphead h2 b{color:#fff;font-weight:800}
+.dphead .partsub{
+  display:block;margin-top:2px;font-size:12.5px;font-weight:600;line-height:1.4;
+  color:rgba(255,255,255,.86);
+}
+.dphead .dpday{font-size:12.5px;font-weight:600;color:rgba(255,255,255,.86)}
+/* amber on white was the warning colour; on red it needs to be paler than the
+   text around it, not darker */
+.dphead .dpday em{font-style:normal;color:#FFD9A0}
 
 /* The number carries the colour; the card itself stays plain. Five tinted,
    bordered, bold boxes in a row competed with the charts underneath them. */
@@ -976,7 +1031,15 @@ body.shoot-table .dptable{margin-top:0}
   .dptable .body{overflow:visible}
   .dptable .body table{min-width:0}
 
+  /* the day and the notice wrap under the title rather than fighting it for a
+     390px line */
+  .dphead{flex-wrap:wrap;gap:8px 12px;padding:11px 13px}
+  .dphead .dptitles{flex:1 1 100%;order:2}
+  .dphead .partnum{order:1}
+  .dphead .dpday{flex:1 1 100%;order:3}
   .dphead h2{font-size:15.5px}
+  .partband{padding:11px 13px;gap:11px}
+  .partband .parttitle{font-size:15.5px}
   .dpstats{grid-template-columns:1fr 1fr;gap:8px}
   .dpstat{padding:8px 11px}
   .dpstat .n{font-size:25px}
