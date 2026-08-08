@@ -611,17 +611,32 @@ body.shoot-table .dptable{margin-top:0}
   display:flex;flex-direction:column;align-items:center;gap:6px;
 }
 
+/* The card is glass rather than paint: slightly translucent, with the photograph
+   behind it blurred instead of hidden. That is the whole difference between a
+   panel dropped onto a picture and one that belongs to it — the backdrop still
+   reads as depth, but nothing on the card competes with it for legibility.
+   `saturate` compensates for the colour blur washes out.
+
+   The inset hairline along the top is the other half: a single pixel of light
+   where a real raised edge would catch it. It is what stops a dark card on a
+   dark page reading as a flat rectangle. */
 .logincard{
   width:100%;
-  background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  background:var(--card);
+  border-radius:16px;
+  box-shadow:var(--shadow);
   overflow:hidden;border-bottom:3px solid var(--jt-red);
 }
-/* Over a photograph the card needs an edge of its own — without one it reads as
-   a lighter patch of the picture rather than as a panel sitting on it. */
 .loginpage.has-bg .logincard{
-  border:1px solid rgba(255,255,255,.10);
+  background:rgba(28,28,28,.90);
+  backdrop-filter:blur(16px) saturate(125%);
+  -webkit-backdrop-filter:blur(16px) saturate(125%);
+  border:1px solid rgba(255,255,255,.09);
   border-bottom:3px solid var(--jt-red);
-  box-shadow:0 12px 40px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.4);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.07),
+    0 24px 64px rgba(0,0,0,.58),
+    0 4px 14px rgba(0,0,0,.42);
 }
 /* The brand band.
 
@@ -707,14 +722,19 @@ body.shoot-table .dptable{margin-top:0}
     drop-shadow(0 8px 14px rgba(0,0,0,.6));
 }
 
-.loginbody{padding:22px 22px 20px}
+/* More room than the content strictly needs. Generous margins are most of what
+   separates something that feels considered from something that feels packed. */
+.loginbody{padding:28px 28px 24px}
 
 /* Title and strapline are centred; the fields below stay left-aligned, because
    a centred label floating above a full-width input has nothing to line up with
    and reads as a mistake. Centring the heading block alone is the arrangement
    almost every sign-in screen uses, and it is the one that looks deliberate. */
 .loginbody h1{
-  margin:0 0 6px;font-size:17px;line-height:1.3;font-weight:800;letter-spacing:.2px;
+  margin:0 0 7px;font-size:17.5px;line-height:1.32;font-weight:800;
+  /* a touch tighter: at this weight the default tracking reads as loose, and
+     headings are the one place where closing it up looks deliberate */
+  letter-spacing:-.15px;
   text-align:center;
 }
 /* The gloss takes its own line here. Beside the Indonesian it would push the
@@ -723,23 +743,51 @@ body.shoot-table .dptable{margin-top:0}
 .loginbody h1 .zh{
   display:block;margin-left:0;margin-top:5px;white-space:normal;font-size:.9em;
 }
+/* A hairline under the heading block. It does no work except to say that the
+   title and the form are two different things, which is the sort of quiet
+   structure that separates a considered layout from a stack of elements. */
 .loginsub{
-  margin:0 0 18px;font-size:13px;font-weight:600;color:var(--ink-2);line-height:1.55;
+  margin:0 0 20px;padding-bottom:18px;
+  font-size:13px;font-weight:600;color:var(--ink-2);line-height:1.55;
   text-align:center;
+  border-bottom:1px solid rgba(255,255,255,.07);
 }
 
-.loginfield{display:flex;flex-direction:column;gap:5px;margin-bottom:13px}
-.loginfield > span{font-size:11.5px;font-weight:700;color:var(--ink-3);letter-spacing:.2px}
-.loginfield input{
-  border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;
-  font-size:15px;font-weight:600;font-family:inherit;
-  background:var(--card-2);color:var(--ink);width:100%;
+.loginfield{display:flex;flex-direction:column;gap:7px;margin-bottom:15px}
+/* Wider tracking at a smaller size reads as considered rather than shouted —
+   the standard trade for a label that sits above the thing it names. */
+.loginfield > span{
+  font-size:11px;font-weight:700;color:var(--ink-3);
+  letter-spacing:.7px;text-transform:uppercase;
 }
+.loginfield input{
+  border:1.5px solid rgba(255,255,255,.10);border-radius:10px;padding:12px 14px;
+  font-size:15px;font-weight:600;font-family:inherit;
+  background:rgba(255,255,255,.045);color:var(--ink);width:100%;
+  transition:border-color .18s ease, box-shadow .18s ease, background-color .18s ease;
+}
+.loginfield input:hover:not(:disabled):not(:focus){border-color:rgba(255,255,255,.18)}
 .loginfield input:focus{
   outline:none;border-color:var(--jt-red-lit);
-  box-shadow:0 0 0 3px rgba(226,35,26,.22);
+  background:rgba(255,255,255,.06);
+  box-shadow:0 0 0 3px rgba(226,35,26,.20);
 }
 .loginfield input:disabled{opacity:.6}
+
+/* Chrome paints autofilled fields pale blue and there is no property that turns
+   it off — the only lever is an inset box-shadow thick enough to cover the cell,
+   because the browser's own background sits underneath it. Without this the
+   moment a password manager fills the form the two fields turn white and the
+   dark theme falls apart, which is exactly when the page is being looked at. */
+.loginfield input:-webkit-autofill,
+.loginfield input:-webkit-autofill:hover,
+.loginfield input:-webkit-autofill:focus{
+  -webkit-text-fill-color:var(--ink);
+  -webkit-box-shadow:0 0 0 1000px #262626 inset;
+  caret-color:var(--ink);
+  /* the browser cross-fades to its own colour; outlasting it keeps ours */
+  transition:background-color 9999s ease-out 0s;
+}
 
 /* Password reveal.
 
@@ -755,10 +803,11 @@ body.shoot-table .dptable{margin-top:0}
   /* 34px square: comfortably past the 24px minimum for a touch target, without
      crowding a 44px-tall field */
   width:34px;height:34px;padding:0;
-  background:transparent;border:0;border-radius:7px;
+  background:transparent;border:0;border-radius:8px;
   color:var(--ink-3);cursor:pointer;
+  transition:color .16s ease, background-color .16s ease;
 }
-.pweye:hover:not(:disabled){color:var(--ink);background:var(--card-3)}
+.pweye:hover:not(:disabled){color:var(--ink);background:rgba(255,255,255,.08)}
 .pweye:focus-visible{
   outline:none;color:var(--ink);
   box-shadow:0 0 0 2px var(--jt-red-lit);
@@ -767,23 +816,52 @@ body.shoot-table .dptable{margin-top:0}
 .pweye[aria-pressed="true"]{color:var(--jt-red-lit)}
 .pweye:disabled{opacity:.45;cursor:default}
 
+/* Softer than it was: a full red border around a red panel shouts, and a login
+   that has already refused you does not need to raise its voice. The weight now
+   sits in a single bar down the leading edge. */
 .loginerr{
-  background:var(--red-soft);border:1.5px solid var(--jt-red);border-radius:8px;
+  background:rgba(226,35,26,.11);
+  border:1px solid rgba(226,35,26,.34);
+  border-left:3px solid var(--jt-red);
+  border-radius:10px;
   color:#FFB3AD;font-size:13px;font-weight:600;line-height:1.5;
-  padding:9px 11px;margin:2px 0 13px;
+  padding:10px 12px;margin:2px 0 15px;
 }
 
+/* A single shallow gradient, a lit top edge and a coloured shadow of its own.
+   None of it is decoration: together they say the button is a raised, pressable
+   object, which a flat red rectangle at this size does not. The red glow is what
+   makes it read as the one thing on the page to act on. */
 .loginbtn{
-  width:100%;border:1.5px solid var(--jt-red);background:var(--jt-red);color:#fff;
-  border-radius:8px;padding:11px 14px;font-size:15px;font-weight:800;
-  font-family:inherit;cursor:pointer;letter-spacing:.3px;
+  width:100%;border:1px solid #C81C13;color:#fff;
+  background:linear-gradient(180deg, #EE2E24 0%, var(--jt-red) 52%, #CC1D14 100%);
+  border-radius:10px;padding:13px 14px;font-size:15px;font-weight:800;
+  font-family:inherit;cursor:pointer;letter-spacing:.4px;
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.22),
+    0 6px 18px rgba(226,35,26,.26);
+  transition:filter .18s ease, box-shadow .18s ease, transform .1s ease;
 }
-.loginbtn:hover:not(:disabled){background:var(--jt-red-dark);border-color:var(--jt-red-dark)}
-.loginbtn:disabled{opacity:.55;cursor:default}
+.loginbtn:hover:not(:disabled){
+  filter:brightness(1.07);
+  box-shadow:
+    inset 0 1px 0 rgba(255,255,255,.26),
+    0 9px 24px rgba(226,35,26,.34);
+}
+/* travels a pixel under the finger, then the shadow collapses with it */
+.loginbtn:active:not(:disabled){
+  transform:translateY(1px);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18), 0 3px 10px rgba(226,35,26,.22);
+}
+.loginbtn:focus-visible{outline:none;box-shadow:0 0 0 3px rgba(255,68,56,.45)}
+.loginbtn:disabled{opacity:.5;cursor:default;box-shadow:none;filter:saturate(.7)}
 
 .loginnote{
-  margin:14px 0 0;font-size:11.5px;font-weight:600;color:var(--ink-3);line-height:1.55;
-  text-align:center;
+  margin:18px 0 0;font-size:11.5px;font-weight:600;color:var(--ink-3);line-height:1.6;
+  text-align:center;letter-spacing:.1px;
+  /* held narrower than the card so it breaks into two even lines rather than one
+     long line and one orphaned word */
+  max-width:300px;margin-inline:auto;
 }
 
 /* The signed-in identity chip in the top bar, beside the sign-out button. */
