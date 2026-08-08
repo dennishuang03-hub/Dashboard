@@ -36,6 +36,16 @@ const scrypt = (password, salt, keylen, opts) =>
 
 const MIN_LEN = 12
 
+/**
+ * Whether we can actually hide what is typed.
+ *
+ * Echo suppression needs a real terminal. Git Bash / MinTTY on Windows pipes
+ * stdin instead of attaching a TTY, and there the mute silently does nothing —
+ * the password would be typed in clear view and left sitting in the scrollback.
+ * Better to say so and stop than to promise a privacy this cannot deliver.
+ */
+const canHide = process.stdin.isTTY === true
+
 /** Ask for a line with the echo suppressed, so shoulder-surfing gets nothing. */
 function askHidden(prompt) {
   return new Promise((resolve) => {
@@ -95,6 +105,12 @@ if (args.includes('--generate')) {
   password = suggest()
   console.log('  Kata sandi baru (simpan di password manager sekarang — hanya ditampilkan sekali):\n')
   console.log(`      ${password}\n`)
+} else if (!canHide) {
+  console.error('  ✗ Terminal ini tidak dapat menyembunyikan ketikan Anda.')
+  console.error('    (Git Bash / MinTTY tidak menyediakan TTY untuk Node.)\n')
+  console.error('    Gunakan PowerShell atau Command Prompt, atau jalankan:')
+  console.error('        npm run secrets -- --generate\n')
+  process.exit(1)
 } else {
   password = await askHidden('  Kata sandi (tidak ditampilkan): ')
   const again = await askHidden('  Ulangi kata sandi          : ')

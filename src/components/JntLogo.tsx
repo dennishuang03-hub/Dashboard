@@ -6,37 +6,30 @@
  * would be the kind of small inconsistency that makes an internal tool look
  * improvised.
  */
+import { LOGO_DEFAULT, LOGO_WHITE } from '../lib/assets'
 
-/**
- * The supplied logo file, when there is one.
- *
- * Globbed rather than imported for the same reason the workbook once was: the
- * repo does not carry the image, and a static `import` of a missing file fails
- * the build, so anyone cloning this before adding the artwork would get nothing
- * to run. Anything with "logo" in the name matches — `hero.png`, `react.svg` and
- * `vite.svg` share the folder and must not be mistaken for it.
- */
-const LOGOS = import.meta.glob('../assets/*.{png,jpg,jpeg,svg,webp}', {
-  query: '?url', import: 'default', eager: true,
-}) as Record<string, string>
+export default function JntLogo({
+  className = 'jtlogo',
+  variant = 'default',
+}: {
+  className?: string
+  /**
+   * `white` asks for the white-lettered file by name. The default resolution
+   * usually lands on it anyway, but "usually" is not something the login screen
+   * should depend on: it sits on a red plate over a photograph, and a dark
+   * wordmark there would be unreadable rather than merely off-brand.
+   */
+  variant?: 'default' | 'white'
+}) {
+  const src = variant === 'white' ? LOGO_WHITE : LOGO_DEFAULT
+  if (src) return <img className={className} src={src} alt="J&T Express" />
 
-const logoUrl: string | null = (() => {
-  const named = Object.entries(LOGOS).filter(([p]) => /logo/i.test(p))
-  if (!named.length) return null
-  // an exact JT-Express-Logo.* beats any other file that merely says "logo"
-  const exact = named.find(([p]) => /jt[-_ ]?express[-_ ]?logo/i.test(p))
-  return (exact ?? named.sort(([a], [b]) => a.localeCompare(b))[0])[1]
-})()
-
-/**
- * The drawn fallback is a wordmark, not the real logo — close enough to read as
- * J&T at a glance, honest enough not to be mistaken for the licensed artwork.
- * The viewBox is cropped tight to the letters so the red plate has no dead
- * margin around it.
- */
-export default function JntLogo({ className = 'jtlogo' }: { className?: string }) {
-  if (logoUrl) return <img className={className} src={logoUrl} alt="J&T Express" />
-
+  /**
+   * The drawn fallback, for a checkout that does not have the artwork yet — a
+   * wordmark close enough to read as J&T at a glance, and honest enough not to
+   * be mistaken for the licensed logo. The viewBox is cropped tight to the
+   * letters so the red plate has no dead margin around it.
+   */
   const FONT = "'Arial Black','Arial Bold','Helvetica Neue',Arial,sans-serif"
   return (
     <svg className={className} viewBox="0 0 262 58" role="img" aria-label="J&T Express">

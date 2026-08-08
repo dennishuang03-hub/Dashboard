@@ -561,14 +561,42 @@ body.shoot-table .dptable{margin-top:0}
   min-height:100vh;min-height:100dvh;
   display:flex;align-items:center;justify-content:center;
   padding:24px 16px;
-  /* a very slight lift behind the card, so it does not float on flat black */
+  /* a very slight lift behind the card, so it does not float on flat black.
+     This is also the fallback when src/assets carries no backdrop image. */
   background:
     radial-gradient(120% 90% at 50% 0%, #1E1616 0%, var(--bg) 62%);
 }
+
+/* With a photograph behind it, `--login-bg` is set on the element by Login.tsx.
+   The gradient on top is not decoration: a login form over an unmodified photo
+   is legible or not depending on what the photo happens to contain, and that is
+   not a thing to leave to chance. Darkening to ~82% keeps the image readable as
+   an image while guaranteeing white text on top of it stays white text. */
+.loginpage.has-bg{
+  /* named explicitly, so a picture that fails to load leaves the dark theme
+     rather than a transparent page showing whatever is underneath */
+  background-color:var(--bg);
+  background-image:
+    linear-gradient(180deg, rgba(10,10,10,.74) 0%, rgba(10,10,10,.88) 100%),
+    var(--login-bg);
+  background-size:cover;
+  background-position:center;
+  background-repeat:no-repeat;
+  /* the photo stays put while a short form scrolls on a small screen */
+  background-attachment:fixed;
+}
+
 .logincard{
   width:100%;max-width:420px;
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
   overflow:hidden;border-bottom:3px solid var(--jt-red);
+}
+/* Over a photograph the card needs an edge of its own — without one it reads as
+   a lighter patch of the picture rather than as a panel sitting on it. */
+.loginpage.has-bg .logincard{
+  border:1px solid rgba(255,255,255,.10);
+  border-bottom:3px solid var(--jt-red);
+  box-shadow:0 12px 40px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.4);
 }
 .loginbrand{
   background:var(--jt-red);display:flex;align-items:center;justify-content:center;
@@ -578,10 +606,25 @@ body.shoot-table .dptable{margin-top:0}
 .loginbrand img.jtlogo{width:auto;height:44px;max-width:220px;object-fit:contain}
 
 .loginbody{padding:22px 22px 20px}
+
+/* Title and strapline are centred; the fields below stay left-aligned, because
+   a centred label floating above a full-width input has nothing to line up with
+   and reads as a mistake. Centring the heading block alone is the arrangement
+   almost every sign-in screen uses, and it is the one that looks deliberate. */
 .loginbody h1{
   margin:0 0 6px;font-size:17px;line-height:1.3;font-weight:800;letter-spacing:.2px;
+  text-align:center;
 }
-.loginsub{margin:0 0 18px;font-size:13px;font-weight:600;color:var(--ink-2);line-height:1.55}
+/* The gloss takes its own line here. Beside the Indonesian it would push the
+   heading to two ragged lines at this width — and `.zh` is `nowrap` by default,
+   which on a 420px card would have forced a sideways scroll. */
+.loginbody h1 .zh{
+  display:block;margin-left:0;margin-top:5px;white-space:normal;font-size:.9em;
+}
+.loginsub{
+  margin:0 0 18px;font-size:13px;font-weight:600;color:var(--ink-2);line-height:1.55;
+  text-align:center;
+}
 
 .loginfield{display:flex;flex-direction:column;gap:5px;margin-bottom:13px}
 .loginfield > span{font-size:11.5px;font-weight:700;color:var(--ink-3);letter-spacing:.2px}
@@ -610,7 +653,10 @@ body.shoot-table .dptable{margin-top:0}
 .loginbtn:hover:not(:disabled){background:var(--jt-red-dark);border-color:var(--jt-red-dark)}
 .loginbtn:disabled{opacity:.55;cursor:default}
 
-.loginnote{margin:14px 0 0;font-size:11.5px;font-weight:600;color:var(--ink-3);line-height:1.55}
+.loginnote{
+  margin:14px 0 0;font-size:11.5px;font-weight:600;color:var(--ink-3);line-height:1.55;
+  text-align:center;
+}
 
 /* The signed-in identity chip in the top bar, beside the sign-out button. */
 .userchip{
@@ -709,7 +755,19 @@ body.shoot-table .dptable{margin-top:0}
   /* The card stops trying to be a card and takes the screen. On a 390px phone a
      centred 420px box with margins is just a cramped form with wasted edges. */
   .loginpage{padding:0;align-items:stretch}
+  /* `fixed` is the one background-attachment iOS Safari has never handled: it
+     scales the image to the *document* rather than the viewport, which on a
+     phone means a blown-up, blurry crop that judders as the keyboard opens. */
+  .loginpage.has-bg{background-attachment:scroll}
   .logincard{max-width:none;border-radius:0;box-shadow:none;display:flex;flex-direction:column}
+  /* Full-bleed, so the outline that separated the card from the photo on a
+     desktop has nothing left to separate — and transparent, because a full-screen
+     opaque card would cover the backdrop completely and the phone would be the
+     one place the picture never appears. The page's own overlay already carries
+     the contrast the text needs, so nothing becomes harder to read. */
+  .loginpage.has-bg .logincard{
+    border:0;border-bottom:0;box-shadow:none;background:transparent;
+  }
   .loginbrand{padding:26px 18px}
   .loginbrand .jtlogo{width:150px}
   .loginbody{flex:1;padding:20px 16px 24px}

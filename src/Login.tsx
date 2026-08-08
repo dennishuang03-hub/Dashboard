@@ -18,8 +18,21 @@ import { useEffect, useRef, useState } from 'react'
 import type { FormEvent } from 'react'
 import JntLogo from './components/JntLogo'
 import Zh from './components/Zh'
+import { LOGIN_BG } from './lib/assets'
+import type { CSSProperties } from 'react'
 import type { Identity } from './lib/session'
 import './dashboard.css'
+
+/**
+ * The backdrop is handed to CSS as a custom property rather than set as an
+ * inline `background-image`, so the stylesheet keeps ownership of the dark
+ * overlay laid over it. A photograph straight behind a form is unreadable at
+ * some point in the day — the overlay is what guarantees the card and its labels
+ * stay legible whatever the image turns out to be.
+ */
+const bgStyle: CSSProperties | undefined = LOGIN_BG
+  ? ({ '--login-bg': `url("${LOGIN_BG}")` } as CSSProperties)
+  : undefined
 
 export default function Login({ onSignedIn }: { onSignedIn: (who: Identity) => void }) {
   const [username, setUsername] = useState('')
@@ -71,10 +84,10 @@ export default function Login({ onSignedIn }: { onSignedIn: (who: Identity) => v
   }
 
   return (
-    <div className="loginpage">
+    <div className={`loginpage${LOGIN_BG ? ' has-bg' : ''}`} style={bgStyle}>
       <form className="logincard" onSubmit={submit} noValidate>
         <div className="loginbrand">
-          <JntLogo className="jtlogo" />
+          <JntLogo className="jtlogo" variant="white" />
         </div>
 
         <div className="loginbody">
