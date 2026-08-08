@@ -613,7 +613,11 @@ export default function Dashboard({
 function TopBar({ meta, right }: { meta: ReactNode; right?: ReactNode }) {
   return (
     <div className="topbar">
-      <div className="logo"><JntLogo /></div>
+      {/* `plain` by name, not by luck: src/assets holds two J&T files and the
+          other one has a red field baked in. The plate is dropped to match (see
+          `.logo.plain`) — red lettering on a red plate is invisible, so the
+          artwork and the surface behind it are one decision, not two. */}
+      <div className="logo plain"><JntLogo variant="plain" /></div>
       <div className="titleblock">
         <h1>DASHBOARD PERFORMA AGEN HARIAN <Zh>每日代理区绩效看板</Zh></h1>
         <div className="meta">{meta}</div>

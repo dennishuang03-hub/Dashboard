@@ -6,7 +6,7 @@
  * would be the kind of small inconsistency that makes an internal tool look
  * improvised.
  */
-import { LOGO_DEFAULT, LOGO_WHITE } from '../lib/assets'
+import { LOGO_DEFAULT, LOGO_PLAIN, LOGO_WHITE } from '../lib/assets'
 
 export default function JntLogo({
   className = 'jtlogo',
@@ -14,14 +14,21 @@ export default function JntLogo({
 }: {
   className?: string
   /**
-   * `white` asks for the white-lettered file by name. The default resolution
-   * usually lands on it anyway, but "usually" is not something the login screen
-   * should depend on: it sits on a red plate over a photograph, and a dark
-   * wordmark there would be unreadable rather than merely off-brand.
+   * Which artwork, asked for by name rather than left to filename sort order.
+   *
+   *   plain    red lettering on nothing — the surface behind shows through
+   *   white    white lettering on a solid red field baked into the file
+   *   default  whatever the folder offers, plain first
+   *
+   * The two supplied files are a matched pair for opposite backgrounds, so
+   * picking the wrong one is not a shade-off-brand problem: `white` on a dark
+   * page is a red tile, and `plain` on a red plate is invisible.
    */
-  variant?: 'default' | 'white'
+  variant?: 'default' | 'white' | 'plain'
 }) {
-  const src = variant === 'white' ? LOGO_WHITE : LOGO_DEFAULT
+  const src = variant === 'white' ? LOGO_WHITE
+    : variant === 'plain' ? LOGO_PLAIN
+    : LOGO_DEFAULT
   if (src) return <img className={className} src={src} alt="J&T Express" />
 
   /**

@@ -87,13 +87,30 @@ tbody td .zh{opacity:.9}
   display:flex;align-items:center;justify-content:center;padding:0 18px;
 }
 .logo .jtlogo{display:block;width:146px;height:auto}
-/* A supplied PNG is whatever shape it is, so it is fitted by height and allowed
-   to size its own width — `width:146px` would squash a square mark. The red
-   plate is dropped for an image file: a supplied logo usually carries its own
-   background or its own colour, and forcing it onto red is how you get a red
-   box inside a red box. */
-.logo:has(img.jtlogo){background:var(--jt-black);padding:0 16px}
-.logo img.jtlogo{width:auto;max-width:190px;height:44px;object-fit:contain}
+/* A supplied PNG carries its own background — the J&T artwork is a 16:9 picture
+   with a solid red field and the wordmark across the middle 40% of it, not a
+   transparent mark. Fitted inside the plate with `contain`, as it was, the
+   wordmark rendered about 17px tall because most of what was being scaled was
+   empty margin, and the picture's red (near #FF0000) sat visibly apart from
+   --jt-red (#E2231A).
+
+   So the image fills the plate edge to edge and is cropped rather than shrunk:
+   the dead bands above and below go, the wordmark gets the whole height, and
+   because no plate is left showing there is no second red to clash with. Same
+   reasoning as `.loginbrand` — see the note there. */
+.logo:has(img.jtlogo){background:var(--jt-red);padding:0;overflow:hidden}
+.logo img.jtlogo{
+  display:block;width:196px;max-width:none;
+  height:100%;min-height:64px;
+  object-fit:cover;object-position:center;
+}
+
+/* Backgroundless mark: the plate goes, and the wordmark sits straight on the
+   bar's own black. Red lettering on a red plate would be invisible, so the two
+   choices travel together — see `variant` in components/JntLogo.tsx. */
+.logo.plain,
+.logo.plain:has(img.jtlogo){background:transparent;padding:0 16px}
+.logo.plain img.jtlogo{width:186px;height:60px;min-height:0}
 .titleblock{flex:1;padding:11px 0;text-align:center}
 .titleblock h1{margin:0;font-size:23px;font-weight:800;letter-spacing:.2px;color:#fff}
 .titleblock .meta{margin-top:4px;color:#B7C0CC;font-size:13.5px;font-weight:500}
@@ -586,8 +603,16 @@ body.shoot-table .dptable{margin-top:0}
   background-attachment:fixed;
 }
 
-.logincard{
+/* Brand above, form below. One column so the two stay centred on each other at
+   every width, and so the mark can carry a raised edge that would otherwise be
+   clipped by the card's own `overflow:hidden`. */
+.loginstack{
   width:100%;max-width:420px;
+  display:flex;flex-direction:column;align-items:center;gap:6px;
+}
+
+.logincard{
+  width:100%;
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
   overflow:hidden;border-bottom:3px solid var(--jt-red);
 }
@@ -598,12 +623,89 @@ body.shoot-table .dptable{margin-top:0}
   border-bottom:3px solid var(--jt-red);
   box-shadow:0 12px 40px rgba(0,0,0,.55), 0 2px 8px rgba(0,0,0,.4);
 }
+/* The brand band.
+
+   The supplied artwork is not a transparent logo — it is a 16:9 picture with a
+   solid red background and the wordmark occupying the middle ~40% of it. Fitted
+   inside a red plate by height, as it first was, two things went wrong at once:
+   the picture's red (near #FF0000) does not match --jt-red (#E2231A), so it read
+   as a dull rectangle sitting on a brighter one, and the wordmark itself came
+   out tiny because most of what was being scaled was empty margin.
+
+   Both problems have the same answer. The image goes edge to edge and *becomes*
+   the band, so no plate red is left showing to clash with, and it is cropped
+   vertically rather than scaled down, so the empty red above and below is thrown
+   away instead of eating the height. The wordmark then fills the band.
+
+   The plate colour stays as a fallback for the drawn SVG mark, and for the
+   moment before a large PNG has decoded. */
 .loginbrand{
-  background:var(--jt-red);display:flex;align-items:center;justify-content:center;
-  padding:22px 18px;
+  background:var(--jt-red);
+  display:flex;align-items:center;justify-content:center;
+  padding:0;overflow:hidden;
 }
-.loginbrand .jtlogo{display:block;width:168px;height:auto}
-.loginbrand img.jtlogo{width:auto;height:44px;max-width:220px;object-fit:contain}
+/* the drawn fallback has no baked-in background, so it keeps its breathing room */
+.loginbrand .jtlogo{display:block;width:190px;height:auto;margin:20px 18px}
+/* `cover` crops the dead bands top and bottom; the wordmark is centred in the
+   source, so a centred crop keeps all of it with room to spare. A future logo
+   file that is tightly cropped would simply fill the band, which is also right. */
+.loginbrand img.jtlogo{
+  display:block;width:100%;height:112px;margin:0;
+  object-fit:cover;object-position:center;
+}
+
+/* The backgroundless mark, raised off the page.
+
+   No plate at all — the lettering sits on the page itself, which is only
+   possible because this artwork carries no field of its own. The crop still
+   applies: the file is a 16:9 canvas with the wordmark across the middle, and
+   `cover` throws away the empty top and bottom so the lettering gets the height
+   instead of the margin. Empty here is transparent rather than red, so cropping
+   it costs nothing and simply stops the mark being scaled into a stamp.
+
+   `overflow` must stay visible: the raised edge below is drawn outside the
+   image's own box, and the `hidden` inherited from `.loginbrand` would shear it
+   off flush with the letters. */
+/* Wider than the card underneath it, and deliberately so.
+
+   The wordmark is about 4.4:1 — at 160px tall it simply *is* ~700px wide, and no
+   amount of cropping changes that. Held to the card's 420px the lettering could
+   only reach about 90px, and the rest of a 160px box would be transparent air,
+   which is the opposite of what asking for a bigger logo means. Letting the mark
+   break past the card's width buys real height: at 560px the lettering stands
+   ~120px tall inside the 160px box.
+
+   `min()` against the viewport so a phone shrinks it rather than scrolling
+   sideways. */
+.loginbrand.plain{
+  background:transparent;padding:0;overflow:visible;
+  width:min(560px, 92vw);
+}
+
+/* The extruded edge.
+
+   `drop-shadow` follows the alpha channel rather than the element box, so on a
+   cut-out PNG it traces the letterforms themselves — which is the whole reason
+   this reads as depth and a `box-shadow` would only have drawn a rectangle.
+
+   Each filter in the list operates on the result of the one before it, so four
+   hard shadows stepped one pixel apart build a continuous extruded wall rather
+   than four separate copies. They darken as they descend, the way a real face
+   turns away from the light, and the last one is soft and black — that is the
+   shadow the whole mark casts onto the page, and it is what stops the extrusion
+   looking like a sticker.
+
+   Kept to four steps deliberately: past that the wall reads as a smear at this
+   size, and each pass costs a full-image filter. */
+.loginbrand.plain img.jtlogo{
+  width:100%;max-width:350px;height:140px;margin:0 auto;
+  object-fit:cover;object-position:center;
+  filter:
+    drop-shadow(0 1px 0 #C41A11)
+    drop-shadow(0 1px 0 #A5150E)
+    drop-shadow(0 1px 0 #85110B)
+    drop-shadow(0 8px 14px rgba(0,0,0,.6));
+}
 
 .loginbody{padding:22px 22px 20px}
 
@@ -638,6 +740,32 @@ body.shoot-table .dptable{margin-top:0}
   box-shadow:0 0 0 3px rgba(226,35,26,.22);
 }
 .loginfield input:disabled{opacity:.6}
+
+/* Password reveal.
+
+   The button sits inside the field's box rather than beside it, so the two
+   inputs stay the same width and the form keeps one clean left edge. The input
+   gets right padding equal to the button's footprint so a long password scrolls
+   under the label, never behind the icon. */
+.loginfield .pwwrap{position:relative;display:block}
+.loginfield .pwwrap input{padding-right:46px}
+.pweye{
+  position:absolute;right:5px;top:50%;transform:translateY(-50%);
+  display:flex;align-items:center;justify-content:center;
+  /* 34px square: comfortably past the 24px minimum for a touch target, without
+     crowding a 44px-tall field */
+  width:34px;height:34px;padding:0;
+  background:transparent;border:0;border-radius:7px;
+  color:var(--ink-3);cursor:pointer;
+}
+.pweye:hover:not(:disabled){color:var(--ink);background:var(--card-3)}
+.pweye:focus-visible{
+  outline:none;color:var(--ink);
+  box-shadow:0 0 0 2px var(--jt-red-lit);
+}
+/* revealed is a state worth seeing at a glance, not just an icon swap */
+.pweye[aria-pressed="true"]{color:var(--jt-red-lit)}
+.pweye:disabled{opacity:.45;cursor:default}
 
 .loginerr{
   background:var(--red-soft);border:1.5px solid var(--jt-red);border-radius:8px;
@@ -694,7 +822,9 @@ body.shoot-table .dptable{margin-top:0}
   .topbar{flex-direction:column;align-items:stretch;gap:0}
   .logo{padding:10px 0}
   .logo .jtlogo{width:118px}
-  .logo img.jtlogo{height:34px;max-width:160px}
+  /* stacked, so the plate is a full-width band like the login screen's */
+  .logo:has(img.jtlogo){padding:0}
+  .logo img.jtlogo{width:100%;height:72px;min-height:0}
   .titleblock,.topbar .titleblock{padding:10px 12px;text-align:center}
   .titleblock h1{font-size:17px;line-height:1.25}
   .titleblock .meta{font-size:12.5px;line-height:1.55}
@@ -752,24 +882,32 @@ body.shoot-table .dptable{margin-top:0}
   .dropzone h2{font-size:16.5px}
   .dropzone p{font-size:13.5px}
 
-  /* The card stops trying to be a card and takes the screen. On a 390px phone a
-     centred 420px box with margins is just a cramped form with wasted edges. */
-  .loginpage{padding:0;align-items:stretch}
+  /* The card keeps its shape on a phone now that the mark sits above it. A
+     full-bleed card would put the lettering on bare background with the form
+     welded to the screen edges, and the two would stop reading as one object. */
+  .loginpage{padding:18px 14px 24px}
   /* `fixed` is the one background-attachment iOS Safari has never handled: it
      scales the image to the *document* rather than the viewport, which on a
      phone means a blown-up, blurry crop that judders as the keyboard opens. */
   .loginpage.has-bg{background-attachment:scroll}
-  .logincard{max-width:none;border-radius:0;box-shadow:none;display:flex;flex-direction:column}
-  /* Full-bleed, so the outline that separated the card from the photo on a
-     desktop has nothing left to separate — and transparent, because a full-screen
-     opaque card would cover the backdrop completely and the phone would be the
-     one place the picture never appears. The page's own overlay already carries
-     the contrast the text needs, so nothing becomes harder to read. */
-  .loginpage.has-bg .logincard{
-    border:0;border-bottom:0;box-shadow:none;background:transparent;
+  .loginstack{gap:16px}
+  /* Shorter band on a phone — the wordmark still spans the full width, so it
+     reads at least as large as it does on a desktop card. */
+  .loginbrand img.jtlogo{height:96px}
+  .loginbrand .jtlogo{width:168px;margin:20px 18px}
+  .loginbrand.plain{padding:0;width:96vw}
+  /* Height tracks the narrower mark so the crop keeps the same proportion of the
+     source: 96vw on a 390px phone is ~375px, and 107px holds the same slice that
+     160px holds at 560px. The extrusion drops a step with it — it is measured in
+     whole pixels, and at this size the full depth would swallow the thinner
+     strokes in "EXPRESS". */
+  .loginbrand.plain img.jtlogo{
+    height:107px;
+    filter:
+      drop-shadow(0 1px 0 #B81810)
+      drop-shadow(0 1px 0 #92130C)
+      drop-shadow(0 6px 11px rgba(0,0,0,.6));
   }
-  .loginbrand{padding:26px 18px}
-  .loginbrand .jtlogo{width:150px}
   .loginbody{flex:1;padding:20px 16px 24px}
   .loginbody h1{font-size:16px}
   /* 16px is the floor below which iOS Safari zooms the page on focus, which

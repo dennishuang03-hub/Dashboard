@@ -33,12 +33,20 @@ export const LOGO_WHITE: string | null =
   pick(/logo/i, /white/i) ?? pick(/jt[-_ ]?express[-_ ]?logo/i) ?? pick(/logo/i)
 
 /**
- * The general-purpose mark. Unchanged from what the top bar already resolved to,
- * deliberately — this module was added for the login screen and should not
- * quietly restyle the dashboard on its way past.
+ * The mark with no background of its own — red lettering, nothing behind it, so
+ * whatever surface it sits on shows through.
+ *
+ * Explicitly *not* the `-Font-White` file: that one has a solid red field baked
+ * in and can only ever be a red tile. The distinction is the whole reason these
+ * two exports exist rather than one.
  */
+export const LOGO_PLAIN: string | null =
+  pick(/jt[-_ ]?express[-_ ]?logo/i, /^(?!.*white).*$/i)
+  ?? pick(/logo/i, /^(?!.*white).*$/i)
+
+/** What the top bar historically resolved to. Kept for callers that ask for it. */
 export const LOGO_DEFAULT: string | null =
-  pick(/jt[-_ ]?express[-_ ]?logo/i) ?? pick(/logo/i)
+  LOGO_PLAIN ?? pick(/jt[-_ ]?express[-_ ]?logo/i) ?? pick(/logo/i)
 
 /** Never let a logo file win a non-logo slot — they share this folder. */
 const NOT_LOGO = /^(?!.*logo).*$/i

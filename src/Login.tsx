@@ -34,9 +34,34 @@ const bgStyle: CSSProperties | undefined = LOGIN_BG
   ? ({ '--login-bg': `url("${LOGIN_BG}")` } as CSSProperties)
   : undefined
 
+/* Stroked rather than filled, at 18px, so the icon sits at the same visual
+   weight as the label type beside it instead of becoming a black blob. */
+function Eye() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8Z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  )
+}
+
+function EyeOff() {
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19" />
+      <path d="M6.61 6.61A18.4 18.4 0 0 0 1 12s4 8 11 8a9 9 0 0 0 5.39-1.61" />
+      <path d="M14.12 14.12A3 3 0 1 1 9.88 9.88" />
+      <line x1="2" y1="2" x2="22" y2="22" />
+    </svg>
+  )
+}
+
 export default function Login({ onSignedIn }: { onSignedIn: (who: Identity) => void }) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
+  const [showPw, setShowPw] = useState(false)
   const [busy, setBusy] = useState(false)
   const [err, setErr] = useState('')
 
@@ -102,12 +127,17 @@ export default function Login({ onSignedIn }: { onSignedIn: (who: Identity) => v
 
   return (
     <div className={`loginpage${LOGIN_BG ? ' has-bg' : ''}`} style={bgStyle}>
-      <form className="logincard" onSubmit={submit} noValidate>
-        <div className="loginbrand">
-          <JntLogo className="jtlogo" variant="white" />
+      {/* The mark sits above the card rather than inside it, on the page itself.
+          It is a sibling of the form, not a child, so nothing about the card —
+          its padding, its clipped corners, its `overflow:hidden` — can crop the
+          raised edge the logo casts. */}
+      <div className="loginstack">
+        <div className="loginbrand plain">
+          <JntLogo className="jtlogo" variant="plain" />
         </div>
 
-        <div className="loginbody">
+        <form className="logincard" onSubmit={submit} noValidate>
+          <div className="loginbody">
           <h1>
             DASHBOARD PERFORMA AGEN HARIAN
             <Zh>每日代理区绩效看板</Zh>
@@ -137,15 +167,41 @@ export default function Login({ onSignedIn }: { onSignedIn: (who: Identity) => v
 
           <label className="loginfield">
             <span>Kata Sandi <Zh>密码</Zh></span>
-            <input
-              name="password"
-              type="password"
-              autoComplete="current-password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              disabled={busy}
-              required
-            />
+            <span className="pwwrap">
+              <input
+                name="password"
+                type={showPw ? 'text' : 'password'}
+                autoComplete="current-password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                disabled={busy}
+                required
+              />
+              {/*
+                A reveal toggle earns its place on a shared-account login: the
+                password is long and came out of a password manager, and without
+                it a single mistyped character is indistinguishable from a wrong
+                password — which is exactly the confusion that wastes an
+                afternoon. It is off by default and never persists.
+
+                `type="button"` because the default inside a <form> is submit,
+                which would fire a login attempt on every peek. `onMouseDown`
+                is prevented so the caret stays where it was rather than the
+                field losing focus mid-typing.
+              */}
+              <button
+                type="button"
+                className="pweye"
+                onClick={() => setShowPw((v) => !v)}
+                onMouseDown={(e) => e.preventDefault()}
+                disabled={busy}
+                aria-pressed={showPw}
+                aria-label={showPw ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+                title={showPw ? 'Sembunyikan kata sandi' : 'Tampilkan kata sandi'}
+              >
+                {showPw ? <EyeOff /> : <Eye />}
+              </button>
+            </span>
           </label>
 
           {/* `role="alert"` so a screen reader announces the failure instead of
@@ -159,8 +215,9 @@ export default function Login({ onSignedIn }: { onSignedIn: (who: Identity) => v
           <p className="loginnote">
             Sesi berakhir otomatis setelah 8 jam. Jangan bagikan akun ini di luar tim.
           </p>
-        </div>
-      </form>
+          </div>
+        </form>
+      </div>
     </div>
   )
 }
