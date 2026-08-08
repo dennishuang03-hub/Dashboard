@@ -312,7 +312,14 @@ export default function DpSection({
     const table = row.closest('table') as HTMLElement | null
     if (!table) return
     const apply = () => {
-      table.style.setProperty('--secrow-h', `${row.getBoundingClientRect().height}px`)
+      /* Floored, not exact. The measured height is fractional at most zoom
+         levels, and `top: 33.5px` resolves to a whole device pixel that can land
+         either side of the band's real edge — one way overlaps invisibly, the
+         other opens a seam for rows to show through. Rounding down always takes
+         the first, and `.secrow` outranks `.catrow` so the overlap is hidden
+         under the band. */
+      const h = row.getBoundingClientRect().height
+      table.style.setProperty('--secrow-h', `${Math.max(0, Math.floor(h))}px`)
     }
     apply()
     const ro = new ResizeObserver(apply)
