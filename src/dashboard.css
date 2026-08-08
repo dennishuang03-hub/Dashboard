@@ -141,6 +141,11 @@ tbody td .zh{opacity:.9}
 .btn:hover{background:var(--card-3);border-color:#4A4A4A}
 .btn.primary{background:var(--jt-red);border-color:var(--jt-red);color:#fff}
 .btn.primary:hover{background:var(--jt-red-dark);border-color:var(--jt-red-dark)}
+/* Sign-out is the one control on this bar that *ends* something — everything
+   else beside it just renders a file or a picture. Red is the difference
+   between "another export button" and "this closes your session". */
+.btn.danger{background:var(--jt-red);border-color:var(--jt-red);color:#fff;font-weight:800}
+.btn.danger:hover{background:var(--jt-red-dark);border-color:var(--jt-red-dark)}
 .spacer{flex:1}
 .filechip{
   font-size:12.5px;font-weight:600;color:#fff;background:var(--jt-black-2);
@@ -864,11 +869,19 @@ body.shoot-table .dptable{margin-top:0}
   max-width:300px;margin-inline:auto;
 }
 
-/* The signed-in identity chip in the top bar, beside the sign-out button. */
-.userchip{
-  font-size:12.5px;font-weight:700;color:#fff;background:var(--jt-black-2);
-  border-radius:99px;padding:6px 13px;white-space:nowrap;
+/* Handling instruction in the top bar, above the report's own details.
+
+   Red on a dark bar, small caps, its own line — loud enough that a supervisor
+   glancing at a printout or a forwarded PNG knows what they are holding, quiet
+   enough that it does not compete with the title above it. It lives inside the
+   top bar deliberately, which is inside the capture area, so the label travels
+   with every export instead of being a rule someone has to remember. */
+.hqtag{
+  display:inline-block;margin-bottom:3px;
+  font-size:11px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;
+  color:#FF6B62;
 }
+.hqtag .zh{letter-spacing:0;font-weight:700;opacity:.85}
 
 /* A full-screen "checking your session" state, shown for the moment between
    load and the answer from /api/session. Without it the login form flashes up

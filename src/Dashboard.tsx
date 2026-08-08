@@ -328,9 +328,17 @@ export default function Dashboard({
     <div className="wrap" ref={wrapRef}>
       <TopBar
         meta={
-          <>Wilayah: <b>{model.region}</b> &nbsp;|&nbsp; Agen: <b>{current.label}<Zh>{agentZh(current.label)}</Zh></b>
+          <>
+            {/* Who this is for, stated on the page rather than left to whoever
+                remembers. It sits inside the top bar, so it is also carried into
+                every PNG and PDF export — a screenshot that leaves the dashboard
+                takes its own handling instruction with it. */}
+            <span className="hqtag">Khusus Tim Internal HQ<Zh>仅限总部内部团队</Zh></span>
+            <br />
+            Wilayah: <b>{model.region}</b> &nbsp;|&nbsp; Agen: <b>{current.label}<Zh>{agentZh(current.label)}</Zh></b>
             &nbsp;|&nbsp; Tanggal: <b>{todayLabel}</b>
-            &nbsp;|&nbsp; Sumber: <b>{fileName}</b> ({okSheets.length} sheet)</>
+            &nbsp;|&nbsp; Sumber: <b>{fileName}</b> ({okSheets.length} sheet)
+          </>
         }
       />
 
@@ -364,17 +372,20 @@ export default function Dashboard({
         </Field>
         <div className="spacer" />
         <span className="filechip">
-          {model.region} · {model.rows.length} agen · {kpis.length} KPI · {dates.length} hari
+          {model.region} · {model.rows.length} agen · {kpis.length} Indikator · {dates.length} hari
           {model.dps.length > 0 && ` · ${model.dps.length} DP/CP dari ${dpSheets.length} tab agen`}
         </span>
         <button className="btn" onClick={savePng}>Simpan PNG</button>
         <button className="btn" onClick={() => window.print()}>Cetak / PDF</button>
-        <button className="btn" onClick={() => { setModel(null); setFileName(''); setErr('') }}>Hapus data</button>
         {/* Sign-out sits at the end of the toolbar rather than in the top bar
             because the top bar is inside the PNG export, and no one wants a
-            "LogOut" button baked into the picture they send to the region. */}
-        <span className="userchip" title={`Masuk sebagai ${who.user}`}>{who.user}</span>
-        <button className="btn" onClick={signOut}>LogOut</button>
+            "LogOut" button baked into the picture they send to the region.
+            Red because it is the only control here that ends the session — the
+            others all just render something. `title` carries the account name
+            now that the chip beside it is gone. */}
+        <button className="btn danger" onClick={signOut} title={`Masuk sebagai ${who.user}`}>
+          LogOut
+        </button>
       </div>
 
       {err && <div className="err">{err}</div>}
@@ -408,9 +419,9 @@ export default function Dashboard({
                 <span className="kval" style={{ color: st === 'na' ? '#8A94A6' : color }}>{pct(v)}</span>
               </div>
               <div className="ktgt">Target {k.lowerBetter ? '≤ ' : '≥ '}{pct(tgt)}</div>
-              <div className="kmtd">{mtd != null ? `MTD ${pct(mtd)}` : ' '}</div>
+              <div className="kmtd">{mtd != null ? `Pencapaian Bulan Ini: ${pct(mtd)}` : ' '}</div>
               <div className="kcmp">
-                <span>Prev {pct(p)}</span>
+                <span>Hari Sebelumnya {pct(p)}</span>
                 <Delta diff={v != null && p != null ? v - p : null} lowerBetter={k.lowerBetter} />
               </div>
               <Sparkline values={series} color={PALETTE[ki % PALETTE.length]} />
@@ -434,7 +445,7 @@ export default function Dashboard({
                   <h2 className="sechead">
                     <span className="secnum">{i + 1}</span>
                     <span className="sectext">{sec.label}<Zh>{sec.zh}</Zh></span>
-                    <span className="seccount">{mine.length} KPI</span>
+                    <span className="seccount">{mine.length} Indikator</span>
                   </h2>
                   <div className="cards">{mine.map(card)}</div>
                 </section>
@@ -445,7 +456,7 @@ export default function Dashboard({
                 <h2 className="sechead">
                   <span className="secnum">+</span>
                   <span className="sectext">Lainnya<Zh>其他</Zh></span>
-                  <span className="seccount">{extras.length} KPI</span>
+                  <span className="seccount">{extras.length} Indikator</span>
                 </h2>
                 <div className="cards">{extras.map(card)}</div>
               </section>
@@ -479,14 +490,18 @@ export default function Dashboard({
 
       {/* -------- middle row -------- */}
       <div className="row-mid">
-        {/* 达成 is the workbook's own word for "Pencapaian" — it is what the
+        {/* The date itself, not "Hari Terpilih". The panel is read alongside the
+            date picker and inside exported PNGs, where "the selected day" is a
+            question rather than an answer.
+
+            达成 is the workbook's own word for "Pencapaian" — it is what the
             sheets write in 月度达成 / 一派质量达成 — so the gloss stays in step with
             the Indonesian *and* with the source file. */}
-        <Panel title={<>Ringkasan Pencapaian (Hari Terpilih) <Zh>达成汇总</Zh></>} red flush>
+        <Panel title={<>Ringkasan Pencapaian ({todayLabel}) <Zh>达成汇总</Zh></>} red flush>
           <table>
             <thead>
               <tr>
-                <th>KPI<Zh>指标</Zh></th>
+                <th>Indikator<Zh>指标</Zh></th>
                 <th className="num">Nilai<Zh>数值</Zh></th>
                 <th className="num">Target<Zh>目标</Zh></th>
                 <th className="ctr">Status<Zh>状态</Zh></th>
@@ -520,7 +535,7 @@ export default function Dashboard({
           title={<>Perbandingan Harian ({dates.length} hari) <Zh>每日对比</Zh></>}
           right={barChoices.length > 1 && (
             <select
-              className="hsel" value={barK ? barK.key : ''} aria-label="KPI yang ditampilkan pada grafik batang"
+              className="hsel" value={barK ? barK.key : ''} aria-label="Indikator yang ditampilkan pada grafik batang"
               onChange={(e) => setBarKey(e.target.value)}
             >
               {barChoices.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
@@ -534,7 +549,7 @@ export default function Dashboard({
                 targetLine={targetFor(barK, current.rec)}
                 lowerBetter={barK.lowerBetter}
               />
-            : <div className="empty-mini">Tidak ada KPI yang tersedia</div>}
+            : <div className="empty-mini">Tidak ada Indikator yang tersedia</div>}
         </Panel>
       </div>
 
@@ -544,7 +559,7 @@ export default function Dashboard({
           <table>
             <thead>
               <tr>
-                <th>KPI<Zh>指标</Zh></th>
+                <th>Indikator<Zh>指标</Zh></th>
                 <th className="num">
                   Hari Ini ({dToday.date ? fmtDate(dToday.date) : `H${di + 1}`})<Zh>今日</Zh>
                 </th>
@@ -598,9 +613,13 @@ export default function Dashboard({
         />
       )}
 
+      {/* Rewritten with the "Hapus data" button: the old wording pointed at a
+          control that no longer exists, and the claim itself has changed — the
+          report now arrives from the server for this session rather than being
+          read from a file the browser already had. */}
       <div className="note">
-        Data hanya diproses di memori. Menyegarkan halaman atau menekan “Hapus data” akan menghilangkan
-        semuanya — tidak ada yang ditulis ke disk maupun dikirim melalui jaringan.
+        Laporan diambil dari server hanya untuk sesi yang sudah masuk, lalu diproses di memori
+        browser — tidak ada yang ditulis ke disk. Menutup atau menyegarkan halaman menghapus semuanya.
       </div>
     </div>
   )
@@ -682,12 +701,12 @@ function SummaryPanel({
   return (
     <div className="sumlist">
       <Item ico="📊" lab="Performa Keseluruhan" zh="整体表现" strong={verdict} tone={tone}
-            detail={`${on.length} KPI sesuai target / ${off.length} di bawah target${count > 1 ? ` • ${sub}` : ''}`} />
-      <Item ico="⭐" lab="KPI Terbaik" zh="最佳指标" strong={best ? best.k.label : '—'} tone="good"
+            detail={`${on.length} Indikator sesuai target / ${off.length} di bawah target${count > 1 ? ` • ${sub}` : ''}`} />
+      <Item ico="⭐" lab="Indikator Terbaik" zh="最佳指标" strong={best ? best.k.label : '—'} tone="good"
             detail={best ? `${pct(best.v)} terhadap target ${pct(best.t)}` : ''} />
       <Item ico="⚠️" lab="Perlu Perhatian" zh="需关注" tone={off.length ? 'poor' : 'good'}
-            strong={off.length ? `${off.length} KPI di bawah target` : 'Tidak ada'}
-            detail={off.length ? off.map((k) => k.label).join(', ') : 'Semua KPI sesuai target'} />
+            strong={off.length ? `${off.length} Indikator di bawah target` : 'Tidak ada'}
+            detail={off.length ? off.map((k) => k.label).join(', ') : 'Semua Indikator sesuai target'} />
       <Item ico="👥" lab="Tindak Lanjut" zh="后续行动" strong="Prioritas" tone=""
             detail={off.length ? nextAction(off) : 'Pertahankan performa saat ini dan jaga disiplin briefing harian.'} />
     </div>

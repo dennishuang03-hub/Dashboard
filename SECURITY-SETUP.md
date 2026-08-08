@@ -154,12 +154,41 @@ undo in the developer console.
 
 ## Local development
 
-The API routes need Vercel's runtime, so plain `npm run dev` serves the UI with
-no `/api` behind it — the login will fail to reach the server. Use:
+### Working on the dashboard — `npm run dev`
+
+`src/devConfig.ts` has one line in it:
+
+```ts
+export const SKIP_LOGIN = true
+```
+
+`true` skips the login screen entirely; `false` shows it. The dev server stands
+in for `/api/report` and serves the workbook straight from `data/`, so you get a
+working dashboard with no Vercel and no sign-in.
+
+**You do not need to switch it back before deploying.** `import.meta.env.DEV` is
+`false` in a production build, so the flag folds to `false` at compile time and
+the branch is removed from the bundle — it is not read in production. And even if
+it were, skipping the login only changes what the browser *draws*: the numbers
+come from `/api/report`, which checks the session cookie on the server. A
+bypassed screen in production shows an empty dashboard, not your data.
+
+The dev stand-in lives in `devApi()` in `vite.config.ts`. It cannot ship —
+`apply: 'serve'` keeps Vite from loading it during a build, and the config file
+is never bundled into the client.
+
+### Working on the login itself — `vercel dev`
+
+The stand-in deliberately accepts any password, because a fake check running on
+your own machine tests nothing. To exercise the real thing:
 
 ```bash
 npm i -g vercel     # once
 vercel link         # once, connects this folder to the project
 vercel env pull     # writes .env.local — it is gitignored
-vercel dev          # UI + API together
+vercel dev          # UI + the real functions together
 ```
+
+Note that `AUTH_PASSWORD_HASH` and `SESSION_SECRET` are marked **Sensitive** in
+Vercel, so `vercel env pull` will not retrieve them. Add them to `.env.local` by
+hand — the file is gitignored.

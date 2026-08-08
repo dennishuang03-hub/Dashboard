@@ -487,7 +487,7 @@ export default function DpSection({
       className="hsel" value={cur} aria-label={`Kategori yang ditampilkan pada ${id}`}
       onChange={(e) => onChange(e.target.value)}
     >
-      {withTotal && <option value={TOTAL_CAT}>SEMUA KPI · jumlah sesuai target</option>}
+      {withTotal && <option value={TOTAL_CAT}>SEMUA INDIKATOR · jumlah sesuai target</option>}
       {catKpis.map((k) => <option key={k.label} value={k.label}>{k.label}</option>)}
     </select>
   )
@@ -580,7 +580,7 @@ export default function DpSection({
               PNG of just this table still says which day it is */}
           <span className="ptitle">
             Daftar DP / CP <Zh>网点清单</Zh> — {filtered.length} dari {counts.total} ·{' '}
-            {mode === 'mtd' ? 'Bulanan (MTD)' : dayLabel}
+            {mode === 'mtd' ? 'Pencapaian Bulan Ini' : dayLabel}
           </span>
           <button className="btn tiny" onClick={exportXlsx}>Ekspor Excel</button>
           <button className="btn tiny" onClick={savePng}>Simpan PNG</button>
@@ -742,7 +742,7 @@ export default function DpSection({
       </div>
 
       <div className="note">
-        Nilai yang ditampilkan: {mode === 'mtd' ? 'pencapaian bulanan' : dayLabel}.
+        Nilai yang ditampilkan: {mode === 'mtd' ? 'pencapaian bulan ini' : dayLabel}.
         {' '}Status ditentukan dari data hari itu:
         {' '}<b>Pick up Only</b> — 06:30 dan 07:30 keduanya nol, berarti tidak ada sprinter di sini;
         {' '}<b>Delivery Only</b> — TPTW bernilai nol, jadi paket diantar tetapi tidak diserahkan ke alur
@@ -776,8 +776,8 @@ function TotalNote({ worst }: { worst: boolean }) {
   return (
     <div className="chartnote">
       {worst
-        ? 'Jumlah KPI yang di bawah target, dari KPI yang ada nilainya — makin panjang makin buruk.'
-        : 'Jumlah KPI yang sudah sesuai target, dari KPI yang ada nilainya — makin panjang makin baik.'}
+        ? 'Jumlah Indikator yang di bawah target, dari Indikator yang ada nilainya — makin panjang makin buruk.'
+        : 'Jumlah Indikator yang sudah sesuai target, dari Indikator yang ada nilainya — makin panjang makin baik.'}
       {' '}Angka ini sama dengan kolom <b>Sesuai target</b> di tabel bawah. Bila jumlahnya seri,
       urutannya ditentukan oleh seberapa jauh nilainya dari target.
     </div>

@@ -22,14 +22,21 @@
 import { useCallback, useEffect, useState } from 'react'
 import Dashboard from './Dashboard'
 import Login from './Login'
+import { DEV_IDENTITY, skipLogin } from './devConfig'
 import type { Identity } from './lib/session'
 import './dashboard.css'
 
 export default function App() {
-  const [who, setWho] = useState<Identity | null>(null)
-  const [booting, setBooting] = useState(true)
+  /* `skipLogin` is a build-time constant, so in production these two lines read
+     `useState(null)` and `useState(true)` — the development branch is not
+     compiled in. See devConfig.ts. */
+  const [who, setWho] = useState<Identity | null>(skipLogin ? DEV_IDENTITY : null)
+  const [booting, setBooting] = useState(!skipLogin)
 
   useEffect(() => {
+    /* Nothing to ask — the answer was decided at build time. */
+    if (skipLogin) return
+
     let cancelled = false
 
     fetch('/api/session', { credentials: 'same-origin' })
