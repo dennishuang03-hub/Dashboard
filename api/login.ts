@@ -7,10 +7,10 @@
  */
 import {
   issueSession, readEnv, safeEqual, sessionCookie, verifyPassword, SESSION_TTL_S,
-} from './_lib/auth'
+} from './_lib/auth.js'
 import {
   BAD_CREDENTIALS, clientKey, json, lockedFor, noteFailure, noteSuccess, originAllowed,
-} from './_lib/guard'
+} from './_lib/guard.js'
 
 /**
  * Every login answer takes at least this long.

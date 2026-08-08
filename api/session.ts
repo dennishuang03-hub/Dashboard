@@ -7,7 +7,7 @@
  * HttpOnly, so the only way for the page to learn its own state is to ask the
  * server, which is exactly the arrangement we want.
  */
-import { json, requireSession } from './_lib/guard'
+import { json, requireSession } from './_lib/guard.js'
 
 /* Exported as both a named method and a default — see the note in login.ts. */
 export async function handler(req: Request): Promise<Response> {

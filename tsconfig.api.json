@@ -3,8 +3,17 @@
     "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.api.tsbuildinfo",
     "target": "es2023",
     "lib": ["ES2023"],
-    "module": "esnext",
-    "moduleResolution": "bundler",
+
+    /* `nodenext`, not `bundler`, and the difference is not cosmetic.
+       package.json declares `"type": "module"`, so Vercel runs these routes as
+       real ES modules, and Node's ESM resolver never guesses a file extension —
+       `import './_lib/guard'` is a load-time crash there, however happily a
+       bundler would have resolved it. `bundler` resolution let that compile
+       clean and fail only in production. `nodenext` models what Node actually
+       does, so a missing `.js` is now a red squiggle instead of a 500. */
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+
     "types": ["node"],
     "skipLibCheck": true,
     "strict": true,

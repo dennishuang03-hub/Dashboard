@@ -2,8 +2,22 @@
  * Request-side defences shared by every route: JSON replies that never leak,
  * an origin check, and a best-effort brute-force brake.
  */
-import { readEnv, readCookie, readSession, SESSION_COOKIE } from './auth'
-import type { Session } from './auth'
+/*
+ * `.js`, not `.ts` and not bare — and this is not a typo.
+ *
+ * package.json says `"type": "module"`, so Vercel loads these routes as real ES
+ * modules. Node's ESM resolver does no extension guessing whatsoever: an import
+ * of `'./auth'` is a file literally named `auth`, which does not exist, and the
+ * function dies on load with FUNCTION_INVOCATION_FAILED before a single line of
+ * ours runs. Bare specifiers are a bundler convenience, and nothing bundles this.
+ *
+ * TypeScript's rule for ESM is to write the extension the *output* will have, so
+ * `./auth.js` here resolves to `auth.ts` at compile time and to `auth.js` at run
+ * time. `tsconfig.api.json` uses `moduleResolution: nodenext`, which makes the
+ * compiler enforce this rather than let it fail silently in production again.
+ */
+import { readEnv, readCookie, readSession, SESSION_COOKIE } from './auth.js'
+import type { Session } from './auth.js'
 
 /* ------------------------------------------------------------- responses */
 

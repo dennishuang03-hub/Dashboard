@@ -13,7 +13,7 @@
  */
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
-import { json, requireSession } from './_lib/guard'
+import { json, requireSession } from './_lib/guard.js'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 

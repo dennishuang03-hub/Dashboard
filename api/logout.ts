@@ -6,8 +6,8 @@
  * when the cookie is already invalid would only make the client handle a failure
  * that means "you are in the state you asked for".
  */
-import { clearedCookie } from './_lib/auth'
-import { json, originAllowed } from './_lib/guard'
+import { clearedCookie } from './_lib/auth.js'
+import { json, originAllowed } from './_lib/guard.js'
 
 /* Exported as both a named method and a default — see the note in login.ts. */
 export async function handler(req: Request): Promise<Response> {
