@@ -20,6 +20,16 @@
  * `parseWorkbook` parses every readable sheet and merges them into ONE model,
  * matching agents by Kode Agent (falling back to the agent name). Column ids are
  * namespaced per sheet (`"2:14"`) so indices never collide.
+ *
+ * Drop-point readings live on their own tabs and are parsed separately (see
+ * `parseDpSheet`). Two layouts are in circulation and both are read the same way,
+ * because neither the parser nor the dashboard cares which one a file uses:
+ *
+ *   one tab per agent  — `AG12`, `AG13`, … `AG40`; the agent is the tab
+ *   one tab for all    — `ALL DP DATA`; the agent is a column on every row
+ *
+ * The only thing that has to hold is that each row can name its own agent, by
+ * its Kode Agent column or by the tab it sits on.
  */
 import * as XLSX from 'xlsx'
 
@@ -557,10 +567,17 @@ interface Matrix { m: Cell[][]; lastC: number; hadMerges: boolean }
 /** A cell Excel wrote but left without a value is still empty for our purposes. */
 const isBlank = (c: Cell): boolean => c == null || c.v == null || String(c.v).trim() === ''
 
-function sheetMatrix(ws: XLSX.WorkSheet): Matrix {
+/**
+ * `maxRows` reads only the top of the sheet, for callers that just need the
+ * header block — `looksLikeDpSheet` asks that question of every tab in the file,
+ * and the combined drop-point tab is ~1700 rows × 70 columns, so materialising
+ * all of it twice per load is work with no answer in it. Merges are still applied
+ * to the rows that were read, which is what the header block depends on.
+ */
+function sheetMatrix(ws: XLSX.WorkSheet, maxRows = Infinity): Matrix {
   if (!ws || !ws['!ref']) return { m: [], lastC: 0, hadMerges: false }
   const r = XLSX.utils.decode_range(ws['!ref'])
-  const lastR = r.e.r, lastC = r.e.c
+  const lastR = Math.min(r.e.r, maxRows - 1), lastC = r.e.c
   const m: Cell[][] = []
   for (let R = 0; R <= lastR; R++) {
     const row: Cell[] = new Array(lastC + 1).fill(null)
@@ -813,23 +830,82 @@ const isBizModelWord = (s: string): boolean =>
   /^(franchise|frenchise|waralaba|agent|agen|加盟|自营|直营)$/i.test(s.trim())
 
 /**
- * A per-agent tab lists drop points, not agents, and must NOT be merged into the
+ * A report title, as opposed to a column heading.
+ *
+ * The drop-point tab carries a red banner across the top of the sheet — in the
+ * current file `网管-雅加达网点质量达成 2026-08-06` and
+ * `NM - Pencapaian Kualitas DropPoint Jakarta 2026-08-06` — and *both* of those
+ * satisfy `DP_HEADER_RE` exactly as well as the real `网点 / Nama Drop point`
+ * heading does. The banner is merged across the full width of the sheet, so it
+ * is also the first match any top-down scan meets: taking it points the parser
+ * at a column with nothing underneath it, and the whole tab then fails with
+ * "kolom Drop point tidak memiliki baris data angka di bawahnya".
+ *
+ * The date inside the title is what separates the two. A column heading names a
+ * thing; only a title says *when*. Length alone does not work — the Chinese
+ * banner is shorter than several genuine headings in this file.
+ */
+const TITLE_RE = /\d{4}|\d{1,2}\s*[/.-]\s*\d{1,2}\s*[/.-]\s*\d{2,4}/
+
+const isHeaderLabel = (s: string): boolean => !!s && s.length <= 80 && !TITLE_RE.test(s)
+
+interface DpHeaderHit { headerRow: number; dpCol: number }
+
+/** How far down a sheet the header block may start. */
+const DP_HEADER_SCAN_ROWS = 30
+
+/**
+ * Locate the `Nama Drop point` heading — the anchor the whole DP parse hangs off.
+ *
+ * Three tiers, best first:
+ *   1. a heading whose row *also* names the agent or its code somewhere else.
+ *      A header block always carries its identity columns side by side, and a
+ *      banner row never does, so this is the answer whenever it exists.
+ *   2. any match that is not title-shaped (see `TITLE_RE`).
+ *   3. failing both, the first match of any kind — the pre-existing behaviour,
+ *      kept so an unfamiliar file shape degrades rather than disappears.
+ */
+function findDpHeader(m: Cell[][], lastC: number): DpHeaderHit | null {
+  const maxR = Math.min(m.length, DP_HEADER_SCAN_ROWS)
+  const maxC = Math.min(lastC, 20)
+  let loose: DpHeaderHit | null = null
+  let plain: DpHeaderHit | null = null
+
+  for (let R = 0; R < maxR; R++) {
+    const row = m[R]
+    if (!row) continue
+    for (let C = 0; C <= maxC; C++) {
+      const s = txt(row[C])
+      if (!s || !DP_HEADER_RE.test(s)) continue
+      if (!loose) loose = { headerRow: R, dpCol: C }
+      if (!isHeaderLabel(s)) continue
+      if (!plain) plain = { headerRow: R, dpCol: C }
+      for (let C2 = 0; C2 <= maxC; C2++) {
+        if (C2 === C) continue
+        const t = txt(row[C2])
+        if (!isHeaderLabel(t)) continue
+        if (AGENT_HEADER_RE.test(t) || CODE_HEADER_RE.test(t)) return { headerRow: R, dpCol: C }
+      }
+    }
+  }
+  return plain ?? loose
+}
+
+/**
+ * A drop-point tab lists sites, not agents, and must NOT be merged into the
  * agent-level model — doing so would create a second "06:30 ABSENSI" KPI (the
  * DP tabs spell it in Chinese) and duplicate every card on the dashboard.
  * The give-away is a "Nama Drop point" / 网点 column in the header block.
+ *
+ * The match has to be a real heading rather than a title (`isHeaderLabel`):
+ * the agent-level tabs are titled in the same words, and one of them classified
+ * as a DP tab would take its KPIs out of the dashboard entirely.
  */
 export function looksLikeDpSheet(ws: XLSX.WorkSheet): boolean {
   if (!ws || !ws['!ref']) return false
-  const r = XLSX.utils.decode_range(ws['!ref'])
-  const maxR = Math.min(r.e.r, 14)
-  const maxC = Math.min(r.e.c, 14)
-  for (let R = 0; R <= maxR; R++) {
-    for (let C = 0; C <= maxC; C++) {
-      const cell = ws[XLSX.utils.encode_cell({ r: R, c: C })] as XLSX.CellObject | undefined
-      if (cell && DP_HEADER_RE.test(String(cell.v ?? ''))) return true
-    }
-  }
-  return false
+  const { m, lastC } = sheetMatrix(ws, DP_HEADER_SCAN_ROWS)
+  const hit = findDpHeader(m, lastC)
+  return !!hit && isHeaderLabel(txt(m[hit.headerRow][hit.dpCol]))
 }
 
 interface RawDpSheet { rows: DpRow[]; kpiCount: number; dates: { key: string; date: Date | null }[] }
@@ -838,6 +914,12 @@ interface RawDpSheet { rows: DpRow[]; kpiCount: number; dates: { key: string; da
  * `AG12` → `AGENT12`. The tab name is the fallback identity for a sheet whose
  * Kode Agent column is blank; without it such a tab's drop points would end up
  * orphaned and invisible behind the agent filter.
+ *
+ * Only one-agent-per-tab files (`AG12` … `AG40`) can be identified this way. A
+ * combined tab — every agent's drop points on one sheet, as "ALL DP DATA" — has
+ * no single agent to name, so it returns `''` and the row's own Kode Agent
+ * column carries the identity instead. That column is per-row on such a sheet,
+ * which is exactly what makes the combined shape work at all.
  */
 function agentKeyFromSheet(sheetName: string): string {
   const m = sheetName.trim().match(/^ag[\s_-]*(\d+)$/i)
@@ -850,13 +932,9 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
   if (!m.length) throw new Error('sheet ini kosong')
 
   /* 1 — locate the Drop point header cell */
-  let headerRow = -1, dpCol = -1
-  for (let R = 0; R < Math.min(m.length, 20) && dpCol < 0; R++) {
-    for (let C = 0; C <= Math.min(lastC, 14); C++) {
-      if (DP_HEADER_RE.test(txt(m[R][C]))) { headerRow = R; dpCol = C; break }
-    }
-  }
-  if (dpCol < 0) throw new Error('tidak ada judul kolom "Nama Drop point"')
+  const hit = findDpHeader(m, lastC)
+  if (!hit) throw new Error('tidak ada judul kolom "Nama Drop point"')
+  const { headerRow, dpCol } = hit
 
   /* 1b — identity columns to its left */
   let agentCol = -1, codeCol = -1
@@ -980,7 +1058,13 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
   for (let R = dataStart; R < m.length; R++) {
     const name = txt(m[R][dpCol])
     const nc = numCount(R)
-    if (!name && nc === 0) { if (++blanks > 8) break; continue }
+    /* A tab that holds one agent ends where its list ends, so a short run of empty
+       rows meant the end of the data. A combined tab is one agent's block after
+       another's, and a spacer, a per-agent subtotal band or a page break between
+       two of them is empty for as many rows as the author felt like — stopping at
+       eight would silently drop every agent below the first gap. The scan is
+       bounded by the sheet either way; the cost of looking further is nothing. */
+    if (!name && nc === 0) { if (++blanks > 40) break; continue }
     blanks = 0
     if (!name) continue
     if (/合计|^total$|^jumlah|grand\s*total|^sum$/i.test(name)) continue

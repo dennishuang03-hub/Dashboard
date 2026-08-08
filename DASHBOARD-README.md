@@ -29,8 +29,17 @@ npm run dev
 | `src/components/Charts.tsx` | Hand-rolled SVG line/bar/h-bar/sparkline. No chart library. |
 | `src/components/DpSection.tsx` | Drop point / collection point view. |
 | `src/Dashboard.tsx` | All UI. |
+| `src/App.tsx` | Session gate — login screen or dashboard. |
+| `src/Login.tsx` | Sign-in screen. |
 | `src/components/Zh.tsx` | Mandarin gloss shown beside a heading. |
 | `src/dashboard.css` | Styling. |
+| `api/` | Serverless routes: login, logout, session, report. |
+| `data/` | The workbook. Server-side only — never bundled, never public. |
+
+The app is behind a login, and the workbook is served by `/api/report` to a
+signed-in session rather than shipped as a static asset. `npm run dev` serves the
+UI with no API behind it, so use `vercel dev` to work on anything that touches
+sign-in. **Setup, and what the login does and does not protect: [`SECURITY-SETUP.md`](SECURITY-SETUP.md).**
 
 ### Language
 

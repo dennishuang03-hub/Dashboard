@@ -9,71 +9,45 @@ import type { AgentRow, DateSlot, Explanation, Kpi, Model, Status } from './lib/
 import { BarChart, LineChart, Sparkline } from './components/Charts'
 import type { AxisLabel } from './components/Charts'
 import DpSection from './components/DpSection'
+import JntLogo from './components/JntLogo'
 import Zh from './components/Zh'
+import type { Identity } from './lib/session'
 import './dashboard.css'
 
-/* ------------------------------------------------------- bundled workbook */
+/* ------------------------------------------------------- protected workbook */
 
 /**
- * The report shipped with the code, so opening the site *is* opening the
- * dashboard — no picker, no upload. Drop a workbook into `src/assets/Data/` and
- * it loads on startup; the Unggah Excel button still overrides it for a one-off
- * look at another file, until the next refresh.
+ * The report no longer travels with the code.
  *
- * `import.meta.glob` rather than a plain `import` precisely because the folder
- * may be empty: a static import of a missing file fails the build, while a glob
- * that matches nothing is `{}` and simply leaves the drop zone showing. A build
- * that only works once someone adds a file is a trap.
+ * It used to: an `import.meta.glob` over `src/` turned any spreadsheet found
+ * there into a Vite asset, and the dashboard fetched it on startup. That worked,
+ * and it also meant the numbers had a public URL. Anyone who loaded the site
+ * could open the Network tab, copy the `.xlsx` link and take the whole regional
+ * report, and no login rendered on this side could have stopped them — a gate
+ * drawn in JavaScript is a gate the visitor's own browser is free to ignore.
  *
- * Everything still happens in the browser. The file is served as a static asset
- * from the same origin and parsed client-side; nothing is uploaded anywhere.
- * It is also *public* once deployed — see src/assets/Data/README.md.
+ * So the workbook moved to `/data` at the repo root, outside everything Vite
+ * compiles, and is served by `/api/report` — which reads the session cookie
+ * before it opens the file. The change from the dashboard's point of view is one
+ * URL. The change from an outsider's point of view is that there is nothing at
+ * the end of the wire without a session.
+ *
+ * A 401 here means the session died while the tab was open. That is reported
+ * upward rather than shown as a parse error, so the user gets the login screen
+ * instead of "file tersebut tidak dapat dibaca".
  */
-/*
- * Anywhere under `src/`, whatever the folder is called.
- *
- * This started as the exact path `./assets/Data/*` and has now missed twice for
- * two different reasons — a folder one level up (`src/Data`), and the fact that
- * Windows matches `Data`/`data`/`DATA` alike while the Linux build machine does
- * not. Both failures look identical from the outside: a dashboard that works at
- * home and shows an upload screen in production.
- *
- * The location was never load-bearing. A spreadsheet under `src/` is data for
- * this dashboard and nothing else — no other code here imports one — so the
- * honest rule is "find the workbook", not "find the workbook in the one folder
- * I happened to name". Both cases are listed because the glob matcher compares
- * names literally even where the filesystem would not.
- */
-const BUNDLED = import.meta.glob(
-  './**/*.{xlsx,xlsm,xls,csv,XLSX,XLSM,XLS,CSV}',
-  { query: '?url', import: 'default', eager: true },
-) as Record<string, string>
+const REPORT_URL = '/api/report'
 
-/* A case-insensitive filesystem can report one file under two spellings; the
-   same URL twice would otherwise look like two candidate workbooks. */
-const bundledEntry = [...new Map(
-  Object.entries(BUNDLED).map(([path, url]) => [url, [path, url] as [string, string]]),
-).values()].sort(([a], [b]) => a.localeCompare(b))[0] ?? null
-
-/**
- * The brand mark out of `src/assets`, replacing the drawn SVG fallback.
- *
- * Globbed for the same reason the workbook is: the repo does not carry the
- * image, and a static import of a file that is not there fails the build.
- * Anything with "logo" in the name matches — `hero.png`, `react.svg` and
- * `vite.svg` sit in the same folder and must not be mistaken for it.
- */
-const LOGOS = import.meta.glob('./assets/*.{png,jpg,jpeg,svg,webp}', {
-  query: '?url', import: 'default', eager: true,
-}) as Record<string, string>
-
-const logoUrl: string | null = (() => {
-  const named = Object.entries(LOGOS).filter(([p]) => /logo/i.test(p))
-  if (!named.length) return null
-  // an exact JT-Express-Logo.* beats any other file that merely says "logo"
-  const exact = named.find(([p]) => /jt[-_ ]?express[-_ ]?logo/i.test(p))
-  return (exact ?? named.sort(([a], [b]) => a.localeCompare(b))[0])[1]
-})()
+/** `X-Report-Filename`, percent-decoded, or a sensible stand-in. */
+function reportName(res: Response): string {
+  const raw = res.headers.get('X-Report-Filename')
+  if (!raw) return 'laporan.xlsx'
+  try {
+    return decodeURIComponent(raw)
+  } catch {
+    return raw
+  }
+}
 
 /* --------------------------------------------------------------- helpers */
 
@@ -107,7 +81,14 @@ function Delta({ diff, lowerBetter }: { diff: number | null; lowerBetter: boolea
 
 /* ------------------------------------------------------------- component */
 
-export default function Dashboard() {
+export default function Dashboard({
+  who, onSignedOut,
+}: {
+  /** who the server says is signed in — see App.tsx */
+  who: Identity
+  /** called when the session ends, by the button or by a 401 from the API */
+  onSignedOut: () => void
+}) {
   const [model, setModel] = useState<Model | null>(null)
   const [fileName, setFileName] = useState('')
   const [err, setErr] = useState('')
@@ -115,9 +96,9 @@ export default function Dashboard() {
   const [dateIdx, setDateIdx] = useState(0)
   const [barKey, setBarKey] = useState('')
   const [hot, setHot] = useState(false)
-  // true only while the bundled file is in flight, so the drop zone does not
-  // flash up for a moment before the data it was asking for arrives anyway
-  const [booting, setBooting] = useState(bundledEntry != null)
+  // true while the report is in flight, so the drop zone does not flash up for a
+  // moment before the data it was asking for arrives anyway
+  const [booting, setBooting] = useState(true)
   const [tick, force] = useState(0)      // Kpi objects are edited in place
 
   const fileRef = useRef<HTMLInputElement>(null)
@@ -126,7 +107,7 @@ export default function Dashboard() {
 
   /* ------------------------------------------------------------ loading */
 
-  /** One path in for both sources — an upload and the bundled file differ only
+  /** One path in for both sources — an upload and the served report differ only
    *  in how the bytes arrive, never in how they are read. */
   const loadBuffer = useCallback((buf: ArrayBuffer, name: string) => {
     try {
@@ -151,27 +132,57 @@ export default function Dashboard() {
     reader.readAsArrayBuffer(f)
   }, [loadBuffer])
 
-  /* Load the bundled workbook once on startup. `cancelled` guards the unmount:
+  /* Fetch the protected report once on startup. `cancelled` guards the unmount:
      without it a fast navigate-away lands a setState on a dead component. */
   useEffect(() => {
-    /* no bundled file: `booting` already initialised to false, so there is
-       nothing to unset — setting it here would just be a cascading render */
-    if (!bundledEntry) return
     let cancelled = false
-    const [path, url] = bundledEntry
-    const name = path.split('/').pop() || 'laporan.xlsx'
-    fetch(url)
-      .then((r) => {
-        if (!r.ok) throw new Error(`${r.status} ${r.statusText}`)
-        return r.arrayBuffer()
-      })
-      .then((buf) => { if (!cancelled) loadBuffer(buf, name) })
-      .catch((ex) => {
-        if (!cancelled) setErr(`File bawaan “${name}” tidak dapat dibaca: ${(ex as Error).message}`)
-      })
-      .finally(() => { if (!cancelled) setBooting(false) })
+
+    ;(async () => {
+      try {
+        const res = await fetch(REPORT_URL, { credentials: 'same-origin' })
+
+        /* The session expired while the tab sat open. Hand the user back to the
+           login screen rather than showing them a read error about a file they
+           are no longer allowed to read. */
+        if (res.status === 401) {
+          if (!cancelled) onSignedOut()
+          return
+        }
+
+        if (!res.ok) {
+          const why = await res.json().catch(() => null) as { error?: string } | null
+          throw new Error(why?.error || `${res.status} ${res.statusText}`)
+        }
+
+        const buf = await res.arrayBuffer()
+        if (!cancelled) loadBuffer(buf, reportName(res))
+      } catch (ex) {
+        if (!cancelled) setErr(`Laporan di server tidak dapat dibaca: ${(ex as Error).message}`)
+      } finally {
+        if (!cancelled) setBooting(false)
+      }
+    })()
+
     return () => { cancelled = true }
-  }, [loadBuffer])
+  }, [loadBuffer, onSignedOut])
+
+  /**
+   * End the session on the server, not just in this tab.
+   *
+   * Clearing local state alone would leave the cookie alive: closing the tab and
+   * reopening it would walk straight back in, which is not what anyone means by
+   * signing out on a shared machine. The local state is dropped either way — if
+   * the network call fails the user still gets the login screen, and the cookie
+   * expires on its own within the shift.
+   */
+  const signOut = useCallback(async () => {
+    try {
+      await fetch('/api/logout', { method: 'POST', credentials: 'same-origin' })
+    } catch {
+      /* offline, or the server is down — fall through and clear locally */
+    }
+    onSignedOut()
+  }, [onSignedOut])
 
   const picker = (
     <input
@@ -243,7 +254,7 @@ export default function Dashboard() {
   if (booting) {
     return (
       <div className="wrap">
-        <TopBar meta="Memuat laporan bawaan…" />
+        <TopBar meta="Memuat laporan dari server…" />
         <div className="dropzone"><h2>Memuat data… <Zh>正在加载</Zh></h2></div>
       </div>
     )
@@ -252,7 +263,7 @@ export default function Dashboard() {
   if (!model || !current) {
     return (
       <div className="wrap">
-        <TopBar meta="Unggah file Excel Anda untuk memulai — tidak ada data yang disimpan." />
+        <TopBar meta={`Masuk sebagai ${who.user} — laporan server belum dapat dibaca.`} />
         {err && <div className="err"><b>File tersebut tidak dapat dibaca.</b><br />{err}</div>}
         <div
           className={`dropzone${hot ? ' hot' : ''}`}
@@ -277,10 +288,14 @@ export default function Dashboard() {
           <div className="lock">
             Didukung: .xlsx · .xlsm · .xls · .csv
             <br />
-            <b>Tidak ada workbook bawaan pada build ini.</b> Agar dashboard langsung terbuka
-            tanpa unggah, taruh file Excel di mana saja di dalam <b>src/</b>{' '}
-            (misalnya <code>src/Data/</code>) lalu <b>commit dan push</b> file itu — build
-            hanya melihat file yang ada di repo, bukan yang ada di komputer Anda.
+            <b>Server tidak memiliki laporan yang dapat dibaca.</b> Agar dashboard langsung
+            terbuka tanpa unggah, taruh file Excel di folder <b>data/</b> pada repo
+            (bukan di dalam <code>src/</code>) lalu <b>commit dan push</b> — build hanya
+            melihat file yang ada di repo, bukan yang ada di komputer Anda.
+          </div>
+          <div className="lock">
+            File yang Anda pilih di sini dibaca <b>hanya di browser ini</b> dan tidak
+            dikirim ke mana pun.
           </div>
         </div>
       </div>
@@ -352,6 +367,11 @@ export default function Dashboard() {
         <button className="btn" onClick={savePng}>Simpan PNG</button>
         <button className="btn" onClick={() => window.print()}>Cetak / PDF</button>
         <button className="btn" onClick={() => { setModel(null); setFileName(''); setErr('') }}>Hapus data</button>
+        {/* Sign-out sits at the end of the toolbar rather than in the top bar
+            because the top bar is inside the PNG export, and no one wants a
+            "Keluar" button baked into the picture they send to the region. */}
+        <span className="userchip" title={`Masuk sebagai ${who.user}`}>{who.user}</span>
+        <button className="btn" onClick={signOut}>Keluar</button>
       </div>
 
       {err && <div className="err">{err}</div>}
@@ -590,32 +610,6 @@ export default function Dashboard() {
  * risk, and the viewBox is cropped tight to the letters so the red plate has no
  * dead margin around it.
  */
-function JntLogo() {
-  /* The real mark, when it is there. Same reasoning as the bundled workbook: a
-     static `import` of a missing file fails the build, so anyone cloning before
-     adding the image would get nothing to run. The glob leaves the drawn
-     fallback below in place instead. Any *logo*.{png,jpg,svg,webp} in
-     src/assets is picked up; JT-Express-Logo.png wins if several match. */
-  if (logoUrl) return <img className="jtlogo" src={logoUrl} alt="J&T Express" />
-
-  const FONT = "'Arial Black','Arial Bold','Helvetica Neue',Arial,sans-serif"
-  return (
-    <svg className="jtlogo" viewBox="0 0 262 58" role="img" aria-label="J&T Express">
-      <g fill="#fff" transform="skewX(-11)">
-        {/* kept on one line: SVG would otherwise fold the surrounding JSX
-            indentation into a leading space and nudge the glyphs right */}
-        <text x="24" y="46" fontFamily={FONT} fontSize="48" fontWeight="900" letterSpacing="-1.5">J&amp;T</text>
-        <text x="132" y="46" fontFamily={FONT} fontSize="26" fontWeight="900" letterSpacing="0.5">EXPRESS</text>
-        {/* speed lines: they meet the top-right of the T and fan out to the
-            right, matching the swoosh on the printed mark */}
-        <rect x="118" y="2" width="52" height="5" />
-        <rect x="124" y="10" width="46" height="5" />
-        <rect x="130" y="18" width="40" height="5" />
-      </g>
-    </svg>
-  )
-}
-
 function TopBar({ meta, right }: { meta: ReactNode; right?: ReactNode }) {
   return (
     <div className="topbar">

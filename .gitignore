@@ -12,6 +12,21 @@ dist
 dist-ssr
 *.local
 
+# Secrets. Nothing here belongs in Git — the password hash and the session key
+# live in Vercel's environment variables, and `vercel env pull` writes them into
+# .env.local for local development.
+.env
+.env.*
+!.env.example
+
+# Excel's lock files. Copying a workbook into data/ while it is open in Excel
+# leaves a ~$name.xlsx beside it; it is not a spreadsheet and must not be
+# committed or picked up as one.
+~$*
+
+# Vercel
+.vercel
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json

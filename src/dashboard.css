@@ -547,6 +547,85 @@ body.shoot-table .dpsection > *:not(.dptable){display:none !important}
 body.shoot-table .wrap{width:max-content;max-width:none;padding:0}
 body.shoot-table .dptable{margin-top:0}
 
+/* ---------- Login ----------
+   The one screen an outsider is ever supposed to reach, so it is also the one
+   screen that has to look like it belongs to J&T rather than to a framework
+   starter. It reuses the dashboard's own tokens end to end — same near-black
+   ground, same red plate behind the wordmark, same card radius and shadow — so
+   signing in reads as the first step of the dashboard rather than a detour
+   through somebody else's form.
+
+   The red bar down the top of the card is the only ornament, and it is the same
+   3px seam the top bar carries under the logo. */
+.loginpage{
+  min-height:100vh;min-height:100dvh;
+  display:flex;align-items:center;justify-content:center;
+  padding:24px 16px;
+  /* a very slight lift behind the card, so it does not float on flat black */
+  background:
+    radial-gradient(120% 90% at 50% 0%, #1E1616 0%, var(--bg) 62%);
+}
+.logincard{
+  width:100%;max-width:420px;
+  background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  overflow:hidden;border-bottom:3px solid var(--jt-red);
+}
+.loginbrand{
+  background:var(--jt-red);display:flex;align-items:center;justify-content:center;
+  padding:22px 18px;
+}
+.loginbrand .jtlogo{display:block;width:168px;height:auto}
+.loginbrand img.jtlogo{width:auto;height:44px;max-width:220px;object-fit:contain}
+
+.loginbody{padding:22px 22px 20px}
+.loginbody h1{
+  margin:0 0 6px;font-size:17px;line-height:1.3;font-weight:800;letter-spacing:.2px;
+}
+.loginsub{margin:0 0 18px;font-size:13px;font-weight:600;color:var(--ink-2);line-height:1.55}
+
+.loginfield{display:flex;flex-direction:column;gap:5px;margin-bottom:13px}
+.loginfield > span{font-size:11.5px;font-weight:700;color:var(--ink-3);letter-spacing:.2px}
+.loginfield input{
+  border:1.5px solid var(--line);border-radius:8px;padding:10px 12px;
+  font-size:15px;font-weight:600;font-family:inherit;
+  background:var(--card-2);color:var(--ink);width:100%;
+}
+.loginfield input:focus{
+  outline:none;border-color:var(--jt-red-lit);
+  box-shadow:0 0 0 3px rgba(226,35,26,.22);
+}
+.loginfield input:disabled{opacity:.6}
+
+.loginerr{
+  background:var(--red-soft);border:1.5px solid var(--jt-red);border-radius:8px;
+  color:#FFB3AD;font-size:13px;font-weight:600;line-height:1.5;
+  padding:9px 11px;margin:2px 0 13px;
+}
+
+.loginbtn{
+  width:100%;border:1.5px solid var(--jt-red);background:var(--jt-red);color:#fff;
+  border-radius:8px;padding:11px 14px;font-size:15px;font-weight:800;
+  font-family:inherit;cursor:pointer;letter-spacing:.3px;
+}
+.loginbtn:hover:not(:disabled){background:var(--jt-red-dark);border-color:var(--jt-red-dark)}
+.loginbtn:disabled{opacity:.55;cursor:default}
+
+.loginnote{margin:14px 0 0;font-size:11.5px;font-weight:600;color:var(--ink-3);line-height:1.55}
+
+/* The signed-in identity chip in the top bar, beside the sign-out button. */
+.userchip{
+  font-size:12.5px;font-weight:700;color:#fff;background:var(--jt-black-2);
+  border-radius:99px;padding:6px 13px;white-space:nowrap;
+}
+
+/* A full-screen "checking your session" state, shown for the moment between
+   load and the answer from /api/session. Without it the login form flashes up
+   for every already-signed-in user on every refresh. */
+.bootscreen{
+  min-height:100vh;min-height:100dvh;display:flex;align-items:center;justify-content:center;
+  color:var(--ink-3);font-size:13.5px;font-weight:700;letter-spacing:.3px;
+}
+
 /* ---------- Phones ----------
    Three things were actually wrong, not just tight.
 
@@ -626,6 +705,19 @@ body.shoot-table .dptable{margin-top:0}
   .dropzone{padding:32px 16px}
   .dropzone h2{font-size:16.5px}
   .dropzone p{font-size:13.5px}
+
+  /* The card stops trying to be a card and takes the screen. On a 390px phone a
+     centred 420px box with margins is just a cramped form with wasted edges. */
+  .loginpage{padding:0;align-items:stretch}
+  .logincard{max-width:none;border-radius:0;box-shadow:none;display:flex;flex-direction:column}
+  .loginbrand{padding:26px 18px}
+  .loginbrand .jtlogo{width:150px}
+  .loginbody{flex:1;padding:20px 16px 24px}
+  .loginbody h1{font-size:16px}
+  /* 16px is the floor below which iOS Safari zooms the page on focus, which
+     leaves the user looking at a magnified half of a form they cannot scroll
+     back out of. */
+  .loginfield input{font-size:16px}
 }
 
 @media print{
