@@ -336,8 +336,11 @@ export default function Dashboard({
 
       {/* -------- toolbar -------- */}
       <div className="toolbar">
-        <button className="btn primary" onClick={() => fileRef.current?.click()}>Unggah Excel</button>
-        {picker}
+        {/* No upload button here any more. The report comes from the server now,
+            and a control that swaps it for a local file only invited someone to
+            look at yesterday's copy and believe it was live. The drop zone on
+            the empty state keeps the ability, where it is a recovery path rather
+            than a standing offer. */}
         <Field label="Tanggal laporan · 报表日期">
           <select value={di} onChange={(e) => setDateIdx(Number(e.target.value))}>
             {dates.map((d, i) => (
@@ -369,9 +372,9 @@ export default function Dashboard({
         <button className="btn" onClick={() => { setModel(null); setFileName(''); setErr('') }}>Hapus data</button>
         {/* Sign-out sits at the end of the toolbar rather than in the top bar
             because the top bar is inside the PNG export, and no one wants a
-            "Keluar" button baked into the picture they send to the region. */}
+            "LogOut" button baked into the picture they send to the region. */}
         <span className="userchip" title={`Masuk sebagai ${who.user}`}>{who.user}</span>
-        <button className="btn" onClick={signOut}>Keluar</button>
+        <button className="btn" onClick={signOut}>LogOut</button>
       </div>
 
       {err && <div className="err">{err}</div>}
@@ -453,7 +456,7 @@ export default function Dashboard({
 
       {/* -------- trend, full width -------- */}
       <div className="row-trend">
-        <Panel title={<>Tren KPI ({dates.length} hari) <Zh>KPI趋势</Zh></>}>
+        <Panel title={<>Tren Operasional ({dates.length} Hari) <Zh>运营趋势</Zh></>}>
           <div className="legend">
             {kpis.map((k) => (
               <button key={k.key} className={k.inTrend ? '' : 'off'}
@@ -476,7 +479,10 @@ export default function Dashboard({
 
       {/* -------- middle row -------- */}
       <div className="row-mid">
-        <Panel title={<>Ringkasan KPI (Hari Terpilih) <Zh>KPI汇总</Zh></>} red flush>
+        {/* 达成 is the workbook's own word for "Pencapaian" — it is what the
+            sheets write in 月度达成 / 一派质量达成 — so the gloss stays in step with
+            the Indonesian *and* with the source file. */}
+        <Panel title={<>Ringkasan Pencapaian (Hari Terpilih) <Zh>达成汇总</Zh></>} red flush>
           <table>
             <thead>
               <tr>
@@ -534,7 +540,7 @@ export default function Dashboard({
 
       {/* -------- bottom row -------- */}
       <div className="row-bot">
-        <Panel title={<>Detail KPI (Hari Ini vs Hari Sebelumnya) <Zh>KPI明细</Zh></>} flush>
+        <Panel title={<>Detail Pencapaian (Hari Ini vs Hari Sebelumnya) <Zh>达成明细</Zh></>} flush>
           <table>
             <thead>
               <tr>

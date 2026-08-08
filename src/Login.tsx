@@ -209,7 +209,7 @@ export default function Login({ onSignedIn }: { onSignedIn: (who: Identity) => v
           {err && <div className="loginerr" role="alert">{err}</div>}
 
           <button className="loginbtn" type="submit" disabled={busy || !username || !password}>
-            {busy ? 'Memeriksa…' : 'Masuk'}
+            {busy ? 'Memeriksa…' : 'Login'}
           </button>
 
           <p className="loginnote">
