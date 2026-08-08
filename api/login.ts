@@ -11,6 +11,7 @@ import {
 import {
   BAD_CREDENTIALS, clientKey, json, lockedFor, noteFailure, noteSuccess, originAllowed,
 } from './_lib/guard.js'
+import { adapt } from './_lib/adapt.js'
 
 /**
  * Every login answer takes at least this long.
@@ -30,17 +31,7 @@ async function settle<T>(started: number, value: T): Promise<T> {
   return value
 }
 
-/**
- * Exported three ways on purpose.
- *
- * Vercel's Node runtime accepts both the legacy `(req, res)` signature and the
- * web-standard `Request → Response` one used here, and it works out which it is
- * looking at from the shape of the export. A named `POST` is the least ambiguous
- * form of that signal; the default export is the widely-documented one. Giving
- * it both costs a line and removes an entire class of "works locally, 500s on
- * Vercel" from the table.
- */
-export async function handler(req: Request): Promise<Response> {
+async function login(req: Request): Promise<Response> {
   const started = Date.now()
 
   if (req.method !== 'POST') {
@@ -110,5 +101,6 @@ export async function handler(req: Request): Promise<Response> {
   ))
 }
 
-export const POST = handler
-export default handler
+/* Both export shapes, both calling conventions — see api/_lib/adapt.ts. */
+export const POST = adapt(login)
+export default POST

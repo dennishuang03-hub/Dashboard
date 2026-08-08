@@ -8,9 +8,9 @@
  * server, which is exactly the arrangement we want.
  */
 import { json, requireSession } from './_lib/guard.js'
+import { adapt } from './_lib/adapt.js'
 
-/* Exported as both a named method and a default — see the note in login.ts. */
-export async function handler(req: Request): Promise<Response> {
+async function session(req: Request): Promise<Response> {
   if (req.method !== 'GET') {
     return json({ error: 'Metode tidak diizinkan.' }, 405, { Allow: 'GET' })
   }
@@ -22,5 +22,6 @@ export async function handler(req: Request): Promise<Response> {
   return json({ user: u, role: r, agent: a, expiresAt: exp })
 }
 
-export const GET = handler
-export default handler
+/* Both export shapes, both calling conventions — see api/_lib/adapt.ts. */
+export const GET = adapt(session)
+export default GET

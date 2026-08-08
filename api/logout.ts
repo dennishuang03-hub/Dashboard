@@ -8,9 +8,9 @@
  */
 import { clearedCookie } from './_lib/auth.js'
 import { json, originAllowed } from './_lib/guard.js'
+import { adapt } from './_lib/adapt.js'
 
-/* Exported as both a named method and a default — see the note in login.ts. */
-export async function handler(req: Request): Promise<Response> {
+async function logout(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
     return json({ error: 'Metode tidak diizinkan.' }, 405, { Allow: 'POST' })
   }
@@ -20,5 +20,6 @@ export async function handler(req: Request): Promise<Response> {
   return json({ ok: true }, 200, { 'Set-Cookie': clearedCookie() })
 }
 
-export const POST = handler
-export default handler
+/* Both export shapes, both calling conventions — see api/_lib/adapt.ts. */
+export const POST = adapt(logout)
+export default POST

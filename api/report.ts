@@ -14,6 +14,7 @@
 import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { json, requireSession } from './_lib/guard.js'
+import { adapt } from './_lib/adapt.js'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
@@ -78,8 +79,7 @@ async function newestWorkbook(): Promise<Found | null> {
   return null
 }
 
-/* Exported as both a named method and a default — see the note in login.ts. */
-export async function handler(req: Request): Promise<Response> {
+async function report(req: Request): Promise<Response> {
   if (req.method !== 'GET') {
     return json({ error: 'Metode tidak diizinkan.' }, 405, { Allow: 'GET' })
   }
@@ -129,5 +129,6 @@ export async function handler(req: Request): Promise<Response> {
   })
 }
 
-export const GET = handler
-export default handler
+/* Both export shapes, both calling conventions — see api/_lib/adapt.ts. */
+export const GET = adapt(report)
+export default GET
