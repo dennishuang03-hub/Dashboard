@@ -30,7 +30,7 @@
  * than an empty one. To exercise the real sign-in against the real functions,
  * use `vercel dev` instead.
  */
-export const SKIP_LOGIN = false
+export const SKIP_LOGIN = true
 
 /**
  * What the rest of the app actually asks. Never `SKIP_LOGIN` on its own — the

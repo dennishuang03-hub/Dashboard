@@ -85,8 +85,13 @@ export interface SheetInfo {
   reason?: string
   kpiCount: number
   agentCount: number
-  /** 'agent' = one row per agent · 'dp' = one row per drop point / collection point */
-  kind: 'agent' | 'dp'
+  /**
+   * 'agent'  one row per agent
+   * 'dp'     one row per drop point / collection point, with readings
+   * 'lookup' no readings at all — a reference table naming each site's business
+   *          model, merged into the DP rows rather than shown on its own
+   */
+  kind: 'agent' | 'dp' | 'lookup'
 }
 
 /* ------------------------------------------------------- drop point level */
@@ -910,6 +915,124 @@ export function looksLikeDpSheet(ws: XLSX.WorkSheet): boolean {
 
 interface RawDpSheet { rows: DpRow[]; kpiCount: number; dates: { key: string; date: Date | null }[] }
 
+/* -------------------------------------------- business-model lookup sheet */
+
+/** One site's business model, as stated on a reference tab. */
+export interface BizModelEntry {
+  /** Kode Agent, normalised — `AGENT40` */
+  agentCode: string
+  /** drop-point name, normalised */
+  name: string
+  model: BizModel
+}
+
+/**
+ * Read a tab that names each site's business model and nothing else.
+ *
+ * The daily report does not always carry a "Model Bisnis" column beside the
+ * readings — the combined `ALL DP DATA` tab does not — and without it every site
+ * on the dashboard is tagged `?`. Rather than have someone widen a 48-column
+ * sheet by hand each morning, the fact can live on its own tab (`Fr&Ag`) that is
+ * written once and changes only when a site changes hands.
+ *
+ * Such a tab looks almost exactly like a drop-point tab: agent, Kode Agent, site
+ * name, and a header block. The one difference is that it has no readings, and
+ * that is what this function checks. Returning `null` rather than throwing lets
+ * the caller fall through to the real drop-point parser, so a tab that *does*
+ * carry both a Model Bisnis column and readings is still parsed as data — which
+ * is what the older per-agent tabs are.
+ */
+function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
+  const { m, lastC } = sheetMatrix(ws)
+  if (!m.length) return null
+
+  const hit = findDpHeader(m, lastC)
+  if (!hit) return null
+  const { headerRow, dpCol } = hit
+
+  /* The Model Bisnis column may sit either side of the site name, so the sweep
+     covers the whole width rather than only the identity block to the left. */
+  let modelCol = -1
+  for (let R = 0; R <= headerRow + 3 && modelCol < 0; R++) {
+    if (!m[R]) continue
+    for (let C = 0; C <= lastC; C++) {
+      if (C === dpCol) continue
+      if (MODEL_HEADER_RE.test(txt(m[R][C]))) { modelCol = C; break }
+    }
+  }
+  if (modelCol < 0) return null           // no business-model column: not this kind of tab
+
+  let agentCol = -1, codeCol = -1
+  for (let C = 0; C < dpCol; C++) {
+    const s = txt(m[headerRow][C])
+    if (!s) continue
+    if (CODE_HEADER_RE.test(s)) { if (codeCol < 0) codeCol = C }
+    else if (AGENT_HEADER_RE.test(s)) { if (agentCol < 0) agentCol = C }
+  }
+
+  const headerText = txt(m[headerRow][dpCol])
+  const entries: BizModelEntry[] = []
+  let lastCode = '', blanks = 0
+
+  for (let R = headerRow + 1; R < m.length; R++) {
+    const name = txt(m[R][dpCol])
+    if (!name) { if (++blanks > 40) break; continue }
+    blanks = 0
+    /* the header block is merged down a few rows, so its own text reappears */
+    if (name === headerText || DP_HEADER_RE.test(name)) continue
+    if (/合计|^total$|^jumlah|grand\s*total|^sum$/i.test(name)) continue
+
+    /* A reading anywhere on this row means the tab is a data tab after all, and
+       parsing it as a lookup would throw its numbers away. Hand it back. */
+    let nums = 0
+    for (let C = dpCol + 1; C <= lastC; C++) if (cellNum(m[R][C]) != null) nums++
+    if (nums >= 2) return null
+
+    const model = bizModelOf(txt(m[R][modelCol]))
+    if (!model) continue                  // blank or unrecognised — nothing to record
+
+    const c = codeCol >= 0 ? txt(m[R][codeCol]) : ''
+    if (c) lastCode = c
+    const agent = agentCol >= 0 ? txt(m[R][agentCol]) : ''
+
+    entries.push({
+      agentCode: normKey(lastCode) || normKey(agent),
+      name: normKey(name),
+      model,
+    })
+  }
+
+  return entries.length ? entries : null
+}
+
+/**
+ * Index the lookup two ways, because the join can be made on two different
+ * strengths of evidence.
+ *
+ * `byPair` is Kode Agent plus site name, which is exact. `byName` is the site
+ * name alone, and it holds **only names that appear once in the whole file** —
+ * a name used by two agents is ambiguous, and guessing which one is meant would
+ * put a confident wrong tag on a row, which is worse than the `?` it replaced.
+ */
+function indexBizModels(entries: BizModelEntry[]) {
+  const byPair = new Map<string, BizModel>()
+  const seen = new Map<string, BizModel | null>()   // null marks "seen more than once"
+
+  for (const e of entries) {
+    byPair.set(`${e.agentCode}::${e.name}`, e.model)
+    if (seen.has(e.name)) {
+      if (seen.get(e.name) !== e.model) seen.set(e.name, null)
+    } else {
+      seen.set(e.name, e.model)
+    }
+  }
+
+  const byName = new Map<string, BizModel>()
+  for (const [name, model] of seen) if (model) byName.set(name, model)
+
+  return { byPair, byName }
+}
+
 /**
  * `AG12` → `AGENT12`. The tab name is the fallback identity for a sheet whose
  * Kode Agent column is blank; without it such a tab's drop points would end up
@@ -1234,6 +1357,7 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
   let totalRow: AgentRow | null = null
   const dps: DpRow[] = []
   const dpDateMap = new Map<string, Date | null>()
+  const bizEntries: BizModelEntry[] = []
 
   wb.SheetNames.forEach((sheetName, sheetIdx) => {
     const ws = wb.Sheets[sheetName]
@@ -1241,6 +1365,20 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
     /* per-agent drop-point tab — parsed into its own model, never merged into
        the agent rows (see `looksLikeDpSheet`) */
     if (looksLikeDpSheet(ws)) {
+      /* A reference tab naming each site's business model looks like a
+         drop-point tab and is not one. Tried first, and it declines by returning
+         null the moment it finds readings, so a real data tab falls straight
+         through to the parser below. */
+      const biz = parseBizModelSheet(ws)
+      if (biz) {
+        bizEntries.push(...biz)
+        sheets.push({
+          name: sheetName, ok: true, kind: 'lookup',
+          kpiCount: 0, agentCount: biz.length,
+        })
+        return
+      }
+
       try {
         const raw = parseDpSheet(ws, sheetName)
         dps.push(...raw.rows)
@@ -1414,6 +1552,27 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
    * "TANGERANG唐格朗" where the summary sheet writes "TANGERANG", and the agent
    * picker has to show one name, not two.
    */
+  /**
+   * Fill in the business model from the reference tab, where the readings tab
+   * did not carry one.
+   *
+   * Done before the agent join below, which overwrites `agentKey` with the
+   * summary sheet's key — `agentCode` is the raw Kode Agent both tabs share, and
+   * it is what the exact match is made on.
+   *
+   * A model already read off the row itself always wins: the older per-agent
+   * tabs carry their own column, and a reference tab that has drifted out of
+   * date must not overrule the sheet the numbers came from.
+   */
+  if (bizEntries.length) {
+    const { byPair, byName } = indexBizModels(bizEntries)
+    for (const d of dps) {
+      if (d.bizModel) continue
+      const key = normKey(d.name)
+      d.bizModel = byPair.get(`${d.agentCode}::${key}`) ?? byName.get(key) ?? ''
+    }
+  }
+
   const byCode = new Map<string, AgentRow>()
   for (const r of rows) {
     if (r.code) byCode.set(normKey(r.code), r)
