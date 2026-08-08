@@ -9,7 +9,8 @@
 import { clearedCookie } from './_lib/auth'
 import { json, originAllowed } from './_lib/guard'
 
-export default async function handler(req: Request): Promise<Response> {
+/* Exported as both a named method and a default — see the note in login.ts. */
+export async function handler(req: Request): Promise<Response> {
   if (req.method !== 'POST') {
     return json({ error: 'Metode tidak diizinkan.' }, 405, { Allow: 'POST' })
   }
@@ -18,3 +19,6 @@ export default async function handler(req: Request): Promise<Response> {
   }
   return json({ ok: true }, 200, { 'Set-Cookie': clearedCookie() })
 }
+
+export const POST = handler
+export default handler

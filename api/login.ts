@@ -30,7 +30,17 @@ async function settle<T>(started: number, value: T): Promise<T> {
   return value
 }
 
-export default async function handler(req: Request): Promise<Response> {
+/**
+ * Exported three ways on purpose.
+ *
+ * Vercel's Node runtime accepts both the legacy `(req, res)` signature and the
+ * web-standard `Request → Response` one used here, and it works out which it is
+ * looking at from the shape of the export. A named `POST` is the least ambiguous
+ * form of that signal; the default export is the widely-documented one. Giving
+ * it both costs a line and removes an entire class of "works locally, 500s on
+ * Vercel" from the table.
+ */
+export async function handler(req: Request): Promise<Response> {
   const started = Date.now()
 
   if (req.method !== 'POST') {
@@ -99,3 +109,6 @@ export default async function handler(req: Request): Promise<Response> {
     { 'Set-Cookie': sessionCookie(token, SESSION_TTL_S) },
   ))
 }
+
+export const POST = handler
+export default handler

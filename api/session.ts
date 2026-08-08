@@ -9,7 +9,8 @@
  */
 import { json, requireSession } from './_lib/guard'
 
-export default async function handler(req: Request): Promise<Response> {
+/* Exported as both a named method and a default — see the note in login.ts. */
+export async function handler(req: Request): Promise<Response> {
   if (req.method !== 'GET') {
     return json({ error: 'Metode tidak diizinkan.' }, 405, { Allow: 'GET' })
   }
@@ -20,3 +21,6 @@ export default async function handler(req: Request): Promise<Response> {
   const { u, r, a, exp } = guard.session
   return json({ user: u, role: r, agent: a, expiresAt: exp })
 }
+
+export const GET = handler
+export default handler

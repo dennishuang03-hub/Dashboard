@@ -78,7 +78,8 @@ async function newestWorkbook(): Promise<Found | null> {
   return null
 }
 
-export default async function handler(req: Request): Promise<Response> {
+/* Exported as both a named method and a default — see the note in login.ts. */
+export async function handler(req: Request): Promise<Response> {
   if (req.method !== 'GET') {
     return json({ error: 'Metode tidak diizinkan.' }, 405, { Allow: 'GET' })
   }
@@ -127,3 +128,6 @@ export default async function handler(req: Request): Promise<Response> {
     },
   })
 }
+
+export const GET = handler
+export default handler

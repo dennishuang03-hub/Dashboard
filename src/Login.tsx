@@ -64,7 +64,24 @@ export default function Login({ onSignedIn }: { onSignedIn: (who: Identity) => v
       }
 
       if (!r.ok) {
-        setErr(data.error || 'Tidak dapat masuk. Coba lagi.')
+        /*
+         * A failure with no `error` field did not come from our API.
+         *
+         * Every route here answers a failure in JSON with a sentence in it, so
+         * the fallback below only fires when something *else* replied — Vercel's
+         * HTML 404 when the function was never deployed, or its 500 when the
+         * function threw on the way up. Those are configuration problems, and
+         * the old text ("Tidak dapat masuk. Coba lagi.") sent people to check
+         * their password instead, which was the one thing that was fine.
+         *
+         * The status code is the whole diagnosis, so it goes on screen: 404 is
+         * "not deployed", 500 is "crashed", 401 would have carried a message of
+         * its own.
+         */
+        setErr(data.error || `Server membalas ${r.status}${
+          r.status === 404 ? ' — /api/login tidak ditemukan (fungsi belum ter-deploy).'
+          : r.status >= 500 ? ' — fungsi login gagal berjalan. Periksa log di Vercel.'
+          : '.'}`)
         /* Clear only the password. Retyping the username after a typo in the
            other field is a small, pointless annoyance. */
         setPassword('')
