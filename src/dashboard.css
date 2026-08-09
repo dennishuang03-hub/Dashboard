@@ -559,11 +559,25 @@ table.dpgrid thead th.seam,table.dpgrid tbody td.seam{border-left:2px solid #4A4
 table.dpgrid thead th:not(.secband):hover{background:var(--jt-red-dark)}
 table.dpgrid th.cat{max-width:104px;white-space:normal;line-height:1.25}
 table.dpgrid tbody td{padding:6px 9px;white-space:nowrap}
-table.dpgrid th.sticky,table.dpgrid td.sticky{position:sticky;left:0;z-index:2}
+/* The frozen name column.
+
+   A pinned column and a merely-first column look identical when the page is at
+   rest, so the shadow down the right edge is not decoration — it is the only
+   thing that says "the rest of this row moves and this does not". Without it a
+   sideways swipe reads as the whole table failing to move properly. */
+table.dpgrid th.sticky,table.dpgrid td.sticky{
+  position:sticky;left:0;z-index:2;
+  box-shadow:6px 0 8px -6px rgba(0,0,0,.7);
+}
 table.dpgrid thead th.sticky{z-index:4}
 table.dpgrid tbody td.sticky{background:var(--card)}
 table.dpgrid tbody tr:nth-child(even) td.sticky{background:#242424}
-.dpname{font-weight:700;display:flex;align-items:center;gap:8px}
+/* the flexbox is on this span, never on the `<td>` — see the note in
+   DpSection.tsx for why that distinction keeps the column pinned on iOS */
+.dpname{font-weight:700;display:flex;align-items:center;gap:8px;min-width:0}
+.dpname .dptext{min-width:0}
+/* the agent name inside the pinned cell; a phone-only stand-in for the column */
+.dpagent{display:none}
 /* Solid fill, because this is the one thing on the row you scan for rather than
    read. A fixed min-width keeps the two tags the same size so the names below
    them stay in a straight column instead of stepping in and out. */
@@ -1098,6 +1112,27 @@ body.shoot-table .dptable{margin-top:0}
      figure. The grid already scrolls sideways, so one line each costs nothing
      and buys back most of the screen. */
   table.dpgrid th.cat{max-width:none;white-space:nowrap}
+
+  /* One column instead of two.
+
+     The pinned name column and a separate Agen column were spending half a
+     390px screen on identity, leaving almost nothing for the figures the table
+     exists to show. The agent moves inside the pinned cell as a second line and
+     its column goes away — same information, one column's worth of width back.
+     Hidden by class rather than by position, so it stays correct whether or not
+     the Agen column is being rendered at all. */
+  table.dpgrid .agentcol{display:none}
+  .dpagent{
+    display:block;margin-top:2px;padding-left:36px;
+    font-size:11px;font-weight:600;color:var(--ink-3);
+    overflow:hidden;text-overflow:ellipsis;
+  }
+  /* Capped, and the name ellipsises rather than pushing the figures off screen.
+     A long site name is recoverable — the cell carries it as a tooltip and the
+     Excel export carries it in full. */
+  table.dpgrid th.sticky,
+  table.dpgrid td.sticky{max-width:172px}
+  .dpname .dptext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
   .sumitem .lab{width:auto;min-width:104px;flex:0 1 auto}
   .dropzone{padding:32px 16px}

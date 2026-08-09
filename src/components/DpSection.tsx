@@ -675,7 +675,7 @@ export default function DpSection({
                     enough — no reordering needed here. */}
                 <tr className="secrow" ref={secRowRef}>
                   <th className="sticky" />
-                  {allAgents && <th />}
+                  {allAgents && <th className="agentcol" />}
                   <th />
                   {catRuns.map((run, i) => (
                     <th
@@ -693,7 +693,9 @@ export default function DpSection({
                     DP / CP{arrow('__name__')}<Zh>网点</Zh>
                   </th>
                   {allAgents && (
-                    <th onClick={() => sortOn('__agent__')}>Agen{arrow('__agent__')}<Zh>代理区</Zh></th>
+                    <th className="agentcol" onClick={() => sortOn('__agent__')}>
+                      Agen{arrow('__agent__')}<Zh>代理区</Zh>
+                    </th>
                   )}
                   <th onClick={() => sortOn('__status__')}>Status{arrow('__status__')}<Zh>状态</Zh></th>
                   {catKpis.map((k) => (
@@ -713,21 +715,41 @@ export default function DpSection({
               <tbody>
                 {shown.map((s) => (
                   <tr key={s.dp.key} className={`k-${s.kind}`}>
-                    <td className="sticky dpname">
-                      {/* the tag carries the business model, not the DP/CP split:
-                          the name is already prefixed CP_ where that matters, so
-                          the two letters are better spent on the thing the name
-                          does not tell you */}
-                      <span
-                        className={`ptag ${s.dp.bizModel || 'unknown'}`}
-                        title={`${BIZ_MODEL_LABEL[s.dp.bizModel]} · ${s.dp.isCp ? 'Collection point' : 'Drop point'}`}
-                      >
-                        {BIZ_MODEL_TAG[s.dp.bizModel]}
+                    {/*
+                      The flex layout lives on the span inside, not on the cell.
+
+                      `display:flex` on a `<td>` takes it out of the table layout
+                      and the engine re-parents it into an anonymous cell — and a
+                      `position:sticky` box inside an anonymous table box is
+                      exactly where iOS Safari stops honouring the stickiness.
+                      That is why this column stayed pinned on a desktop and
+                      scrolled away on a phone, cutting the names in half.
+
+                      Keeping the cell a cell and giving the span the flexbox
+                      costs one element and makes the pinning work everywhere.
+                    */}
+                    <td className="sticky dpcell" title={s.dp.label}>
+                      <span className="dpname">
+                        {/* the tag carries the business model, not the DP/CP split:
+                            the name is already prefixed CP_ where that matters, so
+                            the two letters are better spent on the thing the name
+                            does not tell you */}
+                        <span
+                          className={`ptag ${s.dp.bizModel || 'unknown'}`}
+                          title={`${BIZ_MODEL_LABEL[s.dp.bizModel]} · ${s.dp.isCp ? 'Collection point' : 'Drop point'}`}
+                        >
+                          {BIZ_MODEL_TAG[s.dp.bizModel]}
+                        </span>
+                        <span className="dptext">{s.dp.label}</span>
                       </span>
-                      {s.dp.label}
+                      {/* The agent, folded into the pinned cell — shown only on a
+                          phone, where the column of its own below is hidden. It
+                          rides along with the name instead of costing width the
+                          indicators need. */}
+                      {allAgents && <span className="dpagent">{s.dp.agentLabel}</span>}
                     </td>
                     {allAgents && (
-                      <td className="muted">{s.dp.agentLabel}<Zh>{agentZh(s.dp.agentLabel)}</Zh></td>
+                      <td className="muted agentcol">{s.dp.agentLabel}<Zh>{agentZh(s.dp.agentLabel)}</Zh></td>
                     )}
                     <td>
                       <span className={`sbadge ${s.kind}`} title={DP_KIND_ZH[s.kind]}>
