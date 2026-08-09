@@ -15,7 +15,7 @@
  * instead, because "why is this one missing?" is a question the table has to be
  * able to answer.
  */
-import { useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import {
   BIZ_MODEL_LABEL, BIZ_MODEL_TAG, CANONICAL_ORDER, CATEGORY_ZH, DP_KIND_LABEL, DP_KIND_ZH,
@@ -293,8 +293,61 @@ export default function DpSection({
   const [sortKey, setSortKey] = useState('__name__')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [showAll, setShowAll] = useState(false)
+  /**
+   * The comparison basket: drop points ticked for a side-by-side look.
+   *
+   * Keyed by `dp.key` rather than by row index, so a tick survives sorting,
+   * searching and the day switch — which is the whole point. You find one site,
+   * tick it, clear the search, find another, tick that, and only then ask to see
+   * the two together.
+   */
+  const [picked, setPicked] = useState<ReadonlySet<string>>(() => new Set<string>())
+  const [onlyPicked, setOnlyPicked] = useState(false)
   const tableRef = useRef<HTMLDivElement>(null)
   const secRowRef = useRef<HTMLTableRowElement>(null)
+
+  const togglePick = (key: string) => setPicked((prev) => {
+    const next = new Set(prev)
+    if (next.has(key)) next.delete(key)
+    else next.add(key)
+    return next
+  })
+
+  /** Ticked sites that exist in the current agent scope. */
+  const pickedCount = useMemo(
+    () => scored.reduce((n, s) => n + (picked.has(s.dp.key) ? 1 : 0), 0),
+    [scored, picked],
+  )
+
+  /**
+   * Whether the table is actually showing the basket.
+   *
+   * Guarded by the count so an empty basket can never blank the table — but the
+   * guard alone was not enough, and the difference is worth spelling out because
+   * it made the feature unusable.
+   *
+   * Masking `onlyPicked` hides its effect without clearing it. Untick everything
+   * and the table correctly went back to the full list, while `onlyPicked` was
+   * still sitting there `true`; the very next tick satisfied the guard again and
+   * the table collapsed to that one row, with no way to add a second. The only
+   * escape was "Kosongkan", which happens to reset the flag.
+   *
+   * So the flag is cleared for real below, and this stays as the guard against
+   * the frame in between.
+   */
+  const basketOn = onlyPicked && pickedCount > 0
+
+  /**
+   * An empty basket disarms the view.
+   *
+   * An effect rather than a line inside `togglePick`, because emptying is not
+   * only something the tick does: changing the agent takes every selected site
+   * out of scope too, and that path would have re-armed exactly the same way.
+   * Reacting to the count catches every route to zero, present and future.
+   */
+  useEffect(() => {
+    if (onlyPicked && pickedCount === 0) setOnlyPicked(false)
+  }, [onlyPicked, pickedCount])
 
   /**
    * Publish the section band's real height as `--secrow-h`, which is what the
@@ -332,7 +385,23 @@ export default function DpSection({
 
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
-    let out = scored.filter((s) => {
+
+    /*
+     * A basket is not another filter, and this is the one design decision worth
+     * arguing about.
+     *
+     * Left as a filter it would AND with the others, and the sequence that
+     * builds a selection would then destroy it: you search "CIJANTUNG", tick it,
+     * search "TEBET", tick that — and asking to see your two picks through a
+     * search box still reading "TEBET" shows you one. The tick and the thing
+     * that found the tick are different acts, and the second should not outlive
+     * itself.
+     *
+     * So the basket replaces the filters rather than joining them. Sorting still
+     * applies, because comparing three sites by a column is exactly what this is
+     * for.
+     */
+    let out = basketOn ? scored.filter((s) => picked.has(s.dp.key)) : scored.filter((s) => {
       if (status !== 'all' && s.kind !== status) return false
       if (type === 'cp' && !s.dp.isCp) return false
       if (type === 'dp' && s.dp.isCp) return false
@@ -363,9 +432,13 @@ export default function DpSection({
       return dir * (av - bv)
     })
     return out
-  }, [scored, q, status, type, biz, onlyBelow, tableK, sortKey, sortDir, mode, catKpis])
+  }, [scored, q, status, type, biz, onlyBelow, tableK, sortKey, sortDir, mode, catKpis,
+      basketOn, picked])
 
-  const shown = showAll ? filtered : filtered.slice(0, 40)
+  /* A deliberate selection is never truncated: forty is a guard against dumping
+     1,666 rows nobody asked for, and ticking sites one at a time is the opposite
+     of that. */
+  const shown = showAll || basketOn ? filtered : filtered.slice(0, 40)
 
   const sortOn = (key: string) => {
     if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
@@ -619,32 +692,50 @@ export default function DpSection({
         <h3>
           {/* the period is in the title rather than only in the filter bar, so a
               PNG of just this table still says which day it is */}
+          {/* The heading says which of the two lists this is, so an exported PNG
+              of a three-row table is not mistaken for a filter gone wrong. */}
           <span className="ptitle">
-            Daftar DP / CP <Zh>网点清单</Zh> — {filtered.length} dari {counts.total} ·{' '}
-            {mode === 'mtd' ? 'Pencapaian Bulan Ini' : dayLabel}
+            {basketOn
+              ? <>Perbandingan DP / CP <Zh>网点对比</Zh> — {filtered.length} dipilih</>
+              : <>Daftar DP / CP <Zh>网点清单</Zh> — {filtered.length} dari {counts.total}</>}
+            {' · '}{mode === 'mtd' ? 'Pencapaian Bulan Ini' : dayLabel}
           </span>
           <button className="btn tiny" onClick={exportXlsx}>Ekspor Excel</button>
           <button className="btn tiny" onClick={savePng}>Simpan PNG</button>
         </h3>
 
+        {/* While the basket is showing, the finders are disabled rather than left
+            live-but-ignored. They cannot narrow a selection — the basket replaces
+            them — and a search box that accepts typing and changes nothing is a
+            worse answer than one that plainly says it is not in use. */}
         <div className="dpfilters">
           <input
             type="text" placeholder="Cari DP / CP atau agen…" value={q}
             onChange={(e) => setQ(e.target.value)} aria-label="Cari drop point"
+            disabled={basketOn}
           />
-          <select value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)} aria-label="Filter status">
+          <select
+            value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)}
+            aria-label="Filter status" disabled={basketOn}
+          >
             <option value="all">Semua status</option>
             <option value="both">Delivery and Pick up</option>
             <option value="delivery">Delivery Only</option>
             <option value="pickup">Pick up Only</option>
             <option value="closed">Tutup</option>
           </select>
-          <select value={type} onChange={(e) => setType(e.target.value as 'all' | 'dp' | 'cp')} aria-label="Filter jenis">
+          <select
+            value={type} onChange={(e) => setType(e.target.value as 'all' | 'dp' | 'cp')}
+            aria-label="Filter jenis" disabled={basketOn}
+          >
             <option value="all">DP dan CP</option>
             <option value="dp">Drop point</option>
             <option value="cp">Collection point</option>
           </select>
-          <select value={biz} onChange={(e) => setBiz(e.target.value as 'all' | BizModel)} aria-label="Filter model bisnis">
+          <select
+            value={biz} onChange={(e) => setBiz(e.target.value as 'all' | BizModel)}
+            aria-label="Filter model bisnis" disabled={basketOn}
+          >
             <option value="all">Semua model bisnis</option>
             <option value="franchise">Franchise</option>
             <option value="agent">Agent</option>
@@ -654,7 +745,10 @@ export default function DpSection({
               select changed nothing you could see — it only parameterised this
               checkbox — so it read as a filter that did not filter. */}
           <label className="chk">
-            <input type="checkbox" checked={onlyBelow} onChange={(e) => setOnlyBelow(e.target.checked)} />
+            <input
+              type="checkbox" checked={onlyBelow} disabled={basketOn}
+              onChange={(e) => setOnlyBelow(e.target.checked)}
+            />
             Hanya di bawah target{tableK ? ` · ${tableK.label}` : ''}
           </label>
           <div className="seg">
@@ -664,6 +758,37 @@ export default function DpSection({
             <button className={mode === 'mtd' ? 'on' : ''} onClick={() => setMode('mtd')}>Bulanan</button>
           </div>
         </div>
+
+        {/*
+          The selection bar. Appears on the first tick and counts up from there.
+
+          It replaced a checkbox sitting among the filters, which was wrong twice
+          over: it looked like another filter when it is a different kind of
+          thing entirely, and it was silent — you could tick five rows and get no
+          acknowledgement that anything had been collected. A bar that says "5
+          dipilih" the moment you tick the fifth is the feedback the checkbox
+          never gave.
+
+          `aria-live="polite"` so the count is announced rather than only shown;
+          the tick is in a table cell and a screen-reader user has no other way
+          to know the basket grew.
+        */}
+        {pickedCount > 0 && (
+          <div className="dppicked" role="status" aria-live="polite">
+            <span className="dppicked-n"><b>{pickedCount}</b> dipilih</span>
+            <span className="dppicked-act">
+              <button className="btn tiny primary" onClick={() => setOnlyPicked(!basketOn)}>
+                {basketOn ? 'Tampilkan semua' : 'Tampilkan yang dipilih'}
+              </button>
+              <button
+                className="btn tiny"
+                onClick={() => { setPicked(new Set<string>()); setOnlyPicked(false) }}
+              >
+                Kosongkan
+              </button>
+            </span>
+          </div>
+        )}
 
         <div className="body" style={{ padding: 0 }}>
           <div className="dpscroll">
@@ -714,7 +839,7 @@ export default function DpSection({
               </thead>
               <tbody>
                 {shown.map((s) => (
-                  <tr key={s.dp.key} className={`k-${s.kind}`}>
+                  <tr key={s.dp.key} className={`k-${s.kind}${picked.has(s.dp.key) ? ' picked' : ''}`}>
                     {/*
                       The flex layout lives on the span inside, not on the cell.
 
@@ -730,6 +855,17 @@ export default function DpSection({
                     */}
                     <td className="sticky dpcell" title={s.dp.label}>
                       <span className="dpname">
+                        {/* Inside the pinned cell on purpose: the tick has to stay
+                            reachable while the row is scrolled sideways, or
+                            selecting sites you found by their figures means
+                            scrolling back left for every one. */}
+                        <input
+                          type="checkbox"
+                          className="dppick"
+                          checked={picked.has(s.dp.key)}
+                          onChange={() => togglePick(s.dp.key)}
+                          aria-label={`Pilih ${s.dp.label} untuk perbandingan`}
+                        />
                         {/* the tag carries the business model, not the DP/CP split:
                             the name is already prefixed CP_ where that matters, so
                             the two letters are better spent on the thing the name
@@ -794,7 +930,8 @@ export default function DpSection({
             </table>
           </div>
 
-          {filtered.length > 40 && (
+          {/* nothing to expand while the basket is showing — it is already whole */}
+          {!basketOn && filtered.length > 40 && (
             <div className="dpmore">
               <button className="btn" onClick={() => setShowAll(!showAll)}>
                 {showAll ? 'Tampilkan 40 pertama' : `Tampilkan semua ${filtered.length}`}

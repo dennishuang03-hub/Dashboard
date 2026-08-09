@@ -592,6 +592,12 @@ table.dpgrid tbody tr:nth-child(even) td.sticky{background:#242424}
    DpSection.tsx for why that distinction keeps the column pinned on iOS */
 .dpname{font-weight:700;display:flex;align-items:center;gap:8px;min-width:0}
 .dpname .dptext{min-width:0}
+/* The comparison tick. Sized up from the browser default — it lives in a 6px-tall
+   row and has to be hittable with a thumb, not just a mouse. */
+.dpname .dppick{
+  flex:none;width:15px;height:15px;margin:0;
+  accent-color:var(--jt-red);cursor:pointer;
+}
 /* the agent name inside the pinned cell; a phone-only stand-in for the column */
 .dpagent{display:none}
 /* Solid fill, because this is the one thing on the row you scan for rather than
@@ -632,6 +638,49 @@ td.hm.ok {color:var(--ink)}
 td.hm.bad{background:#4A1512;color:#FF8C82;font-weight:800}
 td.hm.off{color:#6E6E6E;font-weight:600}
 tbody tr.k-closed td.sticky{color:#7E7E7E}
+
+/* A ticked row.
+
+   Placed after the zebra rules on purpose: `tr:nth-child(even) td.sticky` scores
+   the same specificity as this does, so source order is what decides, and a
+   selection has to beat the stripe rather than alternate with it.
+
+   The mark is a red edge inside the pinned cell, carried alongside the pinning
+   shadow in the same `box-shadow` — a `border-left` would have shifted the cell's
+   contents by 3px and made ticked rows step out of the column. */
+table.dpgrid tbody tr.picked td{background:#2A1D1B}
+table.dpgrid tbody tr.picked td.sticky{
+  background:#3A2723;
+  box-shadow:inset 3px 0 0 var(--jt-red), 6px 0 8px -6px rgba(0,0,0,.7);
+}
+/* the heat-map fill still wins on the figure cells — a missed target must not
+   stop looking like one because the row happens to be selected */
+table.dpgrid tbody tr.picked td.hm.bad{background:#4A1512}
+
+/* The selection bar.
+
+   Tinted the same red-brown as a ticked row and edged in red down its left, so
+   the bar and the rows it counts read as one thing rather than as a notification
+   that happens to be nearby. It sits between the filters and the table — below
+   what narrows the list, above the list itself, which is where an action on a
+   selection belongs. */
+.dppicked{
+  display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+  padding:9px 13px;
+  background:#2A1D1B;border-top:1px solid var(--line);
+  border-left:3px solid var(--jt-red);
+  font-size:13px;font-weight:700;color:var(--ink);
+}
+.dppicked-n{flex:1 1 auto;min-width:0}
+/* the count is the message; the word beside it is only grammar */
+.dppicked-n b{color:var(--jt-red-lit);font-size:16px;font-weight:800;margin-right:3px}
+.dppicked-act{display:flex;gap:8px;flex:none}
+
+/* the finders, while the basket has replaced them */
+.dpfilters input:disabled,
+.dpfilters select:disabled{opacity:.4;cursor:not-allowed}
+.dpfilters .chk:has(input:disabled){opacity:.4}
+
 .dpmore{padding:10px 13px;border-top:1px solid var(--line);text-align:center}
 
 /* ---------- PNG snapshot mode ----------
@@ -1113,6 +1162,15 @@ body.shoot-table .dptable{margin-top:0}
   .dpfilters .chk,.dpfilters .seg{flex:1 1 100%}
   .dpfilters .seg{justify-content:stretch}
   .dpfilters .seg button{flex:1}
+  /* Count on its own line, then the two actions splitting the width evenly.
+     Side by side they would each get about 120px, which is not enough for
+     "Tampilkan yang dipilih" and would truncate the one button the bar exists
+     to offer. */
+  .dppicked{padding:9px 10px;gap:8px}
+  .dppicked-n{flex:1 1 100%}
+  .dppicked-act{flex:1 1 100%;gap:8px}
+  .dppicked-act .btn{flex:1 1 0;min-width:0}
+
   .dpscroll{max-height:70vh}
   /* The category headings wrap to four or five lines at this width, and every
      row in the grid inherits that height — a 240px red block before a single
