@@ -173,11 +173,15 @@ tbody td .zh{opacity:.9}
    So each part opens with a solid red band. The KPI sub-sections keep their
    black bands with red numerals, which now reads one level down rather than as a
    peer: red band = which report you are in, black band = which half of it. */
+/* `flex-start`, matching `.dphead`. The badge numbers the *title*, so it aligns
+   to the title's line rather than floating at the optical centre of a block whose
+   height depends on how far the subtitle happens to wrap. */
 .partband{
-  display:flex;align-items:center;gap:13px;
+  display:flex;align-items:flex-start;gap:13px;
   background:var(--jt-red);color:#fff;border-radius:12px;box-shadow:var(--shadow);
   padding:12px 16px;margin:0 0 12px;
 }
+.partband .parttext{flex:1 1 0;min-width:0}
 /* `.dphead` is the same band wearing a different class — it lives in DpSection
    and carries the DP part's own title, so the shared pieces are named for both
    rather than duplicated. */
@@ -186,8 +190,10 @@ tbody td .zh{opacity:.9}
   display:inline-flex;align-items:center;justify-content:center;flex:none;
   width:30px;height:30px;border-radius:8px;
   background:rgba(0,0,0,.30);font-size:15px;font-weight:800;color:#fff;
+  /* optical alignment: a 30px block beside a 17px cap-height sits a shade high
+     when both start at the same y */
+  margin-top:1px;
 }
-.partband .parttext{flex:1;min-width:0}
 .partband .parttitle{display:block;font-size:17px;font-weight:800;letter-spacing:.2px}
 .partband .partsub{
   display:block;margin-top:2px;font-size:12.5px;font-weight:600;line-height:1.4;
@@ -418,12 +424,22 @@ body.shooting .chartscroll{overflow:visible !important}
 /* The DP part's own band. Same red plate as `.partband` — this heading is not a
    panel title, it is the opening of the second half of the page, and it should
    carry the same weight as the one that opened the first. */
+/* `wrap`, and it has to be.
+
+   The fallback notice below asks for `flex-basis:100%` so it drops onto a line
+   of its own. On a `nowrap` row that basis is not a request to wrap — it is a
+   claim on the full width, made against a sibling that has nowhere to go, and
+   the title block gets squeezed to a few pixels and prints one word per line.
+   Wrapping is what turns "take the whole width" into "take the next row". */
 .dphead{
-  display:flex;align-items:center;gap:13px;flex-wrap:nowrap;
+  display:flex;flex-wrap:wrap;align-items:flex-start;gap:8px 13px;
   background:var(--jt-red);color:#fff;border-radius:12px;box-shadow:var(--shadow);
   padding:12px 16px;margin-bottom:12px;
 }
-.dphead .dptitles{flex:1;min-width:0}
+.dphead .partnum{flex:none}
+/* `1 1 0`, not `1`: with a percentage basis the title would compete with the
+   notice for the same row instead of simply filling what the badge leaves. */
+.dphead .dptitles{flex:1 1 0;min-width:0}
 /* Deliberately identical to `.partband .parttitle` — the two bands are one
    component wearing two class names, and the heading is short enough at both
    that it never needs to wrap. */
@@ -1069,24 +1085,15 @@ body.shoot-table .dptable{margin-top:0}
   .dptable .body{overflow:visible}
   .dptable .body table{min-width:0}
 
-  /* The badge stays on the title's line and the date drops below.
+  /* Type and padding only.
 
-     It had `flex:1 1 100%` on the titles, which pushed the badge onto a row of
-     its own with the rest of that row empty — a letter floating above the
-     heading it is supposed to number. `1 1 0` lets the titles take whatever the
-     badge leaves instead of demanding the full width. */
+     The layout — badge beside the title, notice wrapping to its own row — is in
+     the base rules and is correct at every width, so it is not restated here.
+     It used to be, and the duplicate `order` and `flex` declarations were how
+     the two ended up disagreeing: fixing one left the other saying something
+     else. A breakpoint should change sizes, not rebuild the layout. */
   .partband,
-  .dphead{padding:11px 13px;gap:8px 11px;align-items:flex-start}
-  .dphead{flex-wrap:wrap}
-  .dphead .partnum,
-  .partband .partnum{order:1;flex:none}
-  .dphead .dptitles,
-  .partband .parttext{order:2;flex:1 1 0;min-width:0}
-  .dphead .dpday{order:3;flex:1 1 100%}
-  /* optical alignment: the badge is a 30px block beside a 15.5px cap-height, so
-     centring it on the first line means nudging it down a little */
-  .dphead .partnum,
-  .partband .partnum{margin-top:1px}
+  .dphead{padding:11px 13px;gap:8px 11px}
 
   .dphead h2,
   .partband .parttitle{font-size:15.5px;line-height:1.3}
