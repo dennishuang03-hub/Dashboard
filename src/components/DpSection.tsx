@@ -506,26 +506,43 @@ export default function DpSection({
           The subtitle spells out the unit of the rows below, because that is the
           one thing that separates this half from the one before it: everything
           up there is an agent, everything down here is a single counter. */}
+      {/*
+        Built to the same pattern as the "Data Agen" band in Dashboard.tsx: a
+        short title, and every qualifier in the line beneath it.
+
+        That is the whole reason A looked composed and B did not. B was carrying
+        its scope inside the heading — "Performa DP / CP 网点绩效 — SEMUA AGEN ·
+        10 agen" — which is four separate facts in one sentence and wraps onto
+        two or three lines the moment the screen narrows, taking the badge's
+        alignment with it. Moving the scope and the date down to the subtitle
+        leaves a heading that fits one line at any width, and the two bands then
+        read as a matched pair rather than as two attempts at the same idea.
+
+        The fallback notice is the exception and stays a line of its own: it is a
+        warning, it appears rarely, and it should not be mistaken for part of the
+        ordinary description.
+      */}
       <div className="dphead">
         <span className="partnum">B</span>
         <span className="dptitles">
-          <h2>
-            Performa DP / CP <Zh>网点绩效</Zh> — <b>{scope}<Zh>{allAgents ? '' : agentZh(agentLabel)}</Zh></b>
-          </h2>
+          <h2>Data DP / CP <Zh>网点数据</Zh></h2>
           <span className="partsub">
-            Rincian per drop point &amp; collection point — satu baris = satu lokasi
+            Rincian per drop point &amp; collection point — {scope}
+            <Zh>{allAgents ? '' : agentZh(agentLabel)}</Zh> · {dayLabel}
           </span>
         </span>
-        <span className="dpday">
-          {dayLabel}
-          {wanted && wanted.key !== day.key && (
+        {wanted && wanted.key !== day.key && (
+          <span className="dpday">
+            {/* "tab per agen" described the old one-tab-per-agent workbook and
+                stopped being true when the drop points moved to a single
+                combined sheet — this names the data, not the layout it used to
+                live in. */}
             <em>
-              {' '}· tab per agen tidak memuat{' '}
-              {wanted.date ? fmtDateFull(wanted.date) : 'tanggal tersebut'} — menampilkan hari terdekat
-              yang tersedia
+              data DP/CP {wanted.date ? fmtDateFull(wanted.date) : 'tanggal tersebut'} belum
+              ada — menampilkan hari terdekat
             </em>
-          )}
-        </span>
+          </span>
+        )}
       </div>
 
       <div className="dpstats">

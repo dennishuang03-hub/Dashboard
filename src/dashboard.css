@@ -424,18 +424,23 @@ body.shooting .chartscroll{overflow:visible !important}
   padding:12px 16px;margin-bottom:12px;
 }
 .dphead .dptitles{flex:1;min-width:0}
+/* Deliberately identical to `.partband .parttitle` — the two bands are one
+   component wearing two class names, and the heading is short enough at both
+   that it never needs to wrap. */
 .dphead h2{
   margin:0;font-size:17px;font-weight:800;letter-spacing:.2px;color:#fff;
 }
-/* was --jt-red, which is now the background it sits on */
-.dphead h2 b{color:#fff;font-weight:800}
 .dphead .partsub{
   display:block;margin-top:2px;font-size:12.5px;font-weight:600;line-height:1.4;
   color:rgba(255,255,255,.86);
 }
-.dphead .dpday{font-size:12.5px;font-weight:600;color:rgba(255,255,255,.86)}
-/* amber on white was the warning colour; on red it needs to be paler than the
-   text around it, not darker */
+/* The fallback notice. Not part of the description — it appears only when the
+   day on screen is not the day that was asked for, so it takes its own line and
+   a paler amber to read as a warning rather than as more subtitle. */
+.dphead .dpday{
+  flex:1 1 100%;font-size:12px;font-weight:600;line-height:1.45;
+  padding-top:2px;border-top:1px solid rgba(255,255,255,.20);
+}
 .dphead .dpday em{font-style:normal;color:#FFD9A0}
 
 /* The number carries the colour; the card itself stays plain. Five tinted,
@@ -1050,15 +1055,32 @@ body.shoot-table .dptable{margin-top:0}
   .dptable .body{overflow:visible}
   .dptable .body table{min-width:0}
 
-  /* the day and the notice wrap under the title rather than fighting it for a
-     390px line */
-  .dphead{flex-wrap:wrap;gap:8px 12px;padding:11px 13px}
-  .dphead .dptitles{flex:1 1 100%;order:2}
-  .dphead .partnum{order:1}
-  .dphead .dpday{flex:1 1 100%;order:3}
-  .dphead h2{font-size:15.5px}
-  .partband{padding:11px 13px;gap:11px}
-  .partband .parttitle{font-size:15.5px}
+  /* The badge stays on the title's line and the date drops below.
+
+     It had `flex:1 1 100%` on the titles, which pushed the badge onto a row of
+     its own with the rest of that row empty — a letter floating above the
+     heading it is supposed to number. `1 1 0` lets the titles take whatever the
+     badge leaves instead of demanding the full width. */
+  .partband,
+  .dphead{padding:11px 13px;gap:8px 11px;align-items:flex-start}
+  .dphead{flex-wrap:wrap}
+  .dphead .partnum,
+  .partband .partnum{order:1;flex:none}
+  .dphead .dptitles,
+  .partband .parttext{order:2;flex:1 1 0;min-width:0}
+  .dphead .dpday{order:3;flex:1 1 100%}
+  /* optical alignment: the badge is a 30px block beside a 15.5px cap-height, so
+     centring it on the first line means nudging it down a little */
+  .dphead .partnum,
+  .partband .partnum{margin-top:1px}
+
+  .dphead h2,
+  .partband .parttitle{font-size:15.5px;line-height:1.3}
+  /* the title's own line-height already separates the two; a margin on top of it
+     was the visible step between them */
+  .dphead .partsub,
+  .partband .partsub{font-size:12px;margin-top:1px;line-height:1.35}
+  .dphead .dpday{font-size:12px;line-height:1.45}
   .dpstats{grid-template-columns:1fr 1fr;gap:8px}
   .dpstat{padding:8px 11px}
   .dpstat .n{font-size:25px}
