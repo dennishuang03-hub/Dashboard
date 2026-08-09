@@ -1,9 +1,62 @@
 /** Dependency-free SVG charts (no chart library needed). */
+import { useLayoutEffect, useRef, useState } from 'react'
+import type { ReactNode, RefObject } from 'react'
 
 export interface AxisLabel { top: string; sub?: string }
 export interface Series { name: string; color: string; values: (number | null)[] }
 
 const EMPTY = <div className="empty-mini">Tidak ada data untuk pilihan ini</div>
+
+/* ------------------------------------------------------------- responsive */
+
+/**
+ * Below this many CSS pixels of *available* width, a chart switches to its
+ * portrait proportions.
+ *
+ * Measured on the container rather than the viewport, and that distinction is
+ * load-bearing: the PNG export pins `.wrap` to 1480px while the phone's viewport
+ * is still 390px wide (`body.shooting` in dashboard.css). A media query would
+ * report "narrow" and draw a portrait chart into a landscape frame — the export
+ * would come out with enormous type. The container knows how much room it
+ * actually has; the window does not.
+ */
+const NARROW_AT = 560
+
+function useBoxWidth<T extends HTMLElement>(): [RefObject<T | null>, number] {
+  const ref = useRef<T | null>(null)
+  const [width, setWidth] = useState(0)
+
+  /* Layout effect, not effect: this runs before the browser paints, so a phone
+     never shows one frame of the landscape chart before it is corrected. */
+  useLayoutEffect(() => {
+    const el = ref.current
+    if (!el) return
+    const apply = () => setWidth(el.getBoundingClientRect().width)
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(el)
+    return () => ro.disconnect()
+  }, [])
+
+  return [ref, width]
+}
+
+/**
+ * Measures, then hands its width to the chart inside.
+ *
+ * The charts scale by viewBox, so `w`/`h` are a *ratio* rather than a pixel
+ * size. Making one fit a phone is therefore not a matter of shrinking it —
+ * 1100×300 squeezed into 358px is 98px tall, a flat smear no one can read, which
+ * is why this used to scroll sideways instead. What actually fits is a different
+ * *shape*: roughly square, so the same chart gets its height back from the space
+ * a phone has plenty of.
+ */
+function Responsive({ children }: { children: (narrow: boolean) => ReactNode }) {
+  const [ref, width] = useBoxWidth<HTMLDivElement>()
+  /* width 0 is "not measured yet" — assume wide, which is right on the desktop
+     path and corrected before paint on the narrow one */
+  return <div className="chartbox" ref={ref}>{children(width > 0 && width < NARROW_AT)}</div>
+}
 
 /* ------------------------------------------------------------ line chart */
 
@@ -14,16 +67,41 @@ const EMPTY = <div className="empty-mini">Tidak ada data untuk pilihan ini</div>
  * the size it had — which is what "smaller but still readable" needs. Lowering
  * the font sizes instead would have been the wrong lever.
  */
-export function LineChart({
-  series, labels, targetLine, clamp01 = true, w = 1100, h = 300,
-}: {
+interface LineProps {
   series: Series[]
   labels: AxisLabel[]
   targetLine?: number | null
   clamp01?: boolean
   w?: number
   h?: number
-}) {
+}
+
+/**
+ * 430×380 on a phone against 1100×300 on a desktop.
+ *
+ * Not a scaled-down version of the same rectangle — a different one. The wide
+ * shape spends its pixels on horizontal room it does not need for three days of
+ * data, and has none left for height. Turning it upright gives the lines
+ * somewhere to move, and the near-1:1 render scale means the axis type comes out
+ * at roughly its intended size instead of the ~6px it managed before.
+ */
+export function LineChart(props: LineProps) {
+  return (
+    <Responsive>
+      {(narrow) => (
+        <LineChartSvg
+          {...props}
+          w={narrow ? 430 : props.w ?? 1100}
+          h={narrow ? 380 : props.h ?? 300}
+        />
+      )}
+    </Responsive>
+  )
+}
+
+function LineChartSvg({
+  series, labels, targetLine, clamp01 = true, w = 1100, h = 300,
+}: LineProps) {
   const P = { t: 26, r: 54, b: 48, l: 54 }
   const all = series.flatMap((s) => s.values.filter((v): v is number => v != null))
   if (!all.length || !labels.length) return EMPTY
@@ -139,16 +217,66 @@ export function LineChart({
 
 /* ------------------------------------------------------------- bar chart */
 
-export function BarChart({
-  values, labels, targetLine, lowerBetter = false, w = 560, h = 240,
-}: {
+interface BarProps {
   values: (number | null)[]
   labels: AxisLabel[]
   targetLine?: number | null
   lowerBetter?: boolean
   w?: number
   h?: number
-}) {
+  /**
+   * What a narrow container does.
+   *   'reshape'  (default) turn the chart upright so it fits
+   *   'scroll'   keep it wide and let it pan — for axes whose labels are names
+   */
+  narrowMode?: 'reshape' | 'scroll'
+}
+
+/**
+ * Same reasoning as `LineChart` — see the note there — with one escape hatch.
+ *
+ * Reshaping works when the x-axis has a handful of entries. It does not when
+ * every bar carries a name: ten agents in a 400-unit viewBox leaves 40 units per
+ * label, and "SEMARANG 三宝垄 · 2 dari 4" printed in 40 units is the pile of
+ * overlapping text this replaced. There is no shape that fixes that — the labels
+ * need horizontal room or they need to not be there.
+ *
+ * So such a chart asks for `narrowMode="scroll"` and keeps its width, sized to
+ * one comfortable band per bar and rendered at 1:1 so the type comes out exactly
+ * as designed. Panning a legible chart beats reading an illegible one that fits.
+ */
+export function BarChart(props: BarProps) {
+  const [ref, boxW] = useBoxWidth<HTMLDivElement>()
+  const narrow = boxW > 0 && boxW < NARROW_AT
+  const base = props.w ?? 560
+
+  if (narrow && props.narrowMode === 'scroll') {
+    const wide = Math.max(base, props.values.length * 116)
+    return (
+      <div className="chartbox chartscroll" ref={ref}>
+        {/* a pixel width, not a percentage: it is what makes the viewBox render
+            1:1 and therefore what keeps the labels at their designed size */}
+        <div style={{ width: wide }}>
+          <BarChartSvg {...props} w={wide} h={props.h ?? 240} />
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div className="chartbox" ref={ref}>
+      <BarChartSvg
+        {...props}
+        w={narrow ? 400 : base}
+        h={narrow ? 300 : props.h ?? 240}
+      />
+    </div>
+  )
+}
+
+function BarChartSvg({
+  values, labels, targetLine, lowerBetter = false, w = 560, h = 240,
+}: BarProps) {
   const P = { t: 30, r: 16, b: 48, l: 52 }
   const real = values.filter((v): v is number => v != null)
   if (!real.length) return EMPTY
@@ -254,15 +382,31 @@ export interface HBar {
  * points that all sit between 94% and 98% are otherwise five identical-looking
  * blocks. `floor` keeps the target line inside the frame when it is close by.
  */
-export function HBarChart({
-  bars, targetLine, lowerBetter = false, w = 560, rowH = 30,
-}: {
+interface HBarProps {
   bars: HBar[]
   targetLine?: number | null
   lowerBetter?: boolean
   w?: number
   rowH?: number
-}) {
+}
+
+/**
+ * This one keeps its proportions and only narrows: its height already comes from
+ * the row count, so it was never the flat smear the other two were. Dropping the
+ * width from 560 to 400 lifts the render scale from roughly 0.64 to 0.9, which is
+ * the difference between 8px axis type and 11px.
+ */
+export function HBarChart(props: HBarProps) {
+  return (
+    <Responsive>
+      {(narrow) => <HBarChartSvg {...props} w={narrow ? 440 : props.w ?? 560} />}
+    </Responsive>
+  )
+}
+
+function HBarChartSvg({
+  bars, targetLine, lowerBetter = false, w = 560, rowH = 30,
+}: HBarProps) {
   if (!bars.length) return EMPTY
 
   const P = { t: 8, r: 62, b: 22, l: 176 }

@@ -394,6 +394,17 @@ tbody tr.st-bad .kpiname{color:var(--jt-red)}
   border-radius:10px;padding:11px 14px;margin-bottom:12px;font-size:12.5px;line-height:1.55;
 }
 .empty-mini{color:var(--ink-3);font-size:12px;padding:26px 0;text-align:center}
+/* The measured wrapper each chart reports its available width from. Full width
+   and nothing else — anything that shrank it would be measured and the chart
+   would pick its shape from the wrong number. */
+.chartbox{width:100%;min-width:0}
+/* The one chart that pans rather than fits — see `narrowMode` in Charts.tsx.
+   It scrolls inside its own box, so the panel around it stays put and the
+   sticky-free layout above and below is unaffected. */
+.chartscroll{overflow-x:auto;overflow-y:hidden;-webkit-overflow-scrolling:touch}
+/* nothing may clip during a capture or on paper, where the page is laid out at
+   full width and there is nothing to pan anyway */
+body.shooting .chartscroll{overflow:visible !important}
 
 /* ---------- DP / CP section ----------
    A hard stop before the second report: a rule the full width of the page and
@@ -985,10 +996,11 @@ body.shoot-table .dptable{margin-top:0}
    beside a title wrapping to three lines. It stacks now.
 
    And the charts have a wide viewBox — 1100x300 for the trend — which at 390px
-   renders about 106px tall, a flat unreadable smear. Squashing is worse than
-   scrolling here, so the panel body scrolls and the chart keeps a usable size.
-   That is deliberate: a chart you can pan is readable, a chart scaled to a
-   sixth of its height is not. */
+   renders about 98px tall, a flat unreadable smear. That was answered first by
+   letting the panel scroll sideways, which was the wrong trade: a chart nobody
+   can see all of at once is not really a chart. They now change *shape* on a
+   narrow container instead, to roughly square, and fit. See `Responsive` in
+   components/Charts.tsx. */
 @media (max-width:640px){
   .wrap{padding:8px 10px 16px}
 
@@ -1023,8 +1035,15 @@ body.shoot-table .dptable{margin-top:0}
   .panel > h3{padding:9px 11px;gap:8px;font-size:14px;min-height:0;flex-wrap:wrap}
   .panel > h3 .ptitle{flex:1 1 100%}
   .panel > h3 .hsel{flex:1 1 100%;max-width:none}
+  /* Charts no longer scroll. They used to be pinned to `min-width:520px` and
+     panned, because an 1100×300 viewBox squeezed into 358px is 98px tall and
+     unreadable. They now switch to portrait proportions instead — see
+     `Responsive` in components/Charts.tsx — so they fit the screen at close to
+     1:1 and the axis type comes out at its intended size.
+
+     `overflow-x` stays for the tables below, which genuinely cannot be reshaped:
+     eight categories of figures need the width they need. */
   .panel .body{padding:9px 10px;overflow-x:auto}
-  .panel .body > svg{min-width:520px}
   .panel .body table{min-width:480px}
   /* the DP list already has its own scroller in .dpscroll; a second one around
      it would trap the sticky headers between two scroll contexts */
@@ -1135,6 +1154,7 @@ body.shoot-table .dptable{margin-top:0}
   .toolbar,.dropzone,.legend button.off,.filechip,.tipbox,
   .dpfilters,.dpmore{display:none !important}
   .dpscroll{overflow:visible !important;max-height:none !important}
+  .chartscroll{overflow:visible !important}
   table.dpgrid thead th,table.dpgrid th.sticky,table.dpgrid td.sticky{position:static !important}
   .panel > h3 .hsel{border-color:transparent;background:transparent;-webkit-appearance:none;appearance:none;padding-left:0}
 

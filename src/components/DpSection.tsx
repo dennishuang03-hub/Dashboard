@@ -586,7 +586,13 @@ export default function DpSection({
               {catSelect(tableK?.label ?? '', setTableCat, 'grafik per agen')}
             </h3>
             <div className="body">
-              <BarChart values={byAgent.values} labels={byAgent.labels} w={1100} h={260} />
+              {/* Every bar here is a named agent, and a name needs width no
+                  amount of reshaping can give it — this is the one chart that
+                  pans on a phone instead of fitting. */}
+              <BarChart
+                values={byAgent.values} labels={byAgent.labels}
+                w={1100} h={260} narrowMode="scroll"
+              />
             </div>
           </div>
         </div>
