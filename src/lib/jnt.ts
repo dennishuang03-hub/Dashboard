@@ -1733,6 +1733,69 @@ const settled = () =>
   new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
 
 /**
+ * The page's own background, read at capture time.
+ *
+ * It was `#F4F6FA` — a pale grey left over from the light theme, which put a
+ * near-white mount around a black table and made every export look like a
+ * screenshot of the wrong site. Reading the live value instead means the export
+ * follows the theme, including any future change to it, without anyone having to
+ * remember this line exists.
+ */
+function pageBackground(): string {
+  const raw = getComputedStyle(document.body).backgroundColor
+  /* a transparent body would make html2canvas produce a PNG with an alpha hole
+     rather than a dark plate, so fall back to the token's own value */
+  if (!raw || raw === 'transparent' || raw.startsWith('rgba(0, 0, 0, 0')) return '#141414'
+  return raw
+}
+
+/**
+ * Can this browser actually allocate a bitmap this big?
+ *
+ * Over the limit, engines do not agree on how to fail: some return a canvas
+ * whose dimensions were quietly clamped, some allocate it but leave it blank,
+ * some throw only on read. Writing one pixel into the far corner and reading it
+ * back is the one check that catches all three, because it is the outcome we
+ * actually care about — is the bottom-right of the picture really there.
+ */
+function canvasFits(cw: number, ch: number): boolean {
+  try {
+    const c = document.createElement('canvas')
+    c.width = cw
+    c.height = ch
+    if (c.width !== cw || c.height !== ch) return false
+    const ctx = c.getContext('2d')
+    if (!ctx) return false
+    ctx.fillStyle = '#fff'
+    ctx.fillRect(cw - 1, ch - 1, 1, 1)
+    const px = ctx.getImageData(cw - 1, ch - 1, 1, 1).data
+    /* free it now rather than waiting for the collector; the next probe is about
+       to ask for another one just as large */
+    c.width = c.height = 0
+    return px[3] !== 0
+  } catch {
+    return false
+  }
+}
+
+/**
+ * Largest of these scales the browser will really give us, or `null` if even the
+ * smallest is refused.
+ *
+ * Stepped rather than solved, because the limit differs per engine and per
+ * device and each probe costs a real allocation. Below 0.5 the type stops being
+ * readable — a picture of a table nobody can read is not a smaller success, it
+ * is a different failure, so that is where it gives up and says so.
+ */
+function fittingScale(width: number, height: number, want: number): number | null {
+  for (const s of [want, 1.5, 1.25, 1, 0.75, 0.5]) {
+    if (s > want) continue
+    if (canvasFits(Math.ceil(width * s), Math.ceil(height * s))) return s
+  }
+  return null
+}
+
+/**
  * Renders `el` to a PNG download. html2canvas is fetched on first use only, so
  * the page still loads and parses Excel with no internet — the Excel path never
  * depends on this.
@@ -1787,12 +1850,33 @@ export async function exportPng(
     const width = Math.ceil(el.scrollWidth)
     const height = Math.ceil(el.scrollHeight)
 
-    // Cap the pixel budget: at scale 2 a tall dashboard can exceed the browser's
-    // maximum canvas area and silently come back blank.
-    const scale = Math.max(1, Math.min(2, 30_000_000 / (width * height)))
+    /*
+     * The scale used to be floored at 1, and that is what cut the bottom off a
+     * long DP/CP export.
+     *
+     * Browsers refuse a canvas past a certain size, and — this is the part that
+     * makes it a silent bug rather than an error — they do not throw. iOS Safari
+     * caps either axis at 4096px and hands back a bitmap truncated at that line.
+     * A 70-row table lays out about 2400px tall, the old formula chose scale 2,
+     * and 4800px of canvas became 4096px of picture with the last rows gone.
+     *
+     * The limit is not the same on every browser and there is no API that
+     * reports it, so `fittingScale` finds it by asking: allocate, write to the
+     * far corner, read it back. Desktop keeps its scale 2; a phone steps down
+     * until the bitmap is real.
+     */
+    const want = Math.min(2, Math.sqrt(30_000_000 / (width * height)))
+    const scale = fittingScale(width, height, want)
+
+    if (scale == null) {
+      throw new Error(
+        'Tabel ini terlalu panjang untuk satu gambar. Persempit dengan filter di atas, ' +
+        'atau gunakan Cetak / PDF yang membaginya ke beberapa halaman.',
+      )
+    }
 
     const canvas = await w.html2canvas!(el, {
-      backgroundColor: '#F4F6FA',
+      backgroundColor: pageBackground(),
       scale,
       useCORS: true,
       logging: false,
