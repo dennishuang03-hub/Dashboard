@@ -36,9 +36,49 @@ const TOP_N = 5
  */
 const TOTAL_CAT = '__total__'
 
+/**
+ * The non-KPI columns, by the id they are known by in both the sort and the
+ * column switch.
+ *
+ * One id space on purpose: a column is sorted by the same string that hides it,
+ * so "the column being sorted just went away" is a set lookup rather than a
+ * mapping that can drift.
+ */
+const COL_NAME = '__name__'
+const COL_AGENT = '__agent__'
+const COL_STATUS = '__status__'
+const COL_ONTARGET = '__ontarget__'
+
 /** Sort order for the Status column — by how much of the operation runs, so the
  *  column reads as a scale instead of alphabetically (both, closed, delivery…). */
 const KIND_RANK: Record<DpKind, number> = { both: 0, delivery: 1, pickup: 2, closed: 3 }
+
+/** One run of the header band: the KPI columns belonging to a single section. */
+interface CatRun { id: string; label: string; zh: string; kpis: Kpi[] }
+
+/** One tick box in the column switch. */
+interface ColOpt { id: string; label: string; zh: string; locked?: boolean }
+
+/**
+ * Split a KPI list into contiguous runs, one per section.
+ *
+ * Built by walking the columns rather than by filtering per section, so a band
+ * can only ever describe the columns actually underneath it. Filtering would
+ * silently produce a colSpan that no longer matches if a workbook ever
+ * interleaved the two halves — or, now, if the switch below hides the middle of
+ * a run.
+ */
+function runsOf(kpis: Kpi[]): CatRun[] {
+  const runs: CatRun[] = []
+  for (const k of kpis) {
+    const sec = sectionOf(k.label)
+    const id = sec?.id ?? 'lain'
+    const last = runs[runs.length - 1]
+    if (last && last.id === id) last.kpis.push(k)
+    else runs.push({ id, label: sec?.label ?? 'Lainnya', zh: sec?.zh ?? '其他', kpis: [k] })
+  }
+  return runs
+}
 
 /** A drop point plus everything the view needs to have decided about it once. */
 interface Scored {
@@ -89,25 +129,85 @@ export default function DpSection({
   )
   const defaultCat = catKpis.find((k) => k.label === SPRINTER_LABELS[0]) ?? catKpis[0] ?? null
 
+  /* ------------------------------------------------------ column visibility */
+
   /**
-   * `catKpis` split into contiguous runs, one per section, for the header band.
+   * The columns switched *off*, never the ones switched on.
    *
-   * Built by walking the columns rather than by filtering per section, so the
-   * band can only ever describe the columns actually underneath it. Filtering
-   * would silently produce a colSpan that no longer matches if a workbook ever
-   * interleaved the two halves.
+   * Which way round this is stored is the whole design. The column list comes
+   * out of the workbook — eight KPIs today, a ninth the day someone adds one —
+   * so a stored list of visible columns would have to be reconciled with every
+   * file that loads, and a brand-new KPI would arrive hidden because it was not
+   * in a set written before it existed. Storing the exclusions makes "show
+   * everything" the empty set: an unknown column is visible by construction,
+   * which is exactly what "default: every column ticked" has to mean here.
    */
-  const catRuns = useMemo(() => {
-    const runs: { id: string; label: string; zh: string; kpis: Kpi[] }[] = []
-    for (const k of catKpis) {
-      const sec = sectionOf(k.label)
-      const id = sec?.id ?? 'lain'
-      const last = runs[runs.length - 1]
-      if (last && last.id === id) last.kpis.push(k)
-      else runs.push({ id, label: sec?.label ?? 'Lainnya', zh: sec?.zh ?? '其他', kpis: [k] })
-    }
-    return runs
-  }, [catKpis])
+  const [hiddenCols, setHiddenCols] = useState<ReadonlySet<string>>(() => new Set<string>())
+
+  /** the KPI columns the table actually draws */
+  const visKpis = useMemo(
+    () => catKpis.filter((k) => !hiddenCols.has(k.label)),
+    [catKpis, hiddenCols],
+  )
+  /* The agent column only exists in the all-agents view at all, so it is hidden
+     by either of two independent things and both have to be asked. */
+  const showAgent = allAgents && !hiddenCols.has(COL_AGENT)
+  const showStatus = !hiddenCols.has(COL_STATUS)
+  const showOnTarget = !hiddenCols.has(COL_ONTARGET)
+
+  /**
+   * The switch itself: every column in the grid, grouped the way the header band
+   * groups them, so the row of tick boxes reads in the same order as the columns
+   * it controls.
+   *
+   * Built from `catKpis` rather than `visKpis` — a hidden column has to stay in
+   * the row or there would be no way to bring it back.
+   */
+  const colGroups = useMemo<{ id: string; label: string; cols: ColOpt[] }[]>(() => [
+    {
+      id: 'ident',
+      label: 'Identitas',
+      cols: [
+        /* The name is not switchable: a table of unlabelled percentages is not a
+           narrower table, it is an unreadable one. It is still shown, ticked and
+           locked, so the row accounts for every column on screen rather than
+           leaving someone hunting for the one that is missing from it. */
+        { id: COL_NAME, label: 'DP / CP', zh: '网点', locked: true },
+        ...(allAgents ? [{ id: COL_AGENT, label: 'Agen', zh: '代理区' }] : []),
+        { id: COL_STATUS, label: 'Status', zh: '状态' },
+      ],
+    },
+    ...runsOf(catKpis).map((run) => ({
+      id: run.id,
+      label: run.label,
+      cols: run.kpis.map((k) => ({ id: k.label, label: k.label, zh: CATEGORY_ZH[k.label] ?? '' })),
+    })),
+    { id: 'skor', label: 'Ringkasan', cols: [{ id: COL_ONTARGET, label: 'Sesuai target', zh: '达标数' }] },
+  ], [catKpis, allAgents])
+
+  /* the locked name column is not one of the choices, so it counts in neither
+     half of "8 / 11" and "select all" cannot try to switch it off */
+  const colOptions = useMemo(
+    () => colGroups.flatMap((g) => g.cols).filter((c) => !c.locked),
+    [colGroups],
+  )
+  const shownCols = colOptions.reduce((n, c) => n + (hiddenCols.has(c.id) ? 0 : 1), 0)
+  const allColsOn = shownCols === colOptions.length
+
+  const toggleCol = (id: string) => setHiddenCols((prev) => {
+    const next = new Set(prev)
+    if (next.has(id)) next.delete(id)
+    else next.add(id)
+    return next
+  })
+
+  /* `new Set()` rather than a delete pass: the set may still be holding ids from
+     a workbook that is no longer loaded, and clearing it drops those too. */
+  const showEveryCol = () => setHiddenCols(new Set<string>())
+  const hideEveryCol = () => setHiddenCols(new Set(colOptions.map((c) => c.id)))
+
+  /** `catKpis` split into contiguous runs, one per section, for the header band. */
+  const catRuns = useMemo(() => runsOf(visKpis), [visKpis])
 
   /** Labels that open a section run — they carry the vertical rule between halves. */
   const seamLabels = useMemo(() => {
@@ -290,7 +390,7 @@ export default function DpSection({
   const [biz, setBiz] = useState<'all' | BizModel>('all')
   const [onlyBelow, setOnlyBelow] = useState(false)
   const [mode, setMode] = useState<ValueMode>('day')
-  const [sortKey, setSortKey] = useState('__name__')
+  const [sortKey, setSortKey] = useState<string>(COL_NAME)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [showAll, setShowAll] = useState(false)
   /**
@@ -348,6 +448,25 @@ export default function DpSection({
   useEffect(() => {
     if (onlyPicked && pickedCount === 0) setOnlyPicked(false)
   }, [onlyPicked, pickedCount])
+
+  /**
+   * The sort actually in force: hiding the column the table is sorted by drops
+   * the order back to the name.
+   *
+   * The order would otherwise survive the column's disappearance, leaving the
+   * rows in an arrangement nothing on screen explains — every visible header
+   * unmarked and the list in no discernible order. The agent column reaches the
+   * same state by a second route, since a single-agent toolbar selection drops
+   * it outright.
+   *
+   * Derived rather than corrected in an effect, so `sortKey` still holds what
+   * was actually asked for: tick the column back on and its order comes back,
+   * instead of having been quietly overwritten while it was out of sight.
+   */
+  const sortGone = sortKey !== COL_NAME
+    && (hiddenCols.has(sortKey) || (sortKey === COL_AGENT && !allAgents))
+  const liveSort = sortGone ? COL_NAME : sortKey
+  const liveDir: SortDir = sortGone ? 'asc' : sortDir
 
   /**
    * Publish the section band's real height as `--secrow-h`, which is what the
@@ -416,13 +535,13 @@ export default function DpSection({
       return true
     })
 
-    const dir = sortDir === 'asc' ? 1 : -1
+    const dir = liveDir === 'asc' ? 1 : -1
     out = [...out].sort((a, b) => {
-      if (sortKey === '__name__') return dir * a.dp.label.localeCompare(b.dp.label)
-      if (sortKey === '__agent__') return dir * a.dp.agentLabel.localeCompare(b.dp.agentLabel)
-      if (sortKey === '__status__') return dir * (KIND_RANK[a.kind] - KIND_RANK[b.kind])
-      if (sortKey === '__ontarget__') return dir * (a.onTarget - b.onTarget)
-      const k = catKpis.find((x) => x.label === sortKey)
+      if (liveSort === COL_NAME) return dir * a.dp.label.localeCompare(b.dp.label)
+      if (liveSort === COL_AGENT) return dir * a.dp.agentLabel.localeCompare(b.dp.agentLabel)
+      if (liveSort === COL_STATUS) return dir * (KIND_RANK[a.kind] - KIND_RANK[b.kind])
+      if (liveSort === COL_ONTARGET) return dir * (a.onTarget - b.onTarget)
+      const k = catKpis.find((x) => x.label === liveSort)
       if (!k) return 0
       const av = cell(a, k), bv = cell(b, k)
       // rows with no reading always sink, whichever way the column is sorted
@@ -432,7 +551,7 @@ export default function DpSection({
       return dir * (av - bv)
     })
     return out
-  }, [scored, q, status, type, biz, onlyBelow, tableK, sortKey, sortDir, mode, catKpis,
+  }, [scored, q, status, type, biz, onlyBelow, tableK, liveSort, liveDir, mode, catKpis,
       basketOn, picked])
 
   /* A deliberate selection is never truncated: forty is a guard against dumping
@@ -442,9 +561,9 @@ export default function DpSection({
 
   const sortOn = (key: string) => {
     if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
-    else { setSortKey(key); setSortDir(key === '__name__' || key === '__agent__' ? 'asc' : 'desc') }
+    else { setSortKey(key); setSortDir(key === COL_NAME || key === COL_AGENT ? 'asc' : 'desc') }
   }
-  const arrow = (key: string) => (sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '')
+  const arrow = (key: string) => (liveSort === key ? (liveDir === 'asc' ? ' ▲' : ' ▼') : '')
 
   /** Filename-safe: an agent label is free text out of the workbook. */
   const fileStem = () => {
@@ -474,6 +593,12 @@ export default function DpSection({
    * Export the "Daftar DP / CP" table as a real .xlsx — one sheet, the same
    * columns as the table on screen, and only the rows the filters are showing.
    *
+   * "The same columns" includes the ones the column switch has hidden: the
+   * export is a copy of what is being looked at, and a sheet that quietly hands
+   * back the eight columns someone just narrowed to three is not that. Jenis and
+   * Model Bisnis are the exception — on screen they are the tag in front of the
+   * name rather than columns of their own, so they are always written out.
+   *
    * A workbook rather than a CSV because this is opened in an Indonesian Excel,
    * where the list separator is `;` and `90,00` is a number: a comma-delimited
    * file has no separator Excel recognises and every row lands whole in column
@@ -491,32 +616,34 @@ export default function DpSection({
     // the agent column only exists on screen in the all-agents view
     const head = [
       'DP / CP 网点',
-      ...(allAgents ? ['Agen 代理区'] : []),
+      ...(showAgent ? ['Agen 代理区'] : []),
       'Jenis 类型',
       'Model Bisnis 商业模式',
-      'Status 状态',
-      ...catKpis.map((k) => `${k.label}${zh(k)}`),
-      'Sesuai target 达标数',
+      ...(showStatus ? ['Status 状态'] : []),
+      ...visKpis.map((k) => `${k.label}${zh(k)}`),
+      ...(showOnTarget ? ['Sesuai target 达标数'] : []),
     ]
 
     const body = filtered.map((s) => [
       s.dp.label,
-      ...(allAgents ? [agentFull(s.dp.agentLabel)] : []),
+      ...(showAgent ? [agentFull(s.dp.agentLabel)] : []),
       s.dp.isCp ? 'CP' : 'DP',
       BIZ_MODEL_LABEL[s.dp.bizModel],
-      `${DP_KIND_LABEL[s.kind]} ${DP_KIND_ZH[s.kind]}`,
-      ...catKpis.map((k) => cell(s, k)),
+      ...(showStatus ? [`${DP_KIND_LABEL[s.kind]} ${DP_KIND_ZH[s.kind]}`] : []),
+      ...visKpis.map((k) => cell(s, k)),
       /* only sites that run a delivery shift are scored — see dpStatusOf */
-      isRankable(s.kind) ? `${s.onTarget}/${s.scored}` : '',
+      ...(showOnTarget ? [isRankable(s.kind) ? `${s.onTarget}/${s.scored}` : ''] : []),
     ])
 
     const ws = XLSX.utils.aoa_to_sheet([head, ...body])
 
     /* `0.00"%"` keeps the underlying value at 98.25 while showing "98.25%".
-       A real percent format would multiply by 100 and print 9825%. */
-    const firstKpi = allAgents ? 5 : 4
+       A real percent format would multiply by 100 and print 9825%.
+       Counted off the head rather than hardcoded: which columns precede the
+       KPIs now depends on the column switch as well as on the agent scope. */
+    const firstKpi = 1 + (showAgent ? 1 : 0) + 2 + (showStatus ? 1 : 0)
     for (let R = 1; R <= body.length; R++) {
-      for (let C = firstKpi; C < firstKpi + catKpis.length; C++) {
+      for (let C = firstKpi; C < firstKpi + visKpis.length; C++) {
         const c = ws[XLSX.utils.encode_cell({ r: R, c: C })]
         if (c && c.t === 'n') c.z = '0.00"%"'
       }
@@ -524,12 +651,12 @@ export default function DpSection({
 
     ws['!cols'] = [
       { wch: 28 },
-      ...(allAgents ? [{ wch: 20 }] : []),
+      ...(showAgent ? [{ wch: 20 }] : []),
       { wch: 7 },
       { wch: 14 },
-      { wch: 24 },
-      ...catKpis.map(() => ({ wch: 15 })),
-      { wch: 14 },
+      ...(showStatus ? [{ wch: 24 }] : []),
+      ...visKpis.map(() => ({ wch: 15 })),
+      ...(showOnTarget ? [{ wch: 14 }] : []),
     ]
     ws['!autofilter'] = {
       ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: body.length, c: head.length - 1 } }),
@@ -559,6 +686,11 @@ export default function DpSection({
 
   const scope = allAgents ? `SEMUA AGEN · ${model.rows.length} agen` : agentLabel
   const dayLabel = day.date ? fmtDateFull(day.date) : 'hari terakhir'
+
+  /* the name column, plus whatever the switch left standing — the empty-state
+     row has to span exactly the columns that are there */
+  const colCount = 1 + (showAgent ? 1 : 0) + (showStatus ? 1 : 0) + visKpis.length
+    + (showOnTarget ? 1 : 0)
 
   /* a plain function, not a nested component: React would remount a component
      declared inside render on every keystroke and the select would lose focus */
@@ -757,6 +889,70 @@ export default function DpSection({
             </button>
             <button className={mode === 'mtd' ? 'on' : ''} onClick={() => setMode('mtd')}>Bulanan</button>
           </div>
+
+        </div>
+
+        {/*
+          The column switch: one tick box per column, laid out along the top of
+          the table in the order the columns appear in it.
+
+          It was a dropdown first, and the dropdown was wrong twice. A 290px
+          panel anchored to its button ran off the edge of a narrow window with
+          no way to reach the rest of it — but the deeper problem is that this is
+          not a menu decision. Which columns you are reading is the state of the
+          table, and hiding that state behind a button means the answer to "why
+          is TPTW not here?" needs a click to find. Spelled out, the boxes *are*
+          the answer: eleven labels, three unticked, nothing to open.
+
+          It is not a filter and is never disabled with them. The filters choose
+          which *rows* the table is about; this chooses how wide it is, and
+          narrowing a comparison of three sites to the two indicators being
+          argued about is exactly when it is most wanted — which is precisely
+          when the basket has the filter bar above switched off.
+        */}
+        <div className="dpcolbar" role="group" aria-label="Kolom yang ditampilkan">
+          <div className="dpcolhead">
+            <span className="dpcoltitle">Kolom <Zh>列</Zh></span>
+            <span className={`dpcoln${allColsOn ? '' : ' off'}`}>
+              <b>{shownCols}</b>/{colOptions.length}
+            </span>
+            {/* One box for the lot, and it carries the third state on purpose:
+                a plain checkbox reading "unticked" over a table showing eight of
+                eleven columns would be describing something that is not true. */}
+            <label className="colchip master">
+              <input
+                type="checkbox"
+                checked={allColsOn}
+                ref={(el) => { if (el) el.indeterminate = shownCols > 0 && !allColsOn }}
+                onChange={(e) => (e.target.checked ? showEveryCol() : hideEveryCol())}
+              />
+              Pilih semua
+            </label>
+          </div>
+
+          <div className="dpcolwrap">
+            {colGroups.map((g) => (
+              <div className="colgrp" key={g.id}>
+                <span className="colgrph">{g.label}</span>
+                {g.cols.map((c) => (
+                  <label
+                    key={c.id}
+                    title={c.locked ? 'Kolom nama selalu ditampilkan' : c.zh || undefined}
+                    className={`colchip${c.locked ? ' locked' : hiddenCols.has(c.id) ? ' off' : ''}`}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={c.locked || !hiddenCols.has(c.id)}
+                      disabled={c.locked}
+                      readOnly={c.locked}
+                      onChange={() => toggleCol(c.id)}
+                    />
+                    {c.label}
+                  </label>
+                ))}
+              </div>
+            ))}
+          </div>
         </div>
 
         {/*
@@ -800,8 +996,8 @@ export default function DpSection({
                     enough — no reordering needed here. */}
                 <tr className="secrow" ref={secRowRef}>
                   <th className="sticky" />
-                  {allAgents && <th className="agentcol" />}
-                  <th />
+                  {showAgent && <th className="agentcol" />}
+                  {showStatus && <th />}
                   {catRuns.map((run, i) => (
                     <th
                       key={run.id}
@@ -811,19 +1007,21 @@ export default function DpSection({
                       {run.label}<Zh>{run.zh}</Zh>
                     </th>
                   ))}
-                  <th />
+                  {showOnTarget && <th />}
                 </tr>
                 <tr className="catrow">
-                  <th className="sticky" onClick={() => sortOn('__name__')}>
-                    DP / CP{arrow('__name__')}<Zh>网点</Zh>
+                  <th className="sticky" onClick={() => sortOn(COL_NAME)}>
+                    DP / CP{arrow(COL_NAME)}<Zh>网点</Zh>
                   </th>
-                  {allAgents && (
-                    <th className="agentcol" onClick={() => sortOn('__agent__')}>
-                      Agen{arrow('__agent__')}<Zh>代理区</Zh>
+                  {showAgent && (
+                    <th className="agentcol" onClick={() => sortOn(COL_AGENT)}>
+                      Agen{arrow(COL_AGENT)}<Zh>代理区</Zh>
                     </th>
                   )}
-                  <th onClick={() => sortOn('__status__')}>Status{arrow('__status__')}<Zh>状态</Zh></th>
-                  {catKpis.map((k) => (
+                  {showStatus && (
+                    <th onClick={() => sortOn(COL_STATUS)}>Status{arrow(COL_STATUS)}<Zh>状态</Zh></th>
+                  )}
+                  {visKpis.map((k) => (
                     <th
                       key={k.label}
                       className={`num cat${seamLabels.has(k.label) ? ' seam' : ''}`}
@@ -832,9 +1030,11 @@ export default function DpSection({
                       {k.label}{arrow(k.label)}<Zh>{CATEGORY_ZH[k.label] ?? ''}</Zh>
                     </th>
                   ))}
-                  <th className="num" onClick={() => sortOn('__ontarget__')}>
-                    Sesuai target{arrow('__ontarget__')}<Zh>达标数</Zh>
-                  </th>
+                  {showOnTarget && (
+                    <th className="num" onClick={() => sortOn(COL_ONTARGET)}>
+                      Sesuai target{arrow(COL_ONTARGET)}<Zh>达标数</Zh>
+                    </th>
+                  )}
                 </tr>
               </thead>
               <tbody>
@@ -882,17 +1082,19 @@ export default function DpSection({
                           phone, where the column of its own below is hidden. It
                           rides along with the name instead of costing width the
                           indicators need. */}
-                      {allAgents && <span className="dpagent">{s.dp.agentLabel}</span>}
+                      {showAgent && <span className="dpagent">{s.dp.agentLabel}</span>}
                     </td>
-                    {allAgents && (
+                    {showAgent && (
                       <td className="muted agentcol">{s.dp.agentLabel}<Zh>{agentZh(s.dp.agentLabel)}</Zh></td>
                     )}
-                    <td>
-                      <span className={`sbadge ${s.kind}`} title={DP_KIND_ZH[s.kind]}>
-                        {DP_KIND_LABEL[s.kind]}
-                      </span>
-                    </td>
-                    {catKpis.map((k) => {
+                    {showStatus && (
+                      <td>
+                        <span className={`sbadge ${s.kind}`} title={DP_KIND_ZH[s.kind]}>
+                          {DP_KIND_LABEL[s.kind]}
+                        </span>
+                      </td>
+                    )}
+                    {visKpis.map((k) => {
                       const seam = seamLabels.has(k.label) ? ' seam' : ''
                       const v = cell(s, k)
                       if (v == null) return <td key={k.label} className={`num muted${seam}`}>—</td>
@@ -914,15 +1116,17 @@ export default function DpSection({
                         </td>
                       )
                     })}
-                    <td className="num">
-                      {isRankable(s.kind)
-                        ? `${s.onTarget}/${s.scored}`
-                        : <span className="muted">—</span>}
-                    </td>
+                    {showOnTarget && (
+                      <td className="num">
+                        {isRankable(s.kind)
+                          ? `${s.onTarget}/${s.scored}`
+                          : <span className="muted">—</span>}
+                      </td>
+                    )}
                   </tr>
                 ))}
                 {!shown.length && (
-                  <tr><td colSpan={catKpis.length + (allAgents ? 4 : 3)} className="ctr muted" style={{ padding: 24 }}>
+                  <tr><td colSpan={colCount} className="ctr muted" style={{ padding: 24 }}>
                     Tidak ada yang cocok dengan filter ini.
                   </td></tr>
                 )}

@@ -253,8 +253,40 @@ binary the rest of the dashboard uses.
 - **DP/CP list** — every site with all eight categories in one grid. Only the **misses** are tinted;
   values that met their target stay plain, and the structural zeros of a pickup-only, delivery-only or
   closed site are greyed rather than reddened. Search, status filter, DP vs CP filter, model-bisnis
-  filter, below-target-only filter, day vs MTD toggle, sort on any column, and an Excel export of
-  whatever the filters currently show
+  filter, below-target-only filter, day vs MTD toggle, sort on any column, a tick box per column, and an
+  Excel export of whatever the filters currently show
+
+### The column switch
+
+A row of tick boxes sits between the filter bar and the grid — one per column, in the order the columns
+appear, clustered under the same section names the header band uses. Everything is ticked to begin with;
+unticking one takes the column and its figures out of the table, and the section band above narrows to
+match. Ticking it back brings it — and the order it was sorting by, if it was — straight back.
+**Pilih semua** switches the lot, and carries the third state: a dash, not a tick, while some columns are
+on and others off.
+
+**It is spelled out rather than folded into a dropdown**, and that is a correction. The first version was
+a 290px popover anchored to a button, which on a narrow window opened off the edge of the screen with no
+way to reach the rest of it. But the clipping only exposed the real problem: which columns you are reading
+is the *state of the table*, and a menu hides it. Laid flat, the boxes are that state — eleven labels with
+three unticked answers "why is TPTW not here?" with nothing to open.
+
+- **The name column cannot be switched off.** It is shown, ticked and locked: a table of unlabelled
+  percentages is not a narrower table, it is an unreadable one
+- **Hidden columns are still scored.** `Sesuai target` stays *n*/8 with three columns showing, because it
+  counts what the site did, not what the screen is displaying. So do the counters and both ranking charts
+- **The count carries it across a scroll.** The grid scrolls sideways, so a hidden column leaves no gap
+  behind it. `8/11` in red is the standing evidence that something is switched off — without it a narrowed
+  table looks like a workbook that lost a KPI
+- A switched-off column is drawn as a dashed outline rather than a filled chip. The tick box is 14px; at
+  arm's length the fill is what you actually read
+- Sorting by a column and then hiding it drops the order back to the name rather than leaving the rows
+  in an arrangement nothing on screen explains
+- It is not a filter and is never disabled with them. The filters choose which **rows** the table is
+  about; this chooses how wide it is, and narrowing a three-site comparison to the two indicators under
+  discussion is exactly when it is most wanted — which is when the basket has the bar above switched off
+- Both exports follow it: the `.xlsx` is written with the columns on screen, and the PNG photographs
+  what is there. Like the filter bar, the switch itself is dropped from the shot
 
 The whole section is deliberately low-contrast: one accent colour, no uppercase tracking, no heavy
 weights beyond a single semibold for headings. The red is reserved for things that are actually wrong.
@@ -270,7 +302,9 @@ reader's regional settings, and the Mandarin survives without a BOM.
 **One sheet, and it is the table** — same columns as **Daftar DP / CP** on screen, same order, and only
 the rows the filters are currently showing. Nothing else is added: no summary sheet, no extra columns.
 
-- The Agent column appears only in the all-agents view, exactly as it does on screen
+- The Agent column appears only in the all-agents view, exactly as it does on screen, and any column
+  switched off in **Kolom** is left out of the sheet too. `Jenis` and `Model Bisnis` are the exception and
+  are always written: on screen they are the tag in front of the name rather than columns of their own
 - Percentages are stored as real numbers (`98.25`) and formatted `0.00"%"`, so the cell *displays* 98.25%
   while still averaging and sorting correctly. A true percent format would multiply by 100 and print 9825%
 - Autofilter is already switched on and the column widths are set

@@ -517,6 +517,62 @@ body.shooting .chartscroll{overflow:visible !important}
 }
 .dpfilters .seg button.on{background:var(--jt-red);color:#fff;font-weight:800}
 
+/* ---------- the column switch ----------
+
+   A row of tick boxes across the top of the table, not a dropdown. It was a
+   dropdown first: a 290px popover anchored to its button, which on a narrow
+   window opened off the edge of the screen with no way to reach the rest of it.
+
+   Laid out flat it cannot be clipped, and it stops being something to remember
+   to open. Which columns are switched on is the state of the table, and the
+   boxes are that state written down — eleven labels with three unticked answers
+   "why is TPTW not here?" without a click.
+
+   Its own band below the filters rather than inside them, because it is not a
+   filter: the bar above chooses which rows the table is about, this one chooses
+   how wide it is. */
+.dpcolbar{
+  display:flex;flex-direction:column;gap:7px;
+  padding:9px 13px;border-bottom:1px solid var(--line);background:var(--card-2);
+}
+.dpcolhead{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.dpcoltitle{
+  font-size:12px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-3);
+}
+.dpcoltitle .zh{text-transform:none;letter-spacing:0}
+/* the count is the one thing that survives a sideways scroll: a hidden column
+   leaves no gap behind it, so "8/11" in red is the standing evidence that
+   something is switched off rather than missing from the workbook */
+.dpcoln{font-size:13px;font-weight:700;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.dpcoln b{color:var(--ink);font-weight:800}
+.dpcoln.off b{color:var(--jt-red-lit)}
+
+.dpcolwrap{display:flex;flex-wrap:wrap;gap:7px 16px;align-items:center}
+/* a section's columns stay together as one cluster, so the row reads in the
+   same groups the header band draws above the table */
+.colgrp{display:flex;flex-wrap:wrap;align-items:center;gap:6px}
+.colgrph{
+  font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--ink-3);margin-right:1px;
+}
+.colchip{
+  display:inline-flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer;
+  border:1.5px solid var(--line);border-radius:99px;padding:4px 11px 4px 8px;
+  background:var(--card);color:var(--ink);font-size:12.5px;font-weight:700;
+}
+.colchip:hover{border-color:#4A4A4A;background:var(--card-3)}
+.colchip input{flex:none;width:14px;height:14px;margin:0;accent-color:var(--jt-red);cursor:pointer}
+/* A switched-off column is drawn as an outline rather than a filled chip, so
+   which ones are off is legible from the shape alone — the tick box is 14px and
+   at arm's length the fill is what you actually see. */
+.colchip.off{background:transparent;color:var(--ink-3);border-style:dashed}
+.colchip.master{border-color:var(--jt-red);font-weight:800}
+.colchip.master:hover{border-color:var(--jt-red-lit)}
+/* the name column: present, ticked, and not up for discussion */
+.colchip.locked{opacity:.55;cursor:default;border-style:dotted}
+.colchip.locked:hover{background:var(--card);border-color:var(--line)}
+.colchip.locked input{cursor:default}
+
 /* The grid is wider than the panel by design: 8 category columns plus identity
    never fit at full type size, and shrinking the type to make them fit is worse
    than a scrollbar. The name column is pinned so a row stays identifiable while
@@ -697,6 +753,7 @@ body.shooting .wrap{width:1480px;max-width:none;padding:14px 16px}
 body.shooting .toolbar,
 body.shooting .tipbox,
 body.shooting .dpfilters,
+body.shooting .dpcolbar,
 body.shooting .dpmore,
 body.shooting .legend button.off{display:none !important}
 
@@ -1162,6 +1219,10 @@ body.shoot-table .dptable{margin-top:0}
   .dpfilters .chk,.dpfilters .seg{flex:1 1 100%}
   .dpfilters .seg{justify-content:stretch}
   .dpfilters .seg button{flex:1}
+  /* the chips already wrap; only the padding and the gaps need to come in */
+  .dpcolbar{padding:9px 10px;gap:6px}
+  .dpcolwrap{gap:6px 10px}
+  .colgrph{flex:1 1 100%;margin:2px 0 0}
   /* Count on its own line, then the two actions splitting the width evenly.
      Side by side they would each get about 120px, which is not enough for
      "Tampilkan yang dipilih" and would truncate the one button the bar exists
@@ -1274,7 +1335,7 @@ body.shoot-table .dptable{margin-top:0}
   /* only the interactive chrome is dropped — every data panel is kept, so the
      PDF carries the same information as the on-screen dashboard */
   .toolbar,.dropzone,.legend button.off,.filechip,.tipbox,
-  .dpfilters,.dpmore{display:none !important}
+  .dpfilters,.dpcolbar,.dpmore{display:none !important}
   .dpscroll{overflow:visible !important;max-height:none !important}
   .chartscroll{overflow:visible !important}
   table.dpgrid thead th,table.dpgrid th.sticky,table.dpgrid td.sticky{position:static !important}
