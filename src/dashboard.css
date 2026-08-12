@@ -43,6 +43,73 @@
 
 *{box-sizing:border-box}
 html,body,#root{margin:0;padding:0;min-height:100%}
+
+/* ---------- One checkbox, everywhere ----------
+
+   `accent-color:var(--jt-red)` was the whole of this, and it was not enough for
+   two reasons. It only tints the box once it is *checked*, so every unticked
+   filter and every unticked column chip rendered as the browser's own pale
+   square — a grey UI element sitting inside a red-and-black one. And what it
+   draws when checked is up to the platform, so the same screen came out
+   differently on Windows and on macOS.
+
+   Drawn from scratch instead: an outlined square that fills J&T red with a white
+   tick. Three states, all of them ours — and the indeterminate one matters here,
+   because two different "select all" boxes in this app sit over a partial
+   selection and have to say so.
+
+   Global rather than per-component on purpose. Every tick box in the dashboard
+   means the same thing — "this is included" — and the ones in the column switch,
+   the filter dropdowns and the comparison basket had drifted into three
+   different sizes. The scale is set here and overridden nowhere. */
+input[type=checkbox]{
+  appearance:none;-webkit-appearance:none;
+  flex:none;width:15px;height:15px;margin:0;
+  display:inline-grid;place-content:center;
+  border:1.5px solid #5A5A5A;border-radius:4px;background:var(--card-2);
+  cursor:pointer;
+  transition:background .12s ease,border-color .12s ease,box-shadow .12s ease;
+}
+/* The tick is a clipped rectangle rather than a rotated pseudo-element border:
+   it scales from the centre cleanly, and there is no half-pixel rounding to make
+   the two arms of the check different weights at 15px. */
+input[type=checkbox]::before{
+  content:'';width:9px;height:9px;background:#fff;
+  transform:scale(0);transition:transform .13s cubic-bezier(.2,.9,.3,1.4);
+  clip-path:polygon(13% 46%,0 61%,38% 100%,100% 22%,86% 8%,38% 71%);
+}
+input[type=checkbox]:checked,
+input[type=checkbox]:indeterminate{background:var(--jt-red);border-color:var(--jt-red)}
+input[type=checkbox]:checked::before{transform:scale(1)}
+/* the partial state: a dash, not a tick, and not an empty red square */
+input[type=checkbox]:indeterminate::before{
+  transform:scale(1);width:9px;height:2px;border-radius:1px;clip-path:none;
+}
+input[type=checkbox]:hover:not(:disabled){border-color:var(--jt-red-lit)}
+input[type=checkbox]:active:not(:disabled){transform:scale(.92)}
+input[type=checkbox]:focus-visible{
+  outline:2px solid var(--jt-red-lit);outline-offset:2px;
+}
+input[type=checkbox]:disabled{opacity:.45;cursor:not-allowed}
+
+/* ---------- One focus ring, everywhere ----------
+   The UA default is a thin system blue, which on #141414 is close to invisible
+   and is the wrong colour for this page besides. Only `:focus-visible`, so it
+   appears for the keyboard and never as a ring left behind by a mouse click. */
+button:focus-visible,
+select:focus-visible,
+input[type=text]:focus-visible,
+input[type=password]:focus-visible{
+  outline:2px solid var(--jt-red-lit);outline-offset:2px;
+}
+/* An open text field gets the accent on its own border instead of a ring — it is
+   already a box, and a ring around a box reads as two boxes. */
+.field select:focus-visible,
+.field input[type=text]:focus-visible,
+.dpfilters input[type=text]:focus-visible{
+  outline:none;border-color:var(--jt-red);
+  box-shadow:0 0 0 3px rgba(226,35,26,.22);
+}
 body{
   font-family:"Segoe UI",Inter,-apple-system,BlinkMacSystemFont,"Helvetica Neue",Arial,"Noto Sans",sans-serif;
   background:var(--bg);color:var(--ink);font-size:15px;font-weight:600;
@@ -119,8 +186,8 @@ body{
 }
 
 .sbhead{
-  display:flex;align-items:center;flex-wrap:wrap;gap:3px 10px;
-  padding:14px 12px 12px 16px;min-height:66px;
+  display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;
+  padding:15px 12px 13px 16px;min-height:74px;
   border-bottom:1px solid var(--line);
 }
 /* Ordered rather than left to source order. The tagline is `flex:1 1 100%`, so
@@ -129,7 +196,11 @@ body{
    empty. Explicit orders put the wordmark and the toggle on one line with the
    tagline beneath, whatever order the markup happens to be in. */
 .sblogo{order:1;flex:1 1 auto;min-width:0}
-.sblogo img,.sblogo svg{display:block;height:26px;width:auto;max-width:100%}
+/* 34px, up from 26. The mark is the only brand on this side of the page once the
+   top bar scrolls away, and at 26 it read as a favicon next to type the same
+   size. Capped by max-width so it still shrinks rather than pushing the toggle
+   off the row on a narrow drawer. */
+.sblogo img,.sblogo svg{display:block;height:34px;width:auto;max-width:100%}
 .sbtag{
   order:3;flex:1 1 100%;
   font-size:11.5px;font-weight:600;color:var(--ink-3);white-space:nowrap;
@@ -316,15 +387,22 @@ tbody td .zh{opacity:.9}
 .field select,.field input[type=text]{
   border:1.5px solid var(--line);border-radius:8px;padding:7px 10px;font-size:14px;font-weight:600;
   background:var(--card-2);color:var(--ink);min-width:150px;font-family:inherit;
+  cursor:pointer;transition:border-color .13s ease,background .13s ease;
 }
+.field select:hover,.field input[type=text]:hover{border-color:#4A4A4A;background:var(--card-3)}
 /* the agent picker is the primary filter on the bar — agent names are long, so
    it gets more room and heavier type than the neighbouring date select */
 .field select.agentsel{min-width:260px;max-width:360px;font-size:14.5px;font-weight:700}
 .btn{
   border:1.5px solid var(--line);background:var(--card-2);color:var(--ink);border-radius:8px;
   padding:8px 14px;font-size:13.5px;font-weight:700;cursor:pointer;font-family:inherit;
+  transition:background .13s ease,border-color .13s ease,transform .08s ease;
 }
-.btn:hover{background:var(--card-3);border-color:#4A4A4A}
+.btn:hover{background:var(--card-3);border-color:var(--jt-red)}
+/* A 1px press. Enough to feel like the click landed, small enough that a row of
+   export buttons does not bounce — the page is read at arm's length and motion
+   here is feedback, not decoration. */
+.btn:active{transform:translateY(1px)}
 .btn.primary{background:var(--jt-red);border-color:var(--jt-red);color:#fff}
 .btn.primary:hover{background:var(--jt-red-dark);border-color:var(--jt-red-dark)}
 /* Sign-out is the one control on this bar that *ends* something — everything
@@ -426,8 +504,11 @@ tbody td .zh{opacity:.9}
 @media (prefers-reduced-motion:reduce){
   .kcard,.tipbox{transition:none;animation:none}
   /* The rail slides and the page beside it shifts — the largest movement on the
-     screen, and the one most worth switching off when asked to. */
-  .sidebar,.main,.sbscrim,.ms-caret{transition:none}
+     screen, and the one most worth switching off when asked to. The rest are
+     small, but "reduce motion" is a request, not a severity threshold. */
+  .sidebar,.main,.sbscrim,.ms-caret,.btn,.colchip,.legend button,
+  input[type=checkbox],input[type=checkbox]::before{transition:none}
+  .btn:active,input[type=checkbox]:active{transform:none}
 }
 .kcard .dot{position:absolute;top:12px;right:12px;width:10px;height:10px;border-radius:50%}
 /* min-height keeps every card's value row on the same baseline; it allows for
@@ -522,10 +603,15 @@ td.ctr,th.ctr{text-align:center}
 /* ---------- Legend ---------- */
 .legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-bottom:10px}
 .legend button{
-  display:flex;align-items:center;gap:5px;background:none;border:none;cursor:pointer;
-  font-size:12px;color:var(--ink-2);padding:2px 0;font-family:inherit;
+  display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;
+  font-size:12px;color:var(--ink-2);padding:3px 8px;border-radius:6px;font-family:inherit;
+  transition:background .12s ease,color .12s ease,opacity .12s ease;
 }
+/* These toggle series on the trend chart and looked like static key entries —
+   a hover state is the whole difference between a legend and a control. */
+.legend button:hover{background:var(--card-3);color:var(--ink)}
 .legend button.off{opacity:.35;text-decoration:line-through}
+.legend button.off:hover{opacity:.7}
 .legend .sw{width:16px;height:3px;border-radius:2px}
 
 /* ---------- Summary list ---------- */
@@ -654,7 +740,11 @@ body.shooting .chartscroll{overflow:visible !important}
 .dpstat{
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
   padding:9px 13px;display:flex;flex-direction:column;gap:2px;
+  transition:background .13s ease;
 }
+/* Each of these carries a `title` explaining what it counts, and a card that
+   never changes under the pointer gives no reason to wait for it. */
+.dpstat[title]:hover{background:var(--card-2)}
 .dpstat{border-left:4px solid #4A4A4A}
 .dpstat.good{border-left-color:var(--green)}
 .dpstat.warn{border-left-color:#B47607}
@@ -695,16 +785,31 @@ body.shooting .chartscroll{overflow:visible !important}
   background:var(--card);color:var(--ink);font-family:inherit;
 }
 .dpfilters input[type=text]{min-width:220px;flex:1;max-width:330px}
+/* Given the same chip shell as the dropdowns beside it. It was bare text with a
+   tick box, which made the one filter on this bar that is *not* a dropdown look
+   like a stray label rather than a control — and its hit target was the 15px box
+   instead of the whole thing. */
 .dpfilters .chk{
-  display:flex;align-items:center;gap:6px;font-size:13.5px;font-weight:700;
+  display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;
   color:var(--ink-2);cursor:pointer;
+  border:1.5px solid transparent;border-radius:8px;padding:6px 11px 6px 9px;
+  transition:border-color .13s ease,background .13s ease,color .13s ease;
+}
+.dpfilters .chk:hover{background:var(--card);border-color:var(--line);color:var(--ink)}
+.dpfilters .chk:has(input:checked){
+  background:var(--card);border-color:var(--jt-red);color:var(--ink);
 }
 .dpfilters .seg{display:flex;border:1.5px solid var(--line);border-radius:8px;overflow:hidden;background:var(--card)}
 .dpfilters .seg button{
   border:none;background:var(--card);color:var(--ink-2);padding:6px 12px;font-size:13px;
   font-weight:700;cursor:pointer;font-family:inherit;
+  transition:background .13s ease,color .13s ease;
 }
+.dpfilters .seg button:hover:not(.on){background:var(--card-3);color:var(--ink)}
 .dpfilters .seg button.on{background:var(--jt-red);color:#fff;font-weight:800}
+/* inset, because the segment clips to its own rounded corners — an offset ring
+   would be sliced off by the border it sits inside */
+.dpfilters .seg button:focus-visible{outline-offset:-3px}
 
 /* ---------- the multi-select filters ----------
 
@@ -780,9 +885,7 @@ body.shooting .chartscroll{overflow:visible !important}
   font-size:13.5px;font-weight:600;color:var(--ink);
 }
 .ms-row:hover{background:var(--card-3)}
-.ms-row input[type=checkbox]{
-  flex:none;width:15px;height:15px;margin:0;accent-color:var(--jt-red);cursor:pointer;
-}
+/* the box itself is the shared one at the top of this file — nothing to set here */
 .ms-lab{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* Dimmed rather than struck through or hidden: the row is still a live control
    and has to look like one, but "this is the half you switched off" should be
@@ -840,14 +943,17 @@ body.shooting .chartscroll{overflow:visible !important}
   color:var(--ink-3);margin-right:1px;
 }
 .colchip{
-  display:inline-flex;align-items:center;gap:6px;white-space:nowrap;cursor:pointer;
-  border:1.5px solid var(--line);border-radius:99px;padding:4px 11px 4px 8px;
+  display:inline-flex;align-items:center;gap:7px;white-space:nowrap;cursor:pointer;
+  border:1.5px solid var(--line);border-radius:99px;padding:4px 12px 4px 9px;
   background:var(--card);color:var(--ink);font-size:12.5px;font-weight:700;
+  transition:border-color .13s ease,background .13s ease,color .13s ease;
 }
-.colchip:hover{border-color:#4A4A4A;background:var(--card-3)}
-.colchip input{flex:none;width:14px;height:14px;margin:0;accent-color:var(--jt-red);cursor:pointer}
+.colchip:hover{border-color:var(--jt-red);background:var(--card-3)}
+/* the whole chip lights up when the box inside it has the keyboard, so the
+   target is the chip you are reading rather than a 15px square inside it */
+.colchip:has(input:focus-visible){border-color:var(--jt-red-lit);background:var(--card-3)}
 /* A switched-off column is drawn as an outline rather than a filled chip, so
-   which ones are off is legible from the shape alone — the tick box is 14px and
+   which ones are off is legible from the shape alone — the tick box is 15px and
    at arm's length the fill is what you actually see. */
 .colchip.off{background:transparent;color:var(--ink-3);border-style:dashed}
 .colchip.master{border-color:var(--jt-red);font-weight:800}
@@ -932,12 +1038,9 @@ table.dpgrid tbody tr:nth-child(even) td.sticky{background:#242424}
    DpSection.tsx for why that distinction keeps the column pinned on iOS */
 .dpname{font-weight:700;display:flex;align-items:center;gap:8px;min-width:0}
 .dpname .dptext{min-width:0}
-/* The comparison tick. Sized up from the browser default — it lives in a 6px-tall
-   row and has to be hittable with a thumb, not just a mouse. */
-.dpname .dppick{
-  flex:none;width:15px;height:15px;margin:0;
-  accent-color:var(--jt-red);cursor:pointer;
-}
+/* The comparison tick. Nothing to declare: it is the shared box at the top of
+   this file, which is already sized past the browser default for exactly this
+   row — it has to be hittable with a thumb, not just a mouse. */
 /* the agent and supervisor inside the pinned cell; a phone-only stand-in for
    the two columns of their own */
 .dpagent{display:none}
@@ -1079,6 +1182,24 @@ table.dpgrid tbody tr.picked td.sticky{
 /* the heat-map fill still wins on the figure cells — a missed target must not
    stop looking like one because the row happens to be selected */
 table.dpgrid tbody tr.picked td.hm.bad{background:#4A1512}
+
+/* Row tracking.
+
+   Eleven columns wide and up to 1,666 rows deep, with a pinned name column at
+   the far left: following one site across to its RETUR figure means holding a
+   line with your eye across most of a screen. A hover tint is the cheapest fix
+   there is — and it has to reach the pinned cell explicitly, which paints its
+   own background over the row's.
+
+   Placed after `.picked` so a tick still reads as ticked under the pointer, and
+   left out of the print and PNG rules entirely: there is no pointer in a PDF. */
+@media (hover:hover){
+  table.dpgrid tbody tr:hover td{background:#2C2C2C}
+  table.dpgrid tbody tr:hover td.sticky{background:#333333}
+  table.dpgrid tbody tr.picked:hover td{background:#33231F}
+  table.dpgrid tbody tr.picked:hover td.sticky{background:#432D28}
+  table.dpgrid tbody tr:hover td.hm.bad{background:#541814}
+}
 
 /* The selection bar.
 
@@ -1732,6 +1853,13 @@ body.shoot-table .dptable{margin-top:0}
   .sbadge.pickup{background:#FBF3E4 !important;color:#8A5A08 !important}
   .sbadge.closed{background:#F1F3F7 !important;color:#798394 !important}
   .sbadge.unknown{background:transparent !important;color:#8A93A2 !important;border-color:#C6CCD8 !important}
+  /* The tick boxes survive into the table (the comparison column prints), and
+     their surface follows `--card-2` on its own — only the literal grey of the
+     unticked border needs naming, or it comes out as a heavy outline on white. */
+  input[type=checkbox]{border-color:#C6CCD8 !important}
+  input[type=checkbox]:checked,input[type=checkbox]:indeterminate{
+    background:var(--jt-red) !important;border-color:var(--jt-red) !important;
+  }
   /* the Status column survives into the PDF — it is the column the sheet is
      read for, so it gets light-mode plates rather than being flattened */
   .stbadge.urgent{background:#F9D3CF !important;color:#8E1109 !important}
