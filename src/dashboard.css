@@ -420,6 +420,23 @@ tbody td .zh{opacity:.9}
    between "another export button" and "this closes your session". */
 .btn.danger{background:var(--jt-red);border-color:var(--jt-red);color:#fff;font-weight:800}
 .btn.danger:hover{background:var(--jt-red-dark);border-color:var(--jt-red-dark)}
+/*
+  The chip and the two export buttons, as one block pushed to the right.
+
+  `margin-left:auto` rather than a `.spacer` element doing `flex:1`. The spacer
+  worked only while everything fitted on one line: once the bar wrapped, the
+  spacer grew to fill whichever row it had landed on and shoved the items after
+  it around unpredictably. Auto margin does the same job and simply stops
+  applying when the group has a line to itself.
+
+  `flex-wrap` on the group as well, so a very narrow bar breaks it into two tidy
+  right-aligned rows rather than clipping.
+*/
+.toolbar-end{
+  display:flex;align-items:center;justify-content:flex-end;
+  gap:8px;flex-wrap:wrap;margin-left:auto;
+}
+/* kept for the empty-state toolbars, which still use it */
 .spacer{flex:1}
 .filechip{
   font-size:12.5px;font-weight:600;color:#fff;background:var(--jt-black-2);
@@ -1159,22 +1176,36 @@ table.dpgrid tbody td.spvcol{color:var(--ink-2);font-weight:600}
 .stleg-pills{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 /* One pill: the badge, the range it covers, then the count. Reading order is the
    answer to "what is it / when does it apply / how many are there", which is the
-   order the questions actually arrive in. */
+   order the questions actually arrive in.
+   `flex:none` so a crowded row wraps a whole pill onto the next line rather than
+   squeezing one — three pills at three different widths read as three different
+   kinds of thing. */
 .stleg-p{
-  display:inline-flex;align-items:center;gap:7px;
+  display:inline-flex;align-items:center;flex:none;gap:8px;
   border:1.5px solid var(--line);border-radius:99px;
-  padding:2px 3px 2px 3px;background:var(--card);
+  padding:3px 4px;background:var(--card);
 }
-.stleg-p .stbadge{font-size:12px;padding:2px 9px}
+.stleg-p .stbadge{flex:none;font-size:12px;padding:2px 9px}
+/*
+  `nowrap`, and it is the whole reason this rule exists.
+
+  "0–4/7" is five characters with two break opportunities in it — browsers may
+  break after the en-dash and after the slash — so in a flex item narrow enough
+  to want one, it folded to "0–" over "4/7". That made the pill two lines tall,
+  which made the pill taller than its own badge, which made the three pills
+  different heights depending on which ranges happened to fit. A range is one
+  token; it should be typeset as one.
+*/
 .stleg-r{
+  flex:none;white-space:nowrap;
   font-size:11.5px;font-weight:700;color:var(--ink-2);
   font-variant-numeric:tabular-nums;letter-spacing:.2px;
 }
 /* The count is the number people came for, so it is the only thing here at full
    contrast and full weight. */
 .stleg-n{
-  min-width:24px;padding:1px 8px 1px 7px;margin-left:-2px;
-  font-size:14px;font-weight:800;color:var(--ink);
+  flex:none;min-width:22px;padding:0 8px 0 0;
+  font-size:14px;font-weight:800;color:var(--ink);line-height:1.2;
   font-variant-numeric:tabular-nums;text-align:right;
 }
 .stleg-p.urgent{border-color:#5E2420}
@@ -1284,6 +1315,10 @@ body.shooting .sidebar,
 body.shooting .sbscrim,
 body.shooting .navbtn{display:none !important}
 body.shooting .main,body.shooting .app.mini .main{margin-left:0 !important}
+/* Snapped, not eased. `.main` animates its margin over 180ms, and the capture
+   now waits for the page to stop moving before it measures — an easing curve is
+   eleven frames of "still moving" spent on something the picture cannot show. */
+body.shooting .main,body.shooting .sidebar{transition:none !important}
 
 body.shooting .toolbar,
 body.shooting .tipbox,
@@ -1291,6 +1326,15 @@ body.shooting .dpfilters,
 body.shooting .dpcolbar,
 body.shooting .dpmore,
 body.shooting .legend button.off{display:none !important}
+
+/* A bar chart whose x-axis carries agent names keeps its width and pans on a
+   narrow screen (`narrowMode="scroll"` in Charts.tsx). At the pinned capture
+   width it re-renders wide and does not need to — but if a phone's re-render has
+   not landed yet, the pan container would photograph as its visible slice and
+   crop the chart mid-bar. Unrolled here so the worst case is a wide picture
+   rather than a truncated one. */
+body.shooting .chartscroll{overflow:visible !important}
+body.shooting .chartscroll > div{width:auto !important;min-width:0 !important}
 
 /* the DP list scrolls on screen; a scroll container photographs as its visible
    slice only, so it is unrolled to full height for the shot */
@@ -1715,6 +1759,10 @@ body.shoot-table .dptable{margin-top:0}
   .field select,.field input[type=text],.field select.agentsel{
     width:100%;min-width:0;max-width:none;
   }
+  /* The group spans the bar and its buttons split it evenly — at this width
+     right-aligning them just leaves a ragged gutter down the left. */
+  .toolbar-end{flex:1 1 100%;justify-content:flex-start;margin-left:0}
+  .toolbar-end .filechip{flex:1 1 100%;text-align:center;white-space:normal;line-height:1.5}
   .toolbar .btn{flex:1 1 calc(50% - 4px)}
   .toolbar .btn.primary{flex:1 1 100%}
   .spacer{display:none}
@@ -1787,8 +1835,12 @@ body.shoot-table .dptable{margin-top:0}
      ragged column. The footnote it carries is repeated under the table. */
   .stleg{padding:8px 10px;gap:7px 10px}
   .stleg-h{flex:1 1 100%}
-  .stleg-pills{flex:1 1 100%;gap:6px}
-  .stleg-p{flex:1 1 0;min-width:0;justify-content:center}
+  /* Wrapped rather than squeezed into thirds: at 390px a third of the row is not
+     enough for a badge, a range and a count, and forcing it there is what folded
+     the range in half on the desktop layout. One pill per line, full width. */
+  .stleg-pills{flex:1 1 100%;gap:6px;flex-direction:column;align-items:stretch}
+  .stleg-p{width:100%}
+  .stleg-p .stleg-r{margin-right:auto}
   .stleg-note{display:none}
   .dpfilters .seg{justify-content:stretch}
   .dpfilters .seg button{flex:1}

@@ -480,17 +480,32 @@ export default function Dashboard({
             ))}
           </select>
         </Field>
-        <div className="spacer" />
-        <span className="filechip">
-          {model.region} · {model.rows.length} agen · {kpis.length} Indikator · {dates.length} hari
-          {model.dps.length > 0 && ` · ${model.dps.length} DP/CP dari ${dpSheets.length} tab agen`}
-        </span>
-        {/* Named for what it will contain. Two buttons on the DP/CP page read
-            "Simpan PNG" and take different pictures, so each has to say which. */}
-        <button className="btn" onClick={savePng}>
-          {view === VIEW_DP ? 'Simpan PNG · Ringkasan' : 'Simpan PNG'}
-        </button>
-        <button className="btn" onClick={() => window.print()}>Cetak / PDF</button>
+        {/*
+          The right-hand end, grouped rather than left as four loose flex items
+          after a `.spacer`.
+
+          Loose, they wrapped one at a time: opening the rail takes 300px off the
+          bar, "Cetak / PDF" no longer fitted by about forty pixels, and it alone
+          dropped to a second line — left-aligned under the date picker, nowhere
+          near the button it belongs beside. The spacer made it worse rather than
+          better, since a `flex:1` item on a wrapped line grows to fill the row it
+          landed on.
+
+          As one group the chip and both buttons move together and stay
+          right-aligned, whether they share the fields' line or take their own.
+        */}
+        <div className="toolbar-end">
+          <span className="filechip">
+            {model.region} · {model.rows.length} agen · {kpis.length} Indikator · {dates.length} hari
+            {model.dps.length > 0 && ` · ${model.dps.length} DP/CP dari ${dpSheets.length} tab agen`}
+          </span>
+          {/* Named for what it will contain. Two buttons on the DP/CP page read
+              "Simpan PNG" and take different pictures, so each has to say which. */}
+          <button className="btn" onClick={savePng}>
+            {view === VIEW_DP ? 'Simpan PNG · Ringkasan' : 'Simpan PNG'}
+          </button>
+          <button className="btn" onClick={() => window.print()}>Cetak / PDF</button>
+        </div>
         {/* Sign-out has moved to the foot of the rail. It was here because the
             top bar is inside the PNG export and nobody wants a "LogOut" button
             baked into the picture they send to the region — the rail is outside

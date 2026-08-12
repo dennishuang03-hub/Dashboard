@@ -2006,11 +2006,56 @@ export function readWorkbook(buf: ArrayBuffer): XLSX.WorkBook {
 
 /* ------------------------------------------------------------- PNG export */
 
-/** Two frames, so the browser has actually applied `body.shooting` and reflowed
- *  to the pinned capture width before anything is measured. Measuring in the
- *  same tick returns the pre-reflow height, which is what truncated the image. */
-const settled = () =>
-  new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())))
+const frame = () => new Promise<void>((r) => requestAnimationFrame(() => r()))
+
+/**
+ * Wait until `el` has stopped changing size.
+ *
+ * ── Why two frames was not enough ────────────────────────────────────────────
+ *
+ * This used to be a fixed `requestAnimationFrame(() => requestAnimationFrame(…))`
+ * — long enough for the browser to apply `body.shooting` and reflow to the
+ * pinned 1480px capture width. That covers a pure CSS reflow. It does not cover
+ * what actually happens on a phone.
+ *
+ * The charts are not CSS. Each one measures its own container with a
+ * `ResizeObserver` and re-renders at a different *shape* below 560px — upright
+ * and roughly square, because 1100×300 squeezed into a phone is a 98px smear.
+ * So widening the page to 1480px starts a chain: observer fires, React sets
+ * state, React commits, the SVG re-renders landscape, the panel's height
+ * changes. That is at minimum a frame after the reflow the old wait was timing,
+ * and on a phone it is several.
+ *
+ * Both mobile failures came out of that one gap, from opposite sides of it:
+ *
+ *   Captured too early — the shot went out with the charts still in portrait
+ *   shape, stretched across a desktop-width page: giant axis type, bars running
+ *   off the panel.
+ *
+ *   Measured too early — `scrollHeight` was read while the page was still tall,
+ *   html2canvas allocated a canvas that size, and by the time it painted, the
+ *   charts had shortened. Hence a correct picture with a screen of empty
+ *   background under it.
+ *
+ * Polling for stability fixes both, and it is honest about what it is waiting
+ * for: not a duration, but "nothing moved for three frames". The cap is a
+ * second — past that something is animating and will never settle, and a
+ * slightly wrong picture beats a button that hangs.
+ */
+async function settleLayout(el: HTMLElement, maxFrames = 60): Promise<void> {
+  let last = ''
+  let still = 0
+  for (let i = 0; i < maxFrames; i++) {
+    await frame()
+    const now = `${el.scrollWidth}x${el.scrollHeight}`
+    if (now === last) {
+      if (++still >= 3) return
+    } else {
+      still = 0
+      last = now
+    }
+  }
+}
 
 /**
  * The page's own background, read at capture time.
@@ -2124,7 +2169,10 @@ export async function exportPng(
   document.body.classList.add('shooting')
   if (bodyClass) document.body.classList.add(bodyClass)
   window.scrollTo(0, 0)
-  await settled()
+  /* Waits for the charts to finish re-shaping, not just for the CSS reflow —
+     see `settleLayout`. Measuring before they have is what put a screen of
+     empty background under the mobile exports. */
+  await settleLayout(el)
 
   try {
     const width = Math.ceil(el.scrollWidth)
