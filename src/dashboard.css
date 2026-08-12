@@ -862,7 +862,9 @@ body.shooting .chartscroll{overflow:visible !important}
 
 .ms-pop{
   position:absolute;top:calc(100% + 6px);left:0;z-index:40;
-  min-width:250px;max-width:320px;
+  /* Widened for the plates: a row is now a badge, a gloss and a count rather
+     than a word and a count, and 250px started clipping "Tanpa jenis layanan". */
+  min-width:274px;max-width:340px;
   background:var(--card);border:1.5px solid #4A4A4A;border-radius:10px;
   box-shadow:var(--shadow);padding:6px;
   /* the list scrolls, the header and the warning below it do not */
@@ -897,11 +899,29 @@ body.shooting .chartscroll{overflow:visible !important}
 }
 .ms-row:hover{background:var(--card-3)}
 /* the box itself is the shared one at the top of this file — nothing to set here */
-.ms-lab{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* A flex row now that options carry plates: a tag chip, the label (plain or
+   plated) and the Mandarin gloss, laid out on one line and clipped rather than
+   wrapped. */
+.ms-lab{
+  flex:1;min-width:0;display:flex;align-items:center;gap:7px;
+  overflow:hidden;white-space:nowrap;
+}
+.ms-lab .zh{margin-left:0}
+/* The same plates the table draws, one step smaller — a dropdown row is tighter
+   than a table cell, and at full size four of them stacked read as buttons. */
+.ms-lab .sbadge,.ms-lab .stbadge{
+  flex:none;font-size:12px;padding:2px 9px;
+  overflow:hidden;text-overflow:ellipsis;max-width:100%;
+}
+.ms-lab .ptag{flex:none}
 /* Dimmed rather than struck through or hidden: the row is still a live control
    and has to look like one, but "this is the half you switched off" should be
-   readable without counting the boxes. */
+   readable without counting the boxes.
+   A plated label sets its own colour, so the dimming has to reach the plate —
+   opacity rather than a colour, which keeps the band identifiable while
+   obviously switched off. */
 .ms-row.unticked .ms-lab{color:var(--ink-3)}
+.ms-row.unticked .ms-lab :is(.sbadge,.stbadge,.ptag){opacity:.4}
 .ms-num{
   flex:none;font-size:12px;font-weight:700;color:var(--ink-3);
   font-variant-numeric:tabular-nums;
@@ -1110,6 +1130,14 @@ table.dpgrid tbody td.spvcol{color:var(--ink-2);font-weight:600}
 .stbadge.urgent{background:#4A1512;color:#FF8C82}
 .stbadge.perhatian{background:#3A2B0A;color:#FFC760}
 .stbadge.stable{background:#15321F;color:#5BE79A}
+/* Not a band — the sites the scorecard cannot judge. Outlined rather than
+   filled, the same way `.sbadge.unknown` is, so an absence never looks like a
+   fourth category. It exists only in the Status filter's list; the table draws
+   these rows as a plain dash. */
+.stbadge.none{
+  background:transparent;color:#8A8A8A;
+  border:1px dashed #565656;padding:2px 9px;font-weight:700;
+}
 
 /* ---------- the Status key ----------
    The bands written out with their ranges and their counts. Its own slim band

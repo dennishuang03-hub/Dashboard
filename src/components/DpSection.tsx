@@ -29,7 +29,7 @@ import {
   UNSCORED_LABELS, agentFull, agentZh, dpKindClass, dpTargetFor, dpValue, exportPng, fmtDate,
   fmtDateFull, isRankable, isScored, isoDay, scoreStatusOf, sectionOf,
 } from '../lib/jnt'
-import type { DateSlot, DpKind, DpRow, DpStatus, Kpi, Model } from '../lib/jnt'
+import type { BizModel, DateSlot, DpKind, DpRow, DpStatus, Kpi, Model } from '../lib/jnt'
 import { BarChart, HBarChart } from './Charts'
 import type { HBar } from './Charts'
 import MultiSelect from './MultiSelect'
@@ -375,50 +375,74 @@ export default function DpSection({
    * ever match nothing, and an option that cannot do anything is a click into a
    * dead end; when they do appear, appearing is itself the signal that the
    * workbook has a gap in it.
+   *
+   * ── The plates ───────────────────────────────────────────────────────────────
+   *
+   * Every option except the DP/CP split carries the same badge the table draws
+   * for that value, built here from the same `DP_KIND_LABEL` / `dpKindClass` /
+   * `BIZ_MODEL_TAG` tables the cells use. Not styling for its own sake: a
+   * dropdown reading "Perhatian" in plain type over a column of amber pills makes
+   * the reader do a lookup every time, and the lookup is exactly what colour is
+   * for. Sharing the source means the two cannot drift, either — a new band gets
+   * its plate in the filter the moment it gets one in the table.
+   *
+   * DP / CP is left plain on purpose. It has no plate in the table: the split is
+   * carried by the `CP_` prefix on the name itself, so there is nothing to match.
    */
   const filterOpts = useMemo(() => {
     const n = (p: (s: Scored) => boolean) => scored.filter(p).length
     const unknownBiz = n((s) => !s.dp.bizModel)
+
+    /** one Jenis Layanan option, wearing the table's `.sbadge` */
+    const svc = (k: DpKind, count: number, label?: string, zh?: string) => ({
+      value: k,
+      label: label ?? DP_KIND_LABEL[k],
+      zh: zh ?? DP_KIND_ZH[k],
+      badge: `sbadge ${dpKindClass(k)}`,
+      n: count,
+    })
+    /** one Status option, wearing the table's `.stbadge` */
+    const st = (k: DpStatus, count: number, label?: string, zh?: string) => ({
+      value: k,
+      label: label ?? DP_STATUS_LABEL[k],
+      zh: zh ?? DP_STATUS_ZH[k],
+      badge: `stbadge ${k || 'none'}`,
+      n: count,
+    })
+    /** one Model Bisnis option, with the FR / AG chip that prefixes a site name */
+    const bm = (k: BizModel, count: number, label?: string, zh?: string) => ({
+      value: k,
+      label: label ?? BIZ_MODEL_LABEL[k],
+      zh,
+      tag: { cls: `ptag ${k || 'unknown'}`, text: BIZ_MODEL_TAG[k] },
+      n: count,
+    })
+
     return {
       service: [
-        { value: 'both', label: DP_KIND_LABEL.both, zh: DP_KIND_ZH.both, n: counts.both },
-        { value: 'delivery', label: DP_KIND_LABEL.delivery, zh: DP_KIND_ZH.delivery, n: counts.delivery },
-        { value: 'pickup', label: DP_KIND_LABEL.pickup, zh: DP_KIND_ZH.pickup, n: counts.pickup },
-        { value: 'closed', label: DP_KIND_LABEL.closed, zh: DP_KIND_ZH.closed, n: counts.closed },
-        ...(counts.unknown > 0
-          ? [{ value: '', label: 'Tanpa jenis layanan', zh: '未填', n: counts.unknown }]
-          : []),
+        svc('both', counts.both),
+        svc('delivery', counts.delivery),
+        svc('pickup', counts.pickup),
+        svc('closed', counts.closed),
+        ...(counts.unknown > 0 ? [svc('', counts.unknown, 'Tanpa jenis layanan', '未填')] : []),
       ],
       /* Ordered worst-first, matching the key band under the filters and the
          column's own sort. Three lists of the same three bands in three
          different orders is how a reader stops trusting any of them. */
       status: [
-        {
-          value: 'urgent', label: DP_STATUS_LABEL.urgent, zh: DP_STATUS_ZH.urgent,
-          n: statusCounts.urgent,
-        },
-        {
-          value: 'perhatian', label: DP_STATUS_LABEL.perhatian, zh: DP_STATUS_ZH.perhatian,
-          n: statusCounts.perhatian,
-        },
-        {
-          value: 'stable', label: DP_STATUS_LABEL.stable, zh: DP_STATUS_ZH.stable,
-          n: statusCounts.stable,
-        },
-        ...(statusCounts.none > 0
-          ? [{ value: '', label: 'Tidak dinilai', zh: '未评分', n: statusCounts.none }]
-          : []),
+        st('urgent', statusCounts.urgent),
+        st('perhatian', statusCounts.perhatian),
+        st('stable', statusCounts.stable),
+        ...(statusCounts.none > 0 ? [st('', statusCounts.none, 'Tidak dinilai', '未评分')] : []),
       ],
       type: [
         { value: 'dp', label: 'Drop point', zh: '网点', n: n((s) => !s.dp.isCp) },
         { value: 'cp', label: 'Collection point', zh: '揽收点', n: n((s) => s.dp.isCp) },
       ],
       biz: [
-        { value: 'franchise', label: 'Franchise', zh: '加盟', n: n((s) => s.dp.bizModel === 'franchise') },
-        { value: 'agent', label: 'Agent', zh: '自营', n: n((s) => s.dp.bizModel === 'agent') },
-        ...(unknownBiz > 0
-          ? [{ value: '', label: 'Tanpa model bisnis', zh: '未填', n: unknownBiz }]
-          : []),
+        bm('franchise', n((s) => s.dp.bizModel === 'franchise'), undefined, '加盟'),
+        bm('agent', n((s) => s.dp.bizModel === 'agent'), undefined, '自营'),
+        ...(unknownBiz > 0 ? [bm('', unknownBiz, 'Tanpa model bisnis', '未填')] : []),
       ],
     }
   }, [scored, counts, statusCounts])

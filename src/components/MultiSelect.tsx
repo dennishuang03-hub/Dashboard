@@ -32,6 +32,22 @@ export interface MsOption {
   zh?: string
   /** how many rows in scope carry this value — greyed, on the right */
   n?: number
+  /**
+   * Draw the label as the same plate the table draws for this value — the class
+   * list of that plate, e.g. `sbadge both` or `stbadge urgent`.
+   *
+   * The point is recognition rather than decoration. "Perhatian" in the filter
+   * and the amber pill in the Status column were the same fact wearing two
+   * different faces, and matching them means a value can be found by its colour
+   * in either place. It is the component's caller that owns the mapping,
+   * because it is the caller that owns the table.
+   */
+  badge?: string
+  /**
+   * A short chip *before* the label, for values the table shows as a tag beside
+   * a name rather than as a plate of their own — the FR / AG model marker.
+   */
+  tag?: { cls: string; text: string }
 }
 
 export default function MultiSelect({
@@ -166,7 +182,14 @@ export default function MultiSelect({
                 <label key={o.value} className={`ms-row${ticked ? '' : ' unticked'}`}>
                   <input type="checkbox" checked={ticked} onChange={() => toggle(o.value)} />
                   <span className="ms-lab">
-                    {o.label}<Zh>{o.zh ?? ''}</Zh>
+                    {o.tag && <span className={o.tag.cls}>{o.tag.text}</span>}
+                    {/* The gloss stays outside the plate. In the table the badge
+                        carries the Indonesian alone and the Mandarin lives in
+                        its tooltip; widening the plate to hold both here would
+                        make the same value a different shape in the two places,
+                        which is the thing this is trying to fix. */}
+                    {o.badge ? <span className={o.badge}>{o.label}</span> : o.label}
+                    <Zh>{o.zh ?? ''}</Zh>
                   </span>
                   {o.n != null && <span className="ms-num">{o.n}</span>}
                 </label>
