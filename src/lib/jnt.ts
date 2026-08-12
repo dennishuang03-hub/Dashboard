@@ -2131,6 +2131,28 @@ export async function exportPng(
     const height = Math.ceil(el.scrollHeight)
 
     /*
+     * Nothing left to photograph.
+     *
+     * This is the check that was missing, and its absence is why a scope bug
+     * showed up as a mystery instead of a message. A body class that hides more
+     * than it meant to leaves an element laid out at a few pixels tall;
+     * html2canvas renders it perfectly happily, `canvas.width` is non-zero
+     * because the *width* survived, and what lands in Downloads is a thin strip
+     * of background. The failure is downstream of everything worth checking.
+     *
+     * 40px is comfortably below any real capture — the top bar alone is taller —
+     * and comfortably above the couple of pixels an emptied container collapses
+     * to. The message names the button rather than the CSS, because the person
+     * reading it pressed a button.
+     */
+    if (width < 8 || height < 40) {
+      throw new Error(
+        'Tidak ada yang bisa difoto pada bagian ini — kemungkinan semua isinya sedang ' +
+        'disembunyikan oleh filter. Longgarkan filternya lalu coba lagi.',
+      )
+    }
+
+    /*
      * The scale used to be floored at 1, and that is what cut the bottom off a
      * long DP/CP export.
      *

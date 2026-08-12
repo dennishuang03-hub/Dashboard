@@ -293,14 +293,32 @@ export default function Dashboard({
   // on its own instead of pointing at a KPI that no longer exists
   const barK: Kpi | null = barChoices.find((k) => k.key === barKey) ?? barChoices[0] ?? null
 
-  /* The dashboard shot deliberately stops above the DP/CP section — that list
-     has its own Simpan PNG button, because the two are read separately. */
+  /**
+   * The toolbar's picture, of whichever report the rail is pointing at.
+   *
+   * One button, two scopes — and the scope is the whole fix. It used to pass
+   * `shoot-main` unconditionally, whose one job was to hide `.dpsection` so the
+   * agent shot stopped above the drop-point list. That made sense when both
+   * reports were on one page. Once they became separate views the class was
+   * still applied on the DP/CP page, where `.dpsection` is not a section further
+   * down — it is the entire contents. The button hid everything it was meant to
+   * photograph and produced a picture of the header, or nothing at all.
+   *
+   * `shoot-dp` drops the table instead, because the table has its own button in
+   * its own panel header: it is wider than the rest of the page and can run to
+   * hundreds of rows, and one image holding both is unreadable at any scale.
+   */
   const savePng = async () => {
     if (!wrapRef.current) return
     const d = model?.dates[dateIdx]
     const stamp = d?.date ? isoDay(d.date) : 'export'
+    const dp = view === VIEW_DP
     try {
-      await exportPng(wrapRef.current, `jnt-dashboard-${stamp}.png`, 'shoot-main')
+      await exportPng(
+        wrapRef.current,
+        `jnt-${dp ? 'dp-cp' : 'agen'}-${stamp}.png`,
+        dp ? 'shoot-dp' : 'shoot-main',
+      )
     } catch (ex) {
       setErr((ex as Error).message)
     }
@@ -467,7 +485,11 @@ export default function Dashboard({
           {model.region} · {model.rows.length} agen · {kpis.length} Indikator · {dates.length} hari
           {model.dps.length > 0 && ` · ${model.dps.length} DP/CP dari ${dpSheets.length} tab agen`}
         </span>
-        <button className="btn" onClick={savePng}>Simpan PNG</button>
+        {/* Named for what it will contain. Two buttons on the DP/CP page read
+            "Simpan PNG" and take different pictures, so each has to say which. */}
+        <button className="btn" onClick={savePng}>
+          {view === VIEW_DP ? 'Simpan PNG · Ringkasan' : 'Simpan PNG'}
+        </button>
         <button className="btn" onClick={() => window.print()}>Cetak / PDF</button>
         {/* Sign-out has moved to the foot of the rail. It was here because the
             top bar is inside the PNG export and nobody wants a "LogOut" button

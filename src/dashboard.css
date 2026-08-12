@@ -795,10 +795,10 @@ body.shooting .chartscroll{overflow:visible !important}
   background:var(--card);color:var(--ink);font-family:inherit;
 }
 .dpfilters input[type=text]{min-width:220px;flex:1;max-width:330px}
-/* Given the same chip shell as the dropdowns beside it. It was bare text with a
-   tick box, which made the one filter on this bar that is *not* a dropdown look
-   like a stray label rather than a control — and its hit target was the 15px box
-   instead of the whole thing. */
+/* The "Hanya di bawah target" checkbox is gone — the Status filter asks the same
+   question of the whole scorecard instead. The chip shell is kept for the next
+   plain checkbox that lands on this bar, so it arrives looking like a control
+   rather than like a stray label with a tick box. */
 .dpfilters .chk{
   display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:700;
   color:var(--ink-2);cursor:pointer;
@@ -1318,21 +1318,35 @@ body.shooting .panel > h3 .hsel:hover{
 /* the export buttons are chrome, not data — never in the picture */
 body.shooting .btn{display:none !important}
 
-/* ---------- Two capture scopes ----------
-   The dashboard and the DP/CP list are two different documents that happen to
-   share a page: one is a daily summary for an agent, the other is a working
-   list of sites. Photographing them together produced an image too tall to read
-   and too wide to send, so each has its own button and its own scope.
+/* ---------- Three capture scopes ----------
+
+   There are three pictures worth taking and they are three different documents:
+   the agent summary, the DP/CP overview (its counters and its four charts), and
+   the DP/CP table. The table is the reason they are separate — it is wider than
+   everything else on the page and can run to hundreds of rows, so folding it
+   into either of the others produces an image too tall to read and too wide to
+   send.
+
+   Each scope is a body class, and each says only what it *hides*. Nothing here
+   selects `.dpsection` to show it: the two reports are now separate views, so
+   whichever one is on screen is the only one in the DOM. That is what the old
+   `body.shoot-main .dpsection{display:none}` was for, and it had quietly become
+   the bug — on the DP/CP page it hid the entire contents of the shot and left a
+   picture of the header, or an empty canvas and an error.
 
    These rules must come after the body.shooting block — the .wrap selectors
    have identical specificity, so source order is what decides. */
 
-/* dashboard only — the DP/CP section has its own button */
-body.shoot-main .dpsection{display:none !important}
+/* 1 — the agent page, whole. Nothing extra to drop; `body.shooting` has already
+       taken the toolbar and the rail. */
 
-/* DP/CP list only. The wrap is sized to the table instead of the fixed capture
-   width: the grid is wider than the dashboard, and pinning it to 1480px would
-   cut the right-hand categories off. */
+/* 2 — the DP/CP page without its table: the counters, the two ranking charts and
+       the per-agent chart. The table's own button takes the rest. */
+body.shoot-dp .dptable{display:none !important}
+
+/* 3 — the DP/CP table alone. The wrap is sized to the table instead of the fixed
+       capture width: the grid is wider than the dashboard, and pinning it to
+       1480px would cut the right-hand categories off. */
 body.shoot-table .wrap > *:not(.dpsection){display:none !important}
 body.shoot-table .dpsection > *:not(.dptable){display:none !important}
 body.shoot-table .wrap{width:max-content;max-width:none;padding:0}

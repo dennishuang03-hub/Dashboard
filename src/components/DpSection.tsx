@@ -578,7 +578,11 @@ export default function DpSection({
   const [stOff, setStOff] = useState<ReadonlySet<string>>(() => new Set<string>())
   const [typeOff, setTypeOff] = useState<ReadonlySet<string>>(() => new Set<string>())
   const [bizOff, setBizOff] = useState<ReadonlySet<string>>(() => new Set<string>())
-  const [onlyBelow, setOnlyBelow] = useState(false)
+  /* `onlyBelow` used to live here — a checkbox that kept only the rows missing
+     one chosen category. The Status filter answers the same question better: it
+     asks about the whole scorecard rather than about whichever category the
+     per-agent chart happened to be set to, and it does not need a second control
+     to say which one that was. */
   const [mode, setMode] = useState<ValueMode>('day')
   const [sortKey, setSortKey] = useState<string>(COL_NAME)
   const [sortDir, setSortDir] = useState<SortDir>('asc')
@@ -726,12 +730,6 @@ export default function DpSection({
         && !`${s.dp.label} ${s.dp.agentLabel} ${s.dp.supervisor}`.toLowerCase().includes(needle)) {
         return false
       }
-      if (onlyBelow && tableK) {
-        const v = cell(s, tableK)
-        if (v == null) return false
-        const t = dpTargetFor(s.dp, tableK)
-        if (tableK.lowerBetter ? v <= t : v >= t) return false
-      }
       return true
     })
 
@@ -771,7 +769,7 @@ export default function DpSection({
       return dir * (av - bv)
     })
     return out
-  }, [scored, q, svcOff, stOff, typeOff, bizOff, onlyBelow, tableK, liveSort, liveDir, mode,
+  }, [scored, q, svcOff, stOff, typeOff, bizOff, liveSort, liveDir, mode,
       catKpis, basketOn, picked])
 
   /* A deliberate selection is never truncated: forty is a guard against dumping
@@ -1005,12 +1003,11 @@ export default function DpSection({
           <Stat n={counts.unknown} lab="Tanpa jenis layanan" zh="未填服务类型" tone="mute"
                 hint="Kolom Jenis Layanan kosong atau tidak dikenali di file. Tetap diperingkat agar tidak hilang dari grafik — periksa datanya." />
         )}
-        <Stat
-          n={tableK ? rankable.filter((s) => { const v = s.vals[tableK.label]; if (v == null) return false; const t = dpTargetFor(s.dp, tableK); return tableK.lowerBetter ? v > t : v < t }).length : 0}
-          lab={tableK ? `Di bawah target · ${tableK.label}` : 'Di bawah target'}
-          zh="未达标"
-          tone="bad"
-        />
+        {/* A "Di bawah target · 06:30 ABSENSI" card used to close this row. It
+            counted one category, chosen by a dropdown three panels further down,
+            which made it the only card here whose meaning moved without being
+            touched. The Status key below the filters answers the same question
+            across the whole scorecard and stays put. */}
       </div>
 
       <div className="row-dp">
@@ -1078,7 +1075,10 @@ export default function DpSection({
             {' · '}{mode === 'mtd' ? 'Pencapaian Bulan Ini' : dayLabel}
           </span>
           <button className="btn tiny" onClick={exportXlsx}>Ekspor Excel</button>
-          <button className="btn tiny" onClick={savePng}>Simpan PNG</button>
+          {/* "Tabel", because the toolbar above has a Simpan PNG of its own that
+              takes the counters and the charts. Two unlabelled ones would be a
+              coin toss. */}
+          <button className="btn tiny" onClick={savePng}>Simpan PNG · Tabel</button>
         </h3>
 
         {/* While the basket is showing, the finders are disabled rather than left
@@ -1121,17 +1121,6 @@ export default function DpSection({
             options={filterOpts.biz} off={bizOff} onChange={setBizOff}
             disabled={basketOn}
           />
-          {/* The category this checkbox measures against is named in the label
-              rather than sitting beside it as its own select. On its own that
-              select changed nothing you could see — it only parameterised this
-              checkbox — so it read as a filter that did not filter. */}
-          <label className="chk">
-            <input
-              type="checkbox" checked={onlyBelow} disabled={basketOn}
-              onChange={(e) => setOnlyBelow(e.target.checked)}
-            />
-            Hanya di bawah target{tableK ? ` · ${tableK.label}` : ''}
-          </label>
           <div className="seg">
             <button className={mode === 'day' ? 'on' : ''} onClick={() => setMode('day')}>
               {day.date ? fmtDate(day.date) : 'Harian'}

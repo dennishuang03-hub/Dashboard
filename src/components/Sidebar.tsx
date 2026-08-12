@@ -228,7 +228,7 @@ export default function Sidebar({
           {/* Tagline and wordmark are one unit and disappear together with the
               rail's width — in `mini` the header is a 66px column and there is
               nothing to put a line of prose on. */}
-          <span className="sbtag">Kenyamanan, Hingga sampai</span>
+          <span className="sbtag">Express Your Online Business</span>
 
           {/*
             The one control, at the top.
