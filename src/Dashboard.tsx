@@ -10,9 +10,28 @@ import { BarChart, LineChart, Sparkline } from './components/Charts'
 import type { AxisLabel } from './components/Charts'
 import DpSection from './components/DpSection'
 import JntLogo from './components/JntLogo'
+import Sidebar, { NavButton } from './components/Sidebar'
+import type { NavGroup } from './components/Sidebar'
 import Zh from './components/Zh'
 import type { Identity } from './lib/session'
 import './dashboard.css'
+
+/* ------------------------------------------------------------- navigation */
+
+/**
+ * The two reports this page holds, and the shape the rail is built from.
+ *
+ * A list rather than two buttons in the markup: the next report is an entry
+ * here and nothing else. The groups are already named for what is coming —
+ * "Performa Operasional" has room under it, and a second group can be added
+ * without touching `Sidebar`.
+ */
+const VIEW_AGEN = 'agen'
+const VIEW_DP = 'dp'
+type View = typeof VIEW_AGEN | typeof VIEW_DP
+
+/** Below this the rail goes off-canvas and the hamburger appears. */
+const DRAWER_BP = 900
 
 /* ------------------------------------------------------- protected workbook */
 
@@ -100,6 +119,44 @@ export default function Dashboard({
   // moment before the data it was asking for arrives anyway
   const [booting, setBooting] = useState(true)
   const [tick, force] = useState(0)      // Kpi objects are edited in place
+
+  /* ------------------------------------------------------------- the rail */
+
+  const [view, setView] = useState<View>(VIEW_AGEN)
+  /** desktop: icons only. Two separate states — see the note in Sidebar.tsx. */
+  const [mini, setMini] = useState(false)
+  const [drawerOpen, setDrawerOpen] = useState(false)
+
+  /**
+   * Widening past the breakpoint puts the rail back in the layout, and a drawer
+   * flag left set would then show it permanently open with a scrim over the page
+   * and no obvious way out — the scrim's click target is the thing covering the
+   * button you would reach for.
+   *
+   * Only the one direction is handled. Narrowing does not need to force the
+   * drawer shut: it starts shut, and `mini` is simply ignored below the
+   * breakpoint rather than meaning something different there.
+   */
+  useEffect(() => {
+    if (!drawerOpen) return
+    const mq = window.matchMedia(`(min-width:${DRAWER_BP + 1}px)`)
+    const sync = () => { if (mq.matches) setDrawerOpen(false) }
+    sync()
+    mq.addEventListener('change', sync)
+    return () => mq.removeEventListener('change', sync)
+  }, [drawerOpen])
+
+  const closeDrawer = useCallback(() => setDrawerOpen(false), [])
+
+  /** Choosing a destination on a phone also puts the drawer away. */
+  const pickView = useCallback((id: string) => {
+    setView(id as View)
+    setDrawerOpen(false)
+    /* Back to the top: the two reports are different documents, and arriving at
+       the second one scrolled halfway down because the first one was, is
+       disorienting in the way that reads as a broken link. */
+    window.scrollTo({ top: 0, behavior: 'auto' })
+  }, [])
 
   const fileRef = useRef<HTMLInputElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
@@ -324,9 +381,44 @@ export default function Dashboard({
   const dpSheets = model.sheets.filter((s) => s.ok && s.kind === 'dp')
   const badSheets = model.sheets.filter((s) => !s.ok)
 
-  return (
+  /*
+   * The rail's contents.
+   *
+   * The counts are in the hints rather than in a badge on the right: "10 agen"
+   * and "1.666 titik" say what the destination *is*, and a bare number in a pill
+   * beside a label says only that there is a number. The DP entry is offered
+   * whether or not today has drop-point data — hiding a destination on a day the
+   * file happens to be short is how you get someone convinced the feature was
+   * removed. It says so on arrival instead.
+   */
+  const nav: NavGroup[] = [
+    {
+      id: 'performa',
+      label: 'Performa Operasional',
+      items: [
+        {
+          id: VIEW_AGEN, label: 'Data Agen', zh: '代理区数据', icon: 'grid',
+          hint: `${model.rows.length} agen · ${kpis.length} indikator`,
+        },
+        {
+          id: VIEW_DP, label: 'Data per DP/CP', zh: '网点数据', icon: 'pin',
+          hint: model.dps.length
+            ? `${model.dps.length.toLocaleString('id-ID')} titik`
+            : 'belum ada data',
+        },
+      ],
+    },
+  ]
+
+  const onAgen = view === VIEW_AGEN
+
+  /* The report itself, bound to a name rather than returned inline — the shell
+     around it is three elements and putting them at the top would push 300 lines
+     of document one indent to the right for no reading benefit. */
+  const report = (
     <div className="wrap" ref={wrapRef}>
       <TopBar
+        onMenu={() => setDrawerOpen(true)}
         meta={
           <>
             {/* Who this is for, stated on the page rather than left to whoever
@@ -377,15 +469,10 @@ export default function Dashboard({
         </span>
         <button className="btn" onClick={savePng}>Simpan PNG</button>
         <button className="btn" onClick={() => window.print()}>Cetak / PDF</button>
-        {/* Sign-out sits at the end of the toolbar rather than in the top bar
-            because the top bar is inside the PNG export, and no one wants a
-            "LogOut" button baked into the picture they send to the region.
-            Red because it is the only control here that ends the session — the
-            others all just render something. `title` carries the account name
-            now that the chip beside it is gone. */}
-        <button className="btn danger" onClick={signOut} title={`Masuk sebagai ${who.user}`}>
-          LogOut
-        </button>
+        {/* Sign-out has moved to the foot of the rail. It was here because the
+            top bar is inside the PNG export and nobody wants a "LogOut" button
+            baked into the picture they send to the region — the rail is outside
+            that export too, and it is where the account it ends is named. */}
       </div>
 
       {err && <div className="err">{err}</div>}
@@ -397,9 +484,15 @@ export default function Dashboard({
         </div>
       )}
 
-      {/* Opens the first of the page's two reports. Its counterpart is the
-          `.dphead` band inside DpSection — the two are deliberately identical in
-          weight, because they mark the same level of the document. */}
+      {/*
+        Part A, and now only when the rail is pointing at it.
+
+        The band stays even though the rail already says which report is open.
+        They are not the same statement: the rail says where you are in the app,
+        the band says what this document is — and the band is the one that
+        survives into the PNG and the PDF, where there is no rail at all.
+      */}
+      {onAgen && (<>
       <div className="partband">
         <span className="partnum">A</span>
         <span className="parttext">
@@ -618,12 +711,30 @@ export default function Dashboard({
                         sub={current.sub} count={current.count} />
         </Panel>
       </div>
+      </>)}
 
-      {dpDay && (
+      {/* Part B. It carries its own band and its own export buttons — see
+          DpSection — so there is nothing to add around it here. */}
+      {!onAgen && dpDay && (
         <DpSection
           model={model} kpis={kpis} agentKey={agentKey}
           agentLabel={current.label} day={dpDay} wanted={dToday} onError={setErr}
         />
+      )}
+
+      {/* The destination exists in the rail whether or not the file has anything
+          behind it, so the empty case has to be answered here rather than by an
+          entry that quietly disappears. It names the tab the data should have
+          come from, because that is the thing to go and check. */}
+      {!onAgen && !dpDay && (
+        <div className="dropzone">
+          <h2>Belum ada data DP / CP <Zh>暂无网点数据</Zh></h2>
+          <p>
+            Laporan ini tidak memuat tab data drop point. Tambahkan sheet
+            {' '}<b>ALL DP DATA</b> (atau tab per agen <b>AG12</b>, <b>AG13</b> …) ke file di
+            folder <b>data/</b>, lalu muat ulang halaman ini.
+          </p>
+        </div>
       )}
 
       {/* Rewritten with the "Hapus data" button: the old wording pointed at a
@@ -634,6 +745,18 @@ export default function Dashboard({
         Laporan diambil dari server hanya untuk sesi yang sudah masuk, lalu diproses di memori
         browser — tidak ada yang ditulis ke disk. Menutup atau menyegarkan halaman menghapus semuanya.
       </div>
+    </div>
+  )
+
+  return (
+    <div className={`app${mini ? ' mini' : ''}${drawerOpen ? ' navopen' : ''}`}>
+      <Sidebar
+        groups={nav} active={view} onSelect={pickView}
+        mini={mini} onToggleMini={() => setMini(!mini)}
+        drawerOpen={drawerOpen} onCloseDrawer={closeDrawer}
+        onSignOut={signOut} user={who.user}
+      />
+      <div className="main">{report}</div>
     </div>
   )
 }
@@ -648,9 +771,18 @@ export default function Dashboard({
  * risk, and the viewBox is cropped tight to the letters so the red plate has no
  * dead margin around it.
  */
-function TopBar({ meta, right }: { meta: ReactNode; right?: ReactNode }) {
+function TopBar({ meta, right, onMenu }: {
+  meta: ReactNode
+  right?: ReactNode
+  /** opens the drawer; omitted on the states that render without a rail */
+  onMenu?: () => void
+}) {
   return (
     <div className="topbar">
+      {/* The hamburger leads, before the mark — it is the first thing a thumb
+          reaches for and the only route into the rail on a phone. Hidden above
+          the breakpoint, where the rail is simply there. */}
+      {onMenu && <NavButton onClick={onMenu} />}
       {/* `plain` by name, not by luck: src/assets holds two J&T files and the
           other one has a red field baked in. The plate is dropped to match (see
           `.logo.plain`) — red lettering on a red plate is invisible, so the

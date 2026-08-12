@@ -51,6 +51,192 @@ body{
 .wrap{max-width:1480px;margin:0 auto;padding:10px 14px 20px}
 ::selection{background:var(--jt-red);color:#fff}
 
+/* ---------- App shell ----------
+
+   A fixed rail on the left and the report beside it. The rail is `position:fixed`
+   rather than a flex column, and that is the load-bearing choice: the report is
+   a 1,666-row table people scroll for a long time, and a rail that scrolled away
+   with it would mean scrolling back to the top to change reports. Fixed also
+   makes the hover-expand an overlay for free — the width it grows into is not
+   space the layout ever accounted for, so nothing underneath moves.
+
+   `.main` carries a margin the width of the rail. Not padding, and not a flex
+   gap: `.wrap` inside it is `margin:0 auto` against a max-width, and it has to
+   centre inside the *remaining* space rather than inside the window. */
+:root{
+  --sb-w:252px;                      /* expanded */
+  --sb-mini:66px;                    /* icons only */
+}
+
+.app{min-height:100vh}
+.main{margin-left:var(--sb-w);min-width:0;transition:margin-left .18s ease}
+.app.mini .main{margin-left:var(--sb-mini)}
+
+.sidebar{
+  position:fixed;top:0;left:0;bottom:0;width:var(--sb-w);z-index:60;
+  display:flex;flex-direction:column;overflow:hidden;
+  background:linear-gradient(180deg,#181818 0%,#111111 100%);
+  border-right:1px solid var(--line);
+  transition:width .18s ease,transform .22s ease,box-shadow .18s ease;
+}
+.app.mini .sidebar{width:var(--sb-mini)}
+
+/* Hover-expand, and only where hovering is a thing.
+   On a touchscreen `:hover` sticks after a tap, so the rail would open on the
+   way past and stay open — the query keeps the behaviour on pointers that can
+   actually leave again. `:focus-within` is the keyboard's equivalent: tabbing
+   into a collapsed rail has to show the labels being tabbed through.
+
+   `:focus-within` only works because every button in the rail gives up focus
+   when it is clicked with a pointer. Without that, one click on the toggle left
+   the rail wide open over the report with nothing the mouse could do to close
+   it — see `dropPointerFocus` in Sidebar.tsx. The two halves are one mechanism;
+   changing either alone brings the bug straight back. */
+@media (hover:hover) and (min-width:901px){
+  .app.mini .sidebar:hover,
+  .app.mini .sidebar:focus-within{
+    width:var(--sb-w);
+    box-shadow:22px 0 48px rgba(0,0,0,.55);
+  }
+}
+
+/*
+  Everything that only makes sense at full width, hidden while the rail is
+  genuinely narrow — "collapsed *and* not currently peeking open".
+
+  `display:none` rather than a fade: these are text, and text clipped by a 66px
+  overflow still reflows and still gets read aloud by a screen reader. The icons
+  carry a `title` and the labels come back the moment the rail does.
+*/
+.app.mini .sidebar:not(:hover):not(:focus-within)
+  :is(.sblogo,.sbtag,.sbtext,.sbgh,.sbbrand,.sbtag-n){display:none}
+.app.mini .sidebar:not(:hover):not(:focus-within) .sbhead{justify-content:center;padding:14px 8px}
+.app.mini .sidebar:not(:hover):not(:focus-within) .sbitem{justify-content:center;padding:10px 8px}
+/* the group heading is the only thing separating two runs of icons, so when it
+   goes the break has to be drawn instead */
+.app.mini .sidebar:not(:hover):not(:focus-within) .sbgroup + .sbgroup{
+  border-top:1px solid var(--line);padding-top:12px;
+}
+
+.sbhead{
+  display:flex;align-items:center;flex-wrap:wrap;gap:3px 10px;
+  padding:14px 12px 12px 16px;min-height:66px;
+  border-bottom:1px solid var(--line);
+}
+/* Ordered rather than left to source order. The tagline is `flex:1 1 100%`, so
+   it forces a line break wherever it lands — written between the mark and the
+   button it would push the button onto the second row and leave the first half
+   empty. Explicit orders put the wordmark and the toggle on one line with the
+   tagline beneath, whatever order the markup happens to be in. */
+.sblogo{order:1;flex:1 1 auto;min-width:0}
+.sblogo img,.sblogo svg{display:block;height:26px;width:auto;max-width:100%}
+.sbtag{
+  order:3;flex:1 1 100%;
+  font-size:11.5px;font-weight:600;color:var(--ink-3);white-space:nowrap;
+}
+/* Small, square, and at the top — the rail's only chrome, kept clearly apart
+   from the column of destinations underneath it. */
+.sbtoggle{
+  flex:none;order:2;width:30px;height:30px;padding:0;
+  display:grid;place-items:center;
+  border:1px solid var(--line);border-radius:8px;background:var(--card-2);
+  color:var(--ink-2);cursor:pointer;transition:background .14s,color .14s,border-color .14s;
+}
+.sbtoggle:hover{background:var(--jt-red);border-color:var(--jt-red);color:#fff}
+.sbtoggle:focus-visible{outline:2px solid var(--jt-red-lit);outline-offset:2px}
+.sbtoggle .navico{width:16px;height:16px}
+.sbt-drawer{display:none}
+.sbt-rail{display:grid;place-items:center}
+
+.sbnav{
+  flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;
+  display:flex;flex-direction:column;padding:12px 10px 6px;
+}
+.sbgroup{display:flex;flex-direction:column;gap:3px}
+.sbgroup + .sbgroup{margin-top:16px}
+.sbgh{
+  padding:4px 11px 6px;font-size:10.5px;font-weight:800;letter-spacing:.9px;
+  text-transform:uppercase;color:var(--ink-3);white-space:nowrap;
+}
+.sbitem{
+  display:flex;align-items:center;gap:12px;width:100%;
+  padding:9px 11px;border:0;border-radius:10px;background:transparent;
+  color:var(--ink-2);font-family:inherit;font-size:14px;font-weight:700;
+  text-align:left;cursor:pointer;white-space:nowrap;
+  transition:background .13s,color .13s;
+}
+.sbitem:hover{background:var(--card-3);color:var(--ink)}
+.sbitem:focus-visible{outline:2px solid var(--jt-red-lit);outline-offset:-2px}
+/* The active destination is a filled red plate, not a tinted row with a stripe.
+   The rail collapses to 66px of icons, and at that width a 3px accent bar is the
+   only thing distinguishing the page you are on — a full plate survives. */
+.sbitem.on{
+  background:linear-gradient(95deg,var(--jt-red) 0%,#9A130C 100%);
+  color:#fff;box-shadow:0 5px 16px rgba(226,35,26,.28);
+}
+.sbitem.on:hover{color:#fff}
+.navico{flex:none;width:21px;height:21px}
+.sbtext{display:flex;flex-direction:column;min-width:0;gap:1px}
+.sbl{overflow:hidden;text-overflow:ellipsis}
+.sbl .zh{font-size:.85em;margin-left:.45em}
+.sbh{
+  font-size:11px;font-weight:600;color:var(--ink-3);
+  overflow:hidden;text-overflow:ellipsis;
+}
+.sbitem.on .sbh{color:rgba(255,255,255,.82)}
+.sbtag-n{
+  flex:none;margin-left:auto;padding:1px 7px;border-radius:99px;
+  background:var(--card-3);color:var(--ink-2);
+  font-size:11px;font-weight:800;font-variant-numeric:tabular-nums;
+}
+/* Room held open below the last group, for the reports that are not built yet.
+   `.sbnav` is already `flex:1`, so the footer is pinned without this — what it
+   buys is that the nav's own scroll region is the full height, so a new group
+   lands in obvious empty space rather than crowding the divider above LogOut. */
+.sbfill{flex:1 1 auto;min-height:18px}
+
+.sbfoot{border-top:1px solid var(--line);padding:8px 10px 12px}
+.sbitem.danger{color:var(--jt-red-lit)}
+.sbitem.danger:hover{background:#2A1210;color:#FF6A60}
+.sbbrand{padding:12px 12px 2px;white-space:nowrap;border-top:1px solid var(--line);margin-top:8px}
+.sbbrand-n{display:block;font-size:11.5px;font-weight:800;color:var(--ink-2);letter-spacing:.6px}
+.sbbrand-s{display:block;font-size:10.5px;font-weight:600;color:var(--ink-3);margin-top:1px}
+
+/* off-canvas only; on a wide screen there is nothing to dim */
+.sbscrim{display:none}
+.navbtn{display:none}
+
+/* ---------- the rail as a drawer ----------
+   Below this width there is no room for a permanent rail, so it goes over the
+   page instead of beside it and `mini` stops meaning anything — a 66px strip of
+   icons on a 390px screen is the worst of both. */
+@media (max-width:900px){
+  .main,.app.mini .main{margin-left:0}
+  .sidebar,.app.mini .sidebar{
+    width:min(310px,86vw);transform:translateX(-102%);box-shadow:none;
+  }
+  .app.navopen .sidebar{transform:none;box-shadow:24px 0 60px rgba(0,0,0,.62)}
+  .sbscrim{
+    display:block;position:fixed;inset:0;z-index:55;background:rgba(0,0,0,.62);
+    opacity:0;pointer-events:none;transition:opacity .2s ease;
+  }
+  .sbscrim.on{opacity:1;pointer-events:auto}
+  /* the same button, now closing the drawer rather than narrowing the rail */
+  .sbt-drawer{display:grid;place-items:center}
+  .sbt-rail{display:none}
+  .sbtoggle{width:34px;height:34px;border-color:var(--jt-red);color:var(--jt-red-lit)}
+  .sbtoggle .navico{width:18px;height:18px}
+
+  .navbtn{
+    display:grid;place-items:center;flex:none;
+    width:38px;height:38px;margin:8px 0 8px 10px;padding:0;
+    border:1px solid rgba(255,255,255,.3);border-radius:9px;
+    background:rgba(255,255,255,.1);color:#fff;cursor:pointer;
+  }
+  .navbtn:hover{background:rgba(255,255,255,.2)}
+  .navbtn .navico{width:20px;height:20px}
+}
+
 /* ---------- Mandarin gloss on headings ----------
    Lighter and slightly smaller than the Indonesian it sits beside, so a heading
    still reads as one heading rather than two competing ones. Inside anything
@@ -239,6 +425,9 @@ tbody td .zh{opacity:.9}
 .kcard.st-bad{background:#2A1715}
 @media (prefers-reduced-motion:reduce){
   .kcard,.tipbox{transition:none;animation:none}
+  /* The rail slides and the page beside it shifts — the largest movement on the
+     screen, and the one most worth switching off when asked to. */
+  .sidebar,.main,.sbscrim,.ms-caret{transition:none}
 }
 .kcard .dot{position:absolute;top:12px;right:12px;width:10px;height:10px;border-radius:50%}
 /* min-height keeps every card's value row on the same baseline; it allows for
@@ -928,6 +1117,14 @@ table.dpgrid tbody tr.picked td.hm.bad{background:#4A1512}
 body.shooting{background:var(--bg) !important}
 body.shooting .wrap{width:1480px;max-width:none;padding:14px 16px}
 
+/* The rail is chrome, and it is chrome the recipient of the picture cannot
+   click — it never appears in an export. The margin it was holding open goes
+   with it, or every capture would carry 252px of empty gutter down the left. */
+body.shooting .sidebar,
+body.shooting .sbscrim,
+body.shooting .navbtn{display:none !important}
+body.shooting .main,body.shooting .app.mini .main{margin-left:0 !important}
+
 body.shooting .toolbar,
 body.shooting .tipbox,
 body.shooting .dpfilters,
@@ -1323,7 +1520,11 @@ body.shoot-table .dptable{margin-top:0}
 @media (max-width:640px){
   .wrap{padding:8px 10px 16px}
 
-  .topbar{flex-direction:column;align-items:stretch;gap:0}
+  /* The bar stacks here, and a flex child in a stretched column becomes a
+     full-width 38px-tall slab — so the hamburger comes out of the flow and sits
+     over the top-left corner of the logo band instead. */
+  .topbar{flex-direction:column;align-items:stretch;gap:0;position:relative}
+  .navbtn{position:absolute;top:9px;left:9px;margin:0;z-index:3}
   .logo{padding:10px 0}
   .logo .jtlogo{width:118px}
   /* stacked, so the plate is a full-width band like the login screen's */
@@ -1545,7 +1746,9 @@ body.shoot-table .dptable{margin-top:0}
   /* only the interactive chrome is dropped — every data panel is kept, so the
      PDF carries the same information as the on-screen dashboard */
   .toolbar,.dropzone,.legend button.off,.filechip,.tipbox,
+  .sidebar,.sbscrim,.navbtn,
   .dpfilters,.dpcolbar,.dpmore{display:none !important}
+  .main,.app.mini .main{margin-left:0 !important}
   .dpscroll{overflow:visible !important;max-height:none !important}
   .chartscroll{overflow:visible !important}
   table.dpgrid thead th,table.dpgrid th.sticky,table.dpgrid td.sticky{position:static !important}
