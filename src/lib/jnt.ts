@@ -32,6 +32,7 @@
  * its Kode Agent column or by the tab it sits on.
  */
 import * as XLSX from 'xlsx'
+import { setCapturing } from './capture'
 
 /* ------------------------------------------------------------------ types */
 
@@ -2158,7 +2159,11 @@ export async function exportPng(
       tag.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
       tag.onload = () => resolve()
       tag.onerror = () => reject(new Error(
-        'Pustaka gambar gagal dimuat — sepertinya Anda sedang offline. Gunakan Cetak / PDF sebagai gantinya.'))
+        /* The Cetak / PDF button these three messages used to point at is gone.
+           The print stylesheet behind it is not, so the fallback still exists —
+           it is just reached with Ctrl+P now, and has to say so. */
+        'Pustaka gambar gagal dimuat — sepertinya Anda sedang offline. '
+        + 'Cetak halaman ini lewat browser (Ctrl+P) sebagai gantinya.'))
       document.head.appendChild(tag)
     })
   }
@@ -2166,6 +2171,10 @@ export async function exportPng(
   const prevX = window.scrollX
   const prevY = window.scrollY
 
+  /* Told, not inferred. The charts re-render out of their phone shape on this
+     line rather than waiting for a ResizeObserver to notice the page got wider
+     — see lib/capture.ts. */
+  setCapturing(true)
   document.body.classList.add('shooting')
   if (bodyClass) document.body.classList.add(bodyClass)
   window.scrollTo(0, 0)
@@ -2221,7 +2230,7 @@ export async function exportPng(
     if (scale == null) {
       throw new Error(
         'Tabel ini terlalu panjang untuk satu gambar. Persempit dengan filter di atas, ' +
-        'atau gunakan Cetak / PDF yang membaginya ke beberapa halaman.',
+        'atau cetak lewat browser (Ctrl+P) yang membaginya ke beberapa halaman.',
       )
     }
 
@@ -2239,7 +2248,9 @@ export async function exportPng(
     })
 
     if (!canvas.width || !canvas.height) {
-      throw new Error('Hasil tangkapan layar kosong. Gunakan Cetak / PDF sebagai gantinya.')
+      throw new Error(
+        'Hasil tangkapan layar kosong. Cetak lewat browser (Ctrl+P) sebagai gantinya.',
+      )
     }
 
     const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
@@ -2255,6 +2266,7 @@ export async function exportPng(
   } finally {
     document.body.classList.remove('shooting')
     if (bodyClass) document.body.classList.remove(bodyClass)
+    setCapturing(false)
     window.scrollTo(prevX, prevY)
   }
 }

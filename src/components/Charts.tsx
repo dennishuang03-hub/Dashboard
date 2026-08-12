@@ -1,6 +1,7 @@
 /** Dependency-free SVG charts (no chart library needed). */
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useLayoutEffect, useRef, useState, useSyncExternalStore } from 'react'
 import type { ReactNode, RefObject } from 'react'
+import { isCapturing, notCapturing, subscribeCapture } from '../lib/capture'
 
 export interface AxisLabel { top: string; sub?: string }
 export interface Series { name: string; color: string; values: (number | null)[] }
@@ -42,6 +43,23 @@ function useBoxWidth<T extends HTMLElement>(): [RefObject<T | null>, number] {
 }
 
 /**
+ * Is this box narrow enough to need the upright shape?
+ *
+ * The measured width answers that on screen. During a PNG export it does not:
+ * the page has just been pinned to a desktop width and the box is about to grow,
+ * but this render is happening before the observer has said so. `isCapturing`
+ * is the instruction that outranks the measurement — see lib/capture.ts.
+ *
+ * `useSyncExternalStore` gives every chart a synchronous re-render the moment
+ * capture starts, so the reshaping is finished before the exporter measures
+ * anything rather than racing it.
+ */
+function useNarrow(boxW: number): boolean {
+  const capturing = useSyncExternalStore(subscribeCapture, isCapturing, notCapturing)
+  return !capturing && boxW > 0 && boxW < NARROW_AT
+}
+
+/**
  * Measures, then hands its width to the chart inside.
  *
  * The charts scale by viewBox, so `w`/`h` are a *ratio* rather than a pixel
@@ -55,7 +73,8 @@ function Responsive({ children }: { children: (narrow: boolean) => ReactNode }) 
   const [ref, width] = useBoxWidth<HTMLDivElement>()
   /* width 0 is "not measured yet" — assume wide, which is right on the desktop
      path and corrected before paint on the narrow one */
-  return <div className="chartbox" ref={ref}>{children(width > 0 && width < NARROW_AT)}</div>
+  const narrow = useNarrow(width)
+  return <div className="chartbox" ref={ref}>{children(narrow)}</div>
 }
 
 /* ------------------------------------------------------------ line chart */
@@ -247,7 +266,7 @@ interface BarProps {
  */
 export function BarChart(props: BarProps) {
   const [ref, boxW] = useBoxWidth<HTMLDivElement>()
-  const narrow = boxW > 0 && boxW < NARROW_AT
+  const narrow = useNarrow(boxW)
   const base = props.w ?? 560
 
   if (narrow && props.narrowMode === 'scroll') {

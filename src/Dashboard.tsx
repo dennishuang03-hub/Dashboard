@@ -504,7 +504,10 @@ export default function Dashboard({
           <button className="btn" onClick={savePng}>
             {view === VIEW_DP ? 'Simpan PNG · Ringkasan' : 'Simpan PNG'}
           </button>
-          <button className="btn" onClick={() => window.print()}>Cetak / PDF</button>
+          {/* "Cetak / PDF" used to sit here. The print stylesheet it drove is
+              still in dashboard.css and still correct — the browser's own
+              Ctrl+P uses it — so this only takes away the button, not the
+              ability. */}
         </div>
         {/* Sign-out has moved to the foot of the rail. It was here because the
             top bar is inside the PNG export and nobody wants a "LogOut" button

@@ -22,7 +22,6 @@
  * excused. The file says which it is; nothing here second-guesses it.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import * as XLSX from 'xlsx'
 import {
   BIZ_MODEL_LABEL, BIZ_MODEL_TAG, CANONICAL_ORDER, CATEGORY_ZH, DP_KIND_LABEL, DP_KIND_ZH,
   DP_STATUS_HINT, DP_STATUS_LABEL, DP_STATUS_RANGE, DP_STATUS_ZH, SCORE_TOTAL, SPRINTER_LABELS,
@@ -807,108 +806,19 @@ export default function DpSection({
     }
   }
 
-  /**
-   * Export the "Daftar DP / CP" table as a real .xlsx — one sheet, the same
-   * columns as the table on screen, and only the rows the filters are showing.
+  /*
+   * `exportXlsx` lived here — a real .xlsx of the table, one sheet, the same
+   * columns the switch had left showing, with percent formats, column widths and
+   * an autofilter.
    *
-   * "The same columns" includes the ones the column switch has hidden: the
-   * export is a copy of what is being looked at, and a sheet that quietly hands
-   * back the eight columns someone just narrowed to three is not that. Jenis and
-   * Model Bisnis are the exception — on screen they are the tag in front of the
-   * name rather than columns of their own, so they are always written out.
+   * Taken out with its button rather than left in place unused: `noUnusedLocals`
+   * is on, so a dead function is a build error, and the SheetJS import it needed
+   * is the largest dependency on this page. Removing both is what actually makes
+   * the bundle smaller — the button on its own would have changed nothing.
    *
-   * A workbook rather than a CSV because this is opened in an Indonesian Excel,
-   * where the list separator is `;` and `90,00` is a number: a comma-delimited
-   * file has no separator Excel recognises and every row lands whole in column
-   * A. A workbook carries its own typing, so nothing depends on the reader's
-   * regional settings and the Mandarin survives without a BOM.
-   *
-   * No header colour: the community build of SheetJS hardcodes one font and two
-   * fills when it writes styles.xml, so fills and bold are simply not reachable
-   * from here. Column widths and autofilter are, and they are what actually make
-   * the sheet workable — the red header would only have been decoration.
+   * The workbook is still parsed with the same library on the way in, so putting
+   * this back is a matter of restoring the function, not of adding a dependency.
    */
-  const exportXlsx = () => {
-    const zh = (k: Kpi) => (CATEGORY_ZH[k.label] ? ` ${CATEGORY_ZH[k.label]}` : '')
-
-    // the agent column only exists on screen in the all-agents view
-    const head = [
-      'DP / CP 网点',
-      ...(showAgent ? ['Agen 代理区'] : []),
-      ...(showSpv ? ['Supervisor 主管'] : []),
-      'Jenis 类型',
-      'Model Bisnis 商业模式',
-      ...(showService ? ['Jenis Layanan 服务类型'] : []),
-      ...visKpis.map((k) => `${k.label}${zh(k)}`),
-      ...(showOnTarget ? [`Sesuai target (dari ${SCORE_TOTAL}) 达标数`] : []),
-      ...(showStatus ? ['Status 状态'] : []),
-    ]
-
-    const body = filtered.map((s) => [
-      s.dp.label,
-      ...(showAgent ? [agentFull(s.dp.agentLabel)] : []),
-      ...(showSpv ? [s.dp.supervisor] : []),
-      s.dp.isCp ? 'CP' : 'DP',
-      BIZ_MODEL_LABEL[s.dp.bizModel],
-      /* `DP_KIND_ZH['']` is deliberately empty, so an unstated service exports as
-         a bare "—" rather than as a dash trailing a stray space. */
-      ...(showService
-        ? [`${DP_KIND_LABEL[s.kind]}${DP_KIND_ZH[s.kind] ? ` ${DP_KIND_ZH[s.kind]}` : ''}`]
-        : []),
-      ...visKpis.map((k) => cell(s, k)),
-      /* only sites that run a delivery shift are scored — see `isRankable` */
-      ...(showOnTarget ? [isRankable(s.kind) ? `${s.onTarget}/${s.scored}` : ''] : []),
-      /* The band, not the range. A sheet is sorted and filtered on, and
-         "Urgent" is worth more as a value you can group by than as prose. */
-      ...(showStatus ? [s.status ? DP_STATUS_LABEL[s.status] : ''] : []),
-    ])
-
-    const ws = XLSX.utils.aoa_to_sheet([head, ...body])
-
-    /* `0.00"%"` keeps the underlying value at 98.25 while showing "98.25%".
-       A real percent format would multiply by 100 and print 9825%.
-       Counted off the head rather than hardcoded: which columns precede the
-       KPIs now depends on the column switch as well as on the agent scope. */
-    const firstKpi = 1 + (showAgent ? 1 : 0) + (showSpv ? 1 : 0) + 2 + (showService ? 1 : 0)
-    for (let R = 1; R <= body.length; R++) {
-      for (let C = firstKpi; C < firstKpi + visKpis.length; C++) {
-        const c = ws[XLSX.utils.encode_cell({ r: R, c: C })]
-        if (c && c.t === 'n') c.z = '0.00"%"'
-      }
-    }
-
-    ws['!cols'] = [
-      { wch: 28 },
-      ...(showAgent ? [{ wch: 20 }] : []),
-      ...(showSpv ? [{ wch: 22 }] : []),
-      { wch: 7 },
-      { wch: 14 },
-      ...(showService ? [{ wch: 24 }] : []),
-      ...visKpis.map(() => ({ wch: 15 })),
-      ...(showOnTarget ? [{ wch: 18 }] : []),
-      ...(showStatus ? [{ wch: 12 }] : []),
-    ]
-    ws['!autofilter'] = {
-      ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: body.length, c: head.length - 1 } }),
-    }
-
-    const wb = XLSX.utils.book_new()
-    // sheet names cannot contain / \ ? * [ ] :
-    XLSX.utils.book_append_sheet(wb, ws, 'Daftar DP-CP')
-
-    const out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }) as ArrayBuffer
-    const blob = new Blob([out], {
-      type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    })
-    const url = URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = `${fileStem()}.xlsx`
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 2000)
-  }
 
   /* --------------------------------------------------------------- render */
 
@@ -1074,7 +984,6 @@ export default function DpSection({
               : <>Daftar DP / CP <Zh>网点清单</Zh> — {filtered.length} dari {counts.total}</>}
             {' · '}{mode === 'mtd' ? 'Pencapaian Bulan Ini' : dayLabel}
           </span>
-          <button className="btn tiny" onClick={exportXlsx}>Ekspor Excel</button>
           {/* "Tabel", because the toolbar above has a Simpan PNG of its own that
               takes the counters and the charts. Two unlabelled ones would be a
               coin toss. */}

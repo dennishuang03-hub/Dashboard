@@ -1308,6 +1308,45 @@ table.dpgrid tbody tr.picked td.hm.bad{background:#4A1512}
 body.shooting{background:var(--bg) !important}
 body.shooting .wrap{width:1480px;max-width:none;padding:14px 16px}
 
+/* ---------- pinning the layout, not just the width ----------
+
+   Setting `.wrap` to 1480px is only half the job, and the half that was missing
+   is why a phone export came out with a chart hanging off the side of its panel.
+
+   The responsive rules are keyed to `@media (max-width:640px)` — the *real*
+   viewport — so widening a container tells them nothing: on a phone the page is
+   1480px wide and still laid out for 390px. Two-column rows are still single
+   column, panel bodies are still horizontal scrollers, tables still carry a
+   480px floor, and the DP grid still hides its agent column in favour of the
+   phone-only line inside the pinned cell.
+
+   Worse, those media queries are declared *after* this block, so at equal
+   specificity they win on source order. Hence `!important` throughout — not
+   emphasis, just the only way to outrank a later rule of the same weight.
+
+   html2canvas cannot rescue this either. Its `windowWidth` option is documented
+   as re-evaluating media queries in the clone, but what it actually copies is
+   the computed style of each live element, so whatever matched on the real
+   viewport is already baked in by the time the clone exists. The layout has to
+   be correct in the live document, which is what these do. */
+body.shooting .row-mid{grid-template-columns:.9fr 1fr !important}
+body.shooting .row-bot{grid-template-columns:1.3fr 1fr !important}
+body.shooting .row-dp{grid-template-columns:1fr 1fr !important}
+body.shooting .dpstats{grid-template-columns:repeat(auto-fit,minmax(150px,1fr)) !important}
+/* A panel body that scrolls sideways photographs as its visible slice, and at a
+   pinned width there is nothing to scroll to anyway. */
+/* Overflow only. The padding is left alone on purpose — the DP table's body
+   carries `padding:0` as an inline style, and an `!important` here would
+   outrank it and put a gutter around a grid drawn to sit flush. */
+body.shooting .panel .body{overflow:visible !important}
+body.shooting .panel .body table{min-width:0 !important}
+body.shooting .topbar{flex-direction:row !important;align-items:stretch !important}
+body.shooting .titleblock{text-align:center !important}
+/* the DP grid's phone arrangement: columns folded into the pinned name cell */
+body.shooting table.dpgrid .agentcol,
+body.shooting table.dpgrid .spvcol{display:table-cell !important}
+body.shooting .dpagent{display:none !important}
+
 /* The rail is chrome, and it is chrome the recipient of the picture cannot
    click — it never appears in an export. The margin it was holding open goes
    with it, or every capture would carry 252px of empty gutter down the left. */
