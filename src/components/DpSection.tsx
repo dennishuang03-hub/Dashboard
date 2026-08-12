@@ -351,6 +351,10 @@ export default function DpSection({
     urgent: scored.filter((s) => s.status === 'urgent').length,
     perhatian: scored.filter((s) => s.status === 'perhatian').length,
     stable: scored.filter((s) => s.status === 'stable').length,
+    /* Pickup and Tutup sites, and anything with no readings at all — scored
+       against nothing, so they carry no band. Filterable in its own right: "show
+       me only the ones this scorecard cannot judge" is a real question. */
+    none: scored.filter((s) => !s.status).length,
   }), [scored])
 
   /**
@@ -385,6 +389,26 @@ export default function DpSection({
           ? [{ value: '', label: 'Tanpa jenis layanan', zh: '未填', n: counts.unknown }]
           : []),
       ],
+      /* Ordered worst-first, matching the key band under the filters and the
+         column's own sort. Three lists of the same three bands in three
+         different orders is how a reader stops trusting any of them. */
+      status: [
+        {
+          value: 'urgent', label: DP_STATUS_LABEL.urgent, zh: DP_STATUS_ZH.urgent,
+          n: statusCounts.urgent,
+        },
+        {
+          value: 'perhatian', label: DP_STATUS_LABEL.perhatian, zh: DP_STATUS_ZH.perhatian,
+          n: statusCounts.perhatian,
+        },
+        {
+          value: 'stable', label: DP_STATUS_LABEL.stable, zh: DP_STATUS_ZH.stable,
+          n: statusCounts.stable,
+        },
+        ...(statusCounts.none > 0
+          ? [{ value: '', label: 'Tidak dinilai', zh: '未评分', n: statusCounts.none }]
+          : []),
+      ],
       type: [
         { value: 'dp', label: 'Drop point', zh: '网点', n: n((s) => !s.dp.isCp) },
         { value: 'cp', label: 'Collection point', zh: '揽收点', n: n((s) => s.dp.isCp) },
@@ -397,7 +421,7 @@ export default function DpSection({
           : []),
       ],
     }
-  }, [scored, counts])
+  }, [scored, counts, statusCounts])
 
   /**
    * The five best or worst sites for one category.
@@ -527,6 +551,7 @@ export default function DpSection({
    * `MultiSelect`. See that file for why the set is stored inside out.
    */
   const [svcOff, setSvcOff] = useState<ReadonlySet<string>>(() => new Set<string>())
+  const [stOff, setStOff] = useState<ReadonlySet<string>>(() => new Set<string>())
   const [typeOff, setTypeOff] = useState<ReadonlySet<string>>(() => new Set<string>())
   const [bizOff, setBizOff] = useState<ReadonlySet<string>>(() => new Set<string>())
   const [onlyBelow, setOnlyBelow] = useState(false)
@@ -667,6 +692,7 @@ export default function DpSection({
          which is the right default for a workbook that grows a category the
          dashboard has not been told about yet. */
       if (svcOff.has(s.kind)) return false
+      if (stOff.has(s.status)) return false
       if (typeOff.has(s.dp.isCp ? 'cp' : 'dp')) return false
       if (bizOff.has(s.dp.bizModel)) return false
       /* The supervisor is searchable even though it has no dropdown of its own:
@@ -721,8 +747,8 @@ export default function DpSection({
       return dir * (av - bv)
     })
     return out
-  }, [scored, q, svcOff, typeOff, bizOff, onlyBelow, tableK, liveSort, liveDir, mode, catKpis,
-      basketOn, picked])
+  }, [scored, q, svcOff, stOff, typeOff, bizOff, onlyBelow, tableK, liveSort, liveDir, mode,
+      catKpis, basketOn, picked])
 
   /* A deliberate selection is never truncated: forty is a guard against dumping
      1,666 rows nobody asked for, and ticking sites one at a time is the opposite
@@ -1048,6 +1074,17 @@ export default function DpSection({
           <MultiSelect
             name="Jenis layanan" zh="服务类型" allLabel="Semua jenis layanan"
             options={filterOpts.service} off={svcOff} onChange={setSvcOff}
+            disabled={basketOn}
+          />
+          {/* Second in the row, next to Jenis layanan: both answer "which rows",
+              where the two after them answer "which kind of site". It is offered
+              whether or not the Status *column* is showing — the column switch
+              chooses how wide the table is, this chooses what is in it, and
+              wanting the 273 Urgent sites without the column taking up room is a
+              perfectly ordinary thing to want. */}
+          <MultiSelect
+            name="Status" zh="状态" allLabel="Semua status"
+            options={filterOpts.status} off={stOff} onChange={setStOff}
             disabled={basketOn}
           />
           <MultiSelect

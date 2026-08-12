@@ -131,7 +131,10 @@ body{
    gap: `.wrap` inside it is `margin:0 auto` against a max-width, and it has to
    centre inside the *remaining* space rather than inside the window. */
 :root{
-  --sb-w:252px;                      /* expanded */
+  /* 300, not 252. The width is set by the wordmark: at 60px tall the mark is
+     about 275px wide, and a rail narrower than that would clamp it by
+     `max-width` and quietly hand back a shorter logo than was asked for. */
+  --sb-w:300px;                      /* expanded */
   --sb-mini:66px;                    /* icons only */
 }
 
@@ -177,7 +180,11 @@ body{
 */
 .app.mini .sidebar:not(:hover):not(:focus-within)
   :is(.sblogo,.sbtag,.sbtext,.sbgh,.sbbrand,.sbtag-n){display:none}
-.app.mini .sidebar:not(:hover):not(:focus-within) .sbhead{justify-content:center;padding:14px 8px}
+/* Nothing in the header is in the flow once the mark and the tagline are gone —
+   the toggle is absolute — so the 104px reserved for a 60px wordmark collapses
+   to just enough to hold the button, centred in the 66px column. */
+.app.mini .sidebar:not(:hover):not(:focus-within) .sbhead{padding:12px 8px;min-height:58px}
+.app.mini .sidebar:not(:hover):not(:focus-within) .sbtoggle{left:50%;right:auto;transform:translateX(-50%)}
 .app.mini .sidebar:not(:hover):not(:focus-within) .sbitem{justify-content:center;padding:10px 8px}
 /* the group heading is the only thing separating two runs of icons, so when it
    goes the break has to be drawn instead */
@@ -185,22 +192,24 @@ body{
   border-top:1px solid var(--line);padding-top:12px;
 }
 
+/* The toggle comes out of the flow at 60px.
+   Sharing a row with the mark meant reserving ~40px of the rail's width for a
+   30px button, and that reservation is taken straight off the logo — which is
+   the one thing here with a size someone actually specified. Absolute keeps the
+   button pinned to the corner and gives the mark the full width. */
 .sbhead{
-  display:flex;align-items:center;flex-wrap:wrap;gap:4px 10px;
-  padding:15px 12px 13px 16px;min-height:74px;
+  position:relative;
+  display:flex;align-items:center;flex-wrap:wrap;gap:5px 10px;
+  padding:14px 14px 13px 16px;min-height:104px;
   border-bottom:1px solid var(--line);
 }
-/* Ordered rather than left to source order. The tagline is `flex:1 1 100%`, so
-   it forces a line break wherever it lands — written between the mark and the
-   button it would push the button onto the second row and leave the first half
-   empty. Explicit orders put the wordmark and the toggle on one line with the
-   tagline beneath, whatever order the markup happens to be in. */
-.sblogo{order:1;flex:1 1 auto;min-width:0}
-/* 34px, up from 26. The mark is the only brand on this side of the page once the
-   top bar scrolls away, and at 26 it read as a favicon next to type the same
-   size. Capped by max-width so it still shrinks rather than pushing the toggle
-   off the row on a narrow drawer. */
-.sblogo img,.sblogo svg{display:block;height:34px;width:auto;max-width:100%}
+/* Mark on its own row, tagline under it — the toggle is positioned out of the
+   flow above, so neither of these has to leave room for it. */
+.sblogo{order:1;flex:1 1 100%;min-width:0}
+/* 60px. `max-width` stays as the safety net for the drawer, which is narrower
+   than the rail on a small phone — there the mark shrinks rather than being
+   clipped by the rail's `overflow:hidden`. */
+.sblogo img,.sblogo svg{display:block;height:60px;width:auto;max-width:100%}
 .sbtag{
   order:3;flex:1 1 100%;
   font-size:11.5px;font-weight:600;color:var(--ink-3);white-space:nowrap;
@@ -208,7 +217,8 @@ body{
 /* Small, square, and at the top — the rail's only chrome, kept clearly apart
    from the column of destinations underneath it. */
 .sbtoggle{
-  flex:none;order:2;width:30px;height:30px;padding:0;
+  position:absolute;top:12px;right:12px;z-index:2;
+  width:30px;height:30px;padding:0;
   display:grid;place-items:center;
   border:1px solid var(--line);border-radius:8px;background:var(--card-2);
   color:var(--ink-2);cursor:pointer;transition:background .14s,color .14s,border-color .14s;
@@ -864,9 +874,10 @@ body.shooting .chartscroll{overflow:visible !important}
    re-measuring on every resize and scroll for a control that is open for two
    seconds at a time.
    `nth-of-type` counts `div` siblings, not `.ms` ones — `.dpfilters` holds an
-   `input`, three `div.ms`, a `label` and a `div.seg`, so the divs are the three
+   `input`, the `div.ms` chips, a `label` and a `div.seg`, so the divs are the
    chips followed by the segment, and `n+3` is "the third chip onwards". Written
-   open-ended rather than as `:nth-of-type(3)` so a fourth filter inherits it. */
+   open-ended rather than as `:nth-of-type(3)` so the Status filter added later
+   inherited it without anyone having to notice. */
 .dpfilters .ms:nth-of-type(n+3) .ms-pop{left:auto;right:0}
 .ms-head{
   display:flex;align-items:center;gap:8px;
