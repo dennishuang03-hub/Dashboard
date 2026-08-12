@@ -517,6 +517,101 @@ body.shooting .chartscroll{overflow:visible !important}
 }
 .dpfilters .seg button.on{background:var(--jt-red);color:#fff;font-weight:800}
 
+/* ---------- the multi-select filters ----------
+
+   Three of these replaced three `<select>`s, and the visual job is to look like
+   they still belong in the same bar: same height, same 8px radius, same 1.5px
+   line, so the row does not suddenly read as three buttons and a text field.
+   Everything below that baseline is about the two things a `<select>` could not
+   show — that a filter is *on*, and how much of it is on. */
+.ms{position:relative;display:inline-flex}
+.ms-btn{
+  display:inline-flex;align-items:center;gap:7px;
+  border:1.5px solid var(--line);border-radius:8px;padding:6px 10px;
+  font-family:inherit;font-size:13.5px;font-weight:600;
+  background:var(--card);color:var(--ink);cursor:pointer;
+  max-width:230px;
+}
+.ms-btn:hover{background:var(--card-3);border-color:#4A4A4A}
+/* Focus is drawn, not left to the UA. The default ring is a 1px system blue that
+   disappears against #1F1F1F, and this control is operable from the keyboard. */
+.ms-btn:focus-visible{outline:2px solid var(--jt-red-lit);outline-offset:1px}
+.ms-txt{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* An active filter is the state most worth seeing from across the bar, and a
+   tinted border alone was not enough at a glance on this background — the red
+   plate behind the count is what actually catches the eye. */
+.ms-btn.filtered{border-color:var(--jt-red);color:#fff}
+.ms-n{
+  flex:none;min-width:18px;padding:1px 5px;border-radius:99px;
+  background:var(--jt-red);color:#fff;
+  font-size:11.5px;font-weight:800;text-align:center;font-variant-numeric:tabular-nums;
+}
+/* nothing ticked: the count would read "0" in a colour that means "working" */
+.ms-btn.empty{border-color:var(--amber)}
+.ms-btn.empty .ms-n{background:var(--amber);color:#241A05}
+.ms-caret{
+  flex:none;width:10px;height:6px;color:var(--ink-3);
+  transition:transform .14s ease;
+}
+.ms.open .ms-caret{transform:rotate(180deg)}
+.ms.open .ms-btn{border-color:var(--jt-red);background:var(--card-3)}
+
+.ms-pop{
+  position:absolute;top:calc(100% + 6px);left:0;z-index:40;
+  min-width:250px;max-width:320px;
+  background:var(--card);border:1.5px solid #4A4A4A;border-radius:10px;
+  box-shadow:var(--shadow);padding:6px;
+  /* the list scrolls, the header and the warning below it do not */
+  display:flex;flex-direction:column;max-height:340px;
+}
+/* Later chips open leftwards.
+   A 250-320px panel hanging off a chip that has drifted towards the right margin
+   runs off the page, and the fix has to be static: measuring the viewport means
+   re-measuring on every resize and scroll for a control that is open for two
+   seconds at a time.
+   `nth-of-type` counts `div` siblings, not `.ms` ones — `.dpfilters` holds an
+   `input`, three `div.ms`, a `label` and a `div.seg`, so the divs are the three
+   chips followed by the segment, and `n+3` is "the third chip onwards". Written
+   open-ended rather than as `:nth-of-type(3)` so a fourth filter inherits it. */
+.dpfilters .ms:nth-of-type(n+3) .ms-pop{left:auto;right:0}
+.ms-head{
+  display:flex;align-items:center;gap:8px;
+  padding:4px 8px 7px;margin-bottom:4px;border-bottom:1px solid var(--line);
+}
+.ms-title{flex:1;min-width:0;font-size:12px;font-weight:800;color:var(--ink-3);
+  text-transform:uppercase;letter-spacing:.5px}
+.ms-count{flex:none;font-size:12px;font-weight:700;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.ms-count b{color:var(--ink-2);font-weight:800}
+.ms-count.off b{color:var(--jt-red-lit)}
+
+.ms-list{overflow-y:auto;min-height:0}
+.ms-row{
+  display:flex;align-items:center;gap:9px;
+  padding:6px 8px;border-radius:6px;cursor:pointer;
+  font-size:13.5px;font-weight:600;color:var(--ink);
+}
+.ms-row:hover{background:var(--card-3)}
+.ms-row input[type=checkbox]{
+  flex:none;width:15px;height:15px;margin:0;accent-color:var(--jt-red);cursor:pointer;
+}
+.ms-lab{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* Dimmed rather than struck through or hidden: the row is still a live control
+   and has to look like one, but "this is the half you switched off" should be
+   readable without counting the boxes. */
+.ms-row.unticked .ms-lab{color:var(--ink-3)}
+.ms-num{
+  flex:none;font-size:12px;font-weight:700;color:var(--ink-3);
+  font-variant-numeric:tabular-nums;
+}
+.ms-master{margin-bottom:2px;font-weight:800}
+.ms-master + .ms-list{border-top:1px solid var(--line);padding-top:4px}
+.ms-warn{
+  margin-top:5px;padding:6px 8px;border-radius:6px;
+  background:#2F2408;color:var(--amber);font-size:12px;font-weight:700;line-height:1.4;
+}
+.ms-btn:disabled{opacity:.4;cursor:not-allowed}
+.ms-btn:disabled:hover{background:var(--card);border-color:var(--line)}
+
 /* ---------- the column switch ----------
 
    A row of tick boxes across the top of the table, not a dropdown. It was a
@@ -654,8 +749,18 @@ table.dpgrid tbody tr:nth-child(even) td.sticky{background:#242424}
   flex:none;width:15px;height:15px;margin:0;
   accent-color:var(--jt-red);cursor:pointer;
 }
-/* the agent name inside the pinned cell; a phone-only stand-in for the column */
+/* the agent and supervisor inside the pinned cell; a phone-only stand-in for
+   the two columns of their own */
 .dpagent{display:none}
+/* The supervisor column.
+   Capped and clipped rather than left to size itself: a full name is longer than
+   anything else in the identity block, and one three-part name would otherwise
+   push the eight indicators off the right of the screen for every row on the
+   page. The whole name is in the cell's title, so nothing is actually lost. */
+table.dpgrid td.spvcol,table.dpgrid th.spvcol{
+  max-width:150px;overflow:hidden;text-overflow:ellipsis;
+}
+table.dpgrid tbody td.spvcol{color:var(--ink-2);font-weight:600}
 /* Solid fill, because this is the one thing on the row you scan for rather than
    read. A fixed min-width keeps the two tags the same size so the names below
    them stay in a straight column instead of stepping in and out. */
@@ -676,12 +781,85 @@ table.dpgrid tbody tr:nth-child(even) td.sticky{background:#242424}
   border-radius:99px;padding:3px 10px;white-space:nowrap;
 }
 /* green for the two kinds that run a delivery shift and are ranked, amber for
-   pickup-only and grey for closed — the same "is this in the ranking?" reading
+   Pickup and grey for Tutup — the same "is this in the ranking?" reading
    the stat cards above the table use */
 .sbadge.both{background:#15321F;color:#5BE79A}
 .sbadge.delivery{background:#14283B;color:#7CC0FF}
 .sbadge.pickup{background:#33280F;color:#FFCE6A}
 .sbadge.closed{background:#2B2B2B;color:#A5A5A5}
+/* No Jenis Layanan in the file. Outlined rather than filled, so it reads as an
+   empty slot instead of as a fifth kind of service — the other four are facts,
+   this one is a hole in the data and should not look like a category. */
+.sbadge.unknown{
+  background:transparent;color:#8A8A8A;
+  border:1px dashed #565656;padding:2px 9px;
+}
+
+/* ---------- the Status band ----------
+   Urgent / Perhatian / Stable. A traffic light, so the three read as one scale
+   from across a desk rather than as three unrelated words — and tinted plates
+   rather than the outlined `.sbadge` treatment, because this is the column
+   people will be scanning down. */
+.stbadge{
+  display:inline-block;font-size:12.5px;font-weight:800;
+  border-radius:99px;padding:3px 11px;white-space:nowrap;letter-spacing:.2px;
+}
+.stbadge.urgent{background:#4A1512;color:#FF8C82}
+.stbadge.perhatian{background:#3A2B0A;color:#FFC760}
+.stbadge.stable{background:#15321F;color:#5BE79A}
+
+/* ---------- the Status key ----------
+   The bands written out with their ranges and their counts. Its own slim band
+   between the column switch and the grid: it explains a column, so it belongs to
+   the table rather than to the filter bar, and it is the last thing read before
+   the eye lands on the rows. */
+.stleg{
+  display:flex;align-items:center;gap:8px 14px;flex-wrap:wrap;
+  padding:8px 13px;border-bottom:1px solid var(--line);background:var(--card-2);
+}
+/* Not a flex row: the Mandarin gloss is an inline `<span class=zh>` with its own
+   margin, and making this a flex container turned "Status" into an anonymous
+   flex item and doubled the gap between the two readings of the same word. */
+.stleg-h{flex:none;font-size:13px;font-weight:800;color:var(--ink)}
+.stleg-h em{
+  font-style:normal;font-size:11.5px;font-weight:600;color:var(--ink-3);
+  margin-left:9px;
+}
+.stleg-pills{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+/* One pill: the badge, the range it covers, then the count. Reading order is the
+   answer to "what is it / when does it apply / how many are there", which is the
+   order the questions actually arrive in. */
+.stleg-p{
+  display:inline-flex;align-items:center;gap:7px;
+  border:1.5px solid var(--line);border-radius:99px;
+  padding:2px 3px 2px 3px;background:var(--card);
+}
+.stleg-p .stbadge{font-size:12px;padding:2px 9px}
+.stleg-r{
+  font-size:11.5px;font-weight:700;color:var(--ink-2);
+  font-variant-numeric:tabular-nums;letter-spacing:.2px;
+}
+/* The count is the number people came for, so it is the only thing here at full
+   contrast and full weight. */
+.stleg-n{
+  min-width:24px;padding:1px 8px 1px 7px;margin-left:-2px;
+  font-size:14px;font-weight:800;color:var(--ink);
+  font-variant-numeric:tabular-nums;text-align:right;
+}
+.stleg-p.urgent{border-color:#5E2420}
+.stleg-p.perhatian{border-color:#4E3A10}
+.stleg-p.stable{border-color:#1F4A30}
+.stleg-p.urgent .stleg-n{color:#FF8C82}
+.stleg-p.perhatian .stleg-n{color:#FFC760}
+.stleg-p.stable .stleg-n{color:#5BE79A}
+/* pushed to the far end: a footnote about the scorecard, not part of the key */
+.stleg-note{
+  margin-left:auto;flex:none;
+  font-size:11.5px;font-weight:600;color:var(--ink-3);
+}
+.stleg-note::before{content:'*';font-weight:800;margin-right:4px;color:var(--ink-2)}
+/* the asterisk on an unscored KPI header — visible, not shouting */
+table.dpgrid th.cat.unscored{color:#E9C3C0}
 
 /* Only the misses are tinted. Colouring the passes as well turned the grid into
    a wall of green that took just as long to read as plain numbers — the point
@@ -1216,7 +1394,27 @@ body.shoot-table .dptable{margin-top:0}
   .dpfilters{gap:7px;padding:9px 10px}
   .dpfilters input[type=text]{flex:1 1 100%;max-width:none;min-width:0}
   .dpfilters select{flex:1 1 calc(50% - 4px);min-width:0}
+  /* Two per row, and the trigger fills its half — a chip sized to its text left
+     the row ragged, and the summary is the first thing to truncate at this
+     width, so it should have all the space going. */
+  .dpfilters .ms{flex:1 1 calc(50% - 4px);min-width:0}
+  .dpfilters .ms-btn{width:100%;max-width:none;justify-content:space-between}
+  /* Two chips to a row here, so the pairing decides which way a panel opens
+     rather than the desktop rule above: left-hand chip opens rightwards,
+     right-hand chip opens leftwards. The desktop `n+3` rule would have sent the
+     third chip — which starts a fresh row on the left — off the wrong edge. */
+  .dpfilters .ms-pop{min-width:min(280px,calc(100vw - 32px));max-width:calc(100vw - 32px)}
+  .dpfilters .ms:nth-of-type(odd) .ms-pop{left:0;right:auto}
+  .dpfilters .ms:nth-of-type(even) .ms-pop{left:auto;right:0}
   .dpfilters .chk,.dpfilters .seg{flex:1 1 100%}
+  /* The heading takes its own line and the note goes: at this width the three
+     pills are the whole point and `margin-left:auto` would only push them into a
+     ragged column. The footnote it carries is repeated under the table. */
+  .stleg{padding:8px 10px;gap:7px 10px}
+  .stleg-h{flex:1 1 100%}
+  .stleg-pills{flex:1 1 100%;gap:6px}
+  .stleg-p{flex:1 1 0;min-width:0;justify-content:center}
+  .stleg-note{display:none}
   .dpfilters .seg{justify-content:stretch}
   .dpfilters .seg button{flex:1}
   /* the chips already wrap; only the padding and the gaps need to come in */
@@ -1248,6 +1446,11 @@ body.shoot-table .dptable{margin-top:0}
      Hidden by class rather than by position, so it stays correct whether or not
      the Agen column is being rendered at all. */
   table.dpgrid .agentcol{display:none}
+  /* The supervisor goes the same way and for the same reason — a full name is
+     the widest thing in the identity block, and on a phone the pinned cell is
+     the only place it can live without costing the numbers their width. It
+     reappears on the second line beside the agent. */
+  table.dpgrid .spvcol{display:none}
   .dpagent{
     display:block;margin-top:2px;padding-left:36px;
     font-size:11px;font-weight:600;color:var(--ink-3);
@@ -1327,6 +1530,13 @@ body.shoot-table .dptable{margin-top:0}
   .sbadge.delivery{background:#EAF2FA !important;color:#1B5C99 !important}
   .sbadge.pickup{background:#FBF3E4 !important;color:#8A5A08 !important}
   .sbadge.closed{background:#F1F3F7 !important;color:#798394 !important}
+  .sbadge.unknown{background:transparent !important;color:#8A93A2 !important;border-color:#C6CCD8 !important}
+  /* the Status column survives into the PDF — it is the column the sheet is
+     read for, so it gets light-mode plates rather than being flattened */
+  .stbadge.urgent{background:#F9D3CF !important;color:#8E1109 !important}
+  .stbadge.perhatian{background:#FBF0D8 !important;color:#8A5A08 !important}
+  .stbadge.stable{background:#EDF6F1 !important;color:#2A7A52 !important}
+  table.dpgrid th.cat.unscored{color:#FFD9D6 !important}
   .warnbox{background:#FEF4E4 !important;border-color:#F3D8A6 !important;color:#8A5A08 !important}
 
   /* zoom (not transform) so the layout actually reflows to the smaller size */

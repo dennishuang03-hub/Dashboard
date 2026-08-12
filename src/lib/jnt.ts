@@ -111,8 +111,23 @@ export interface DpKpiVals {
   target: number | null
 }
 
-/** How much of the operation a drop point actually runs — see `dpStatusOf`. */
-export type DpKind = 'both' | 'delivery' | 'pickup' | 'closed'
+/**
+ * How much of the operation a drop point actually runs, as **stated by the
+ * workbook's own "Jenis Layanan" column** — never inferred.
+ *
+ * It used to be inferred, from the readings: all-zero meant closed, zero on
+ * 06:30 and 07:30 meant pickup-only, zero on TPTW meant delivery-only. Every one
+ * of those rules was a guess about why a number was zero, and each of them was
+ * wrong on real days — a site whose sprinters simply all missed the 06:30 mark
+ * was labelled "no sprinter based here" and then quietly dropped out of both
+ * ranking charts for it. The file knows the answer; it should not be re-derived
+ * from its side effects.
+ *
+ * `''` is "the workbook did not say" — a blank cell, an unrecognised word, or a
+ * file with no such column. It is a real state and is shown as one, because a
+ * confident wrong label is worse than a visibly missing one.
+ */
+export type DpKind = 'both' | 'delivery' | 'pickup' | 'closed' | ''
 
 /**
  * Who runs the site: a partner-owned franchise, or J&T's own agent network.
@@ -133,6 +148,16 @@ export interface DpRow {
   isCp: boolean
   /** from the workbook's "商业模式 Model Bisnis" column; `''` when not stated */
   bizModel: BizModel
+  /**
+   * From the workbook's "Jenis Layanan" column on the readings tab — Pickup
+   * Delivery / Pickup / Delivery / Tutup. `''` when the file did not say.
+   */
+  service: DpKind
+  /**
+   * The supervisor responsible for this site, from the `Fr&Ag` reference tab.
+   * `''` when that tab is absent or has no row for this site.
+   */
+  supervisor: string
   sheet: string
   /** canonical KPI label → readings */
   vals: Record<string, DpKpiVals>
@@ -462,34 +487,126 @@ export const SPRINTER_LABELS = [
 ]
 
 /**
- * The two categories that say whether a sprinter is *based* at the site: does
- * anyone clock in, and does anything leave the warehouse. Zero on both means no
- * courier works out of here, so the site can only be taking parcels in.
+ * Categories carried in the table but kept **out of the scorecard**.
  *
- * 12:00 is deliberately not on this list even though it is a sprinter category.
- * It is a *result* — the share of the first ritase signed by noon — so a site
- * whose couriers all clocked in and left on time can still read 0 there on a bad
- * day. Including it made those days look like "no sprinter at all". Attendance
- * and warehouse-exit are the two that cannot be zero while a courier is present.
+ * TTD RITASE 2 is the second delivery round's signature rate. It is a real
+ * measurement and it stays a column — someone chasing a specific site still
+ * wants to see it — but it is not something the region manages against, and
+ * leaving it in the count meant a site could be marked down for the one number
+ * nobody was going to act on. Scoring out of seven rather than eight makes the
+ * count answer a question that has a follow-up.
+ *
+ * A list rather than a single label so the next one is a one-line change, and
+ * so `SCORE_LABELS` below stays derived rather than hand-maintained beside it.
  */
-export const PICKUP_ONLY_LABELS = [
-  '06:30 ABSENSI',
-  '07:30 KELUAR GUDANG',
-]
+export const UNSCORED_LABELS: readonly string[] = ['TTD RITASE 2']
+
+/** Does this category count towards `Sesuai target` and the Status column? */
+export const isScored = (label: string): boolean => !UNSCORED_LABELS.includes(label)
+
+/** The categories the scorecard is built from, in display order. */
+export const SCORE_LABELS: readonly string[] = CANONICAL_ORDER.filter(isScored)
 
 /**
- * Handover-on-time: the category that only moves when the site passes parcels
- * on to the pickup flow. Zero here on a site that is otherwise running means it
- * delivers but does not collect.
+ * The denominator the Status bands are quoted against — seven today.
+ *
+ * Derived, not written as `7`. The bands read "5–6 dari 7" on screen and the
+ * day a category is added or retired that sentence has to move with the data,
+ * or the legend starts describing a scorecard that no longer exists.
  */
-export const DELIVERY_ONLY_LABEL = 'TPTW (ON TIME)'
+export const SCORE_TOTAL = SCORE_LABELS.length
+
+/**
+ * How much attention a site needs, from how many of its scored categories it
+ * missed.
+ *
+ * ── Counted in misses, quoted in hits ────────────────────────────────────────
+ *
+ * The bands were specified as hits — Stable is 7 of 7, Perhatian 5 or 6, Urgent
+ * 4 or fewer — and that is how the legend states them, because it is how people
+ * think about a scorecard. The arithmetic here is the mirror image: 0 missed,
+ * 1–2 missed, 3 or more. On a site with all seven categories reading, the two
+ * are the same statement.
+ *
+ * They stop being the same when a site has fewer than seven readings, and that
+ * is the whole reason for the inversion. A Delivery site is structurally zero on
+ * the categories it does not run, so those are left unscored (see the scoring
+ * loop in DpSection) — it might have four. Counting hits against a fixed seven
+ * would file a site that met every single category it runs as **Urgent**, for
+ * the crime of not running the other three. Counting misses cannot do that: no
+ * reading is no miss, and a clean sheet is Stable however long the sheet is.
+ *
+ * `''` when nothing was scored at all. Zero of zero is not a clean sheet, it is
+ * an absence, and the column shows it as one.
+ */
+export type DpStatus = 'urgent' | 'perhatian' | 'stable' | ''
+
+/** Misses tolerated before a site drops from Perhatian to Urgent. */
+const PERHATIAN_MAX_MISS = 2
+
+export function scoreStatusOf(onTarget: number, scored: number): DpStatus {
+  if (scored <= 0) return ''
+  const missed = scored - onTarget
+  if (missed === 0) return 'stable'
+  return missed <= PERHATIAN_MAX_MISS ? 'perhatian' : 'urgent'
+}
+
+export const DP_STATUS_LABEL: Record<DpStatus, string> = {
+  urgent: 'Urgent',
+  perhatian: 'Perhatian',
+  stable: 'Stable',
+  '': '—',
+}
+
+export const DP_STATUS_ZH: Record<DpStatus, string> = {
+  urgent: '紧急', perhatian: '关注', stable: '稳定', '': '',
+}
+
+/**
+ * The hit range each band covers, for the legend and the tooltips.
+ *
+ * Written out from `SCORE_TOTAL` rather than typed as "1–4 / 5–6 / 7", so the
+ * key on screen cannot drift from the thresholds above it.
+ */
+export const DP_STATUS_RANGE: Record<Exclude<DpStatus, ''>, string> = {
+  /* Zero is folded in here rather than given a band of its own. It was not in
+     the specification — which starts at 1 — but a site can reach it, and a
+     scorecard with a hole where the worst possible result should be is worse
+     than one band reading slightly wide. */
+  urgent: `0–${SCORE_TOTAL - PERHATIAN_MAX_MISS - 1}/${SCORE_TOTAL}`,
+  perhatian: `${SCORE_TOTAL - PERHATIAN_MAX_MISS}–${SCORE_TOTAL - 1}/${SCORE_TOTAL}`,
+  stable: `${SCORE_TOTAL}/${SCORE_TOTAL}`,
+}
+
+/**
+ * Plain-language version of the same thing, for a tooltip.
+ *
+ * Phrased in misses because that is what the classifier actually counts, with
+ * the hit range in brackets because that is what the column shows. Both halves
+ * are generated from the thresholds — writing "1–2" by hand next to a constant
+ * that says `2` is the exact kind of pair that survives one refactor and not two.
+ */
+export const DP_STATUS_HINT: Record<Exclude<DpStatus, ''>, string> = {
+  urgent: `Meleset di ${PERHATIAN_MAX_MISS + 1} indikator atau lebih (${DP_STATUS_RANGE.urgent} sesuai target).`,
+  perhatian: `Meleset di 1–${PERHATIAN_MAX_MISS} indikator (${DP_STATUS_RANGE.perhatian} sesuai target).`,
+  stable: `Tidak ada yang meleset (${DP_STATUS_RANGE.stable} sesuai target).`,
+}
 
 /**
  * The kinds that run a delivery shift, and so are the only ones a top-five or
  * worst-five may draw from. `pickup` and `closed` are structurally zero on the
  * delivery categories and would own every worst-five without meaning anything.
+ *
+ * `''` — no Jenis Layanan stated — is on the list, and the reason is worth
+ * spelling out because it looks like the wrong call. Excluding unknowns is the
+ * cautious-looking option and it is the dangerous one: the day the column is
+ * renamed, or a file arrives without it, *every* site is unknown, and the
+ * exclusion would take both ranking charts and the whole "Sesuai target" column
+ * off the page at once with nothing on screen saying why. Including them means
+ * the same failure shows up as a Jenis Layanan column full of dashes — visible,
+ * and obviously a data problem rather than a dashboard one.
  */
-export const DP_RANKABLE: readonly DpKind[] = ['both', 'delivery']
+export const DP_RANKABLE: readonly DpKind[] = ['both', 'delivery', '']
 
 /** Does this site run a delivery shift, i.e. may it appear in a ranking? */
 export const isRankable = (kind: DpKind): boolean => DP_RANKABLE.includes(kind)
@@ -834,6 +951,120 @@ function bizModelOf(s: string): BizModel {
 const isBizModelWord = (s: string): boolean =>
   /^(franchise|frenchise|waralaba|agent|agen|加盟|自营|直营)$/i.test(s.trim())
 
+/* ------------------------------------------- jenis layanan & supervisor */
+
+/**
+ * The "Jenis Layanan" column — what the site is actually contracted to run.
+ *
+ * Tighter than `MODEL_HEADER_RE`, and deliberately so. "Bisnis" alone is safe
+ * because nothing else in the block is about business; "Layanan" alone is not,
+ * because a KPI group heading like "Kualitas Layanan" would match it and hand
+ * the job to a column of percentages. The full phrase, or nothing — the content
+ * fallback in `findValueCol` is what covers a file that titles it differently.
+ */
+const SERVICE_HEADER_RE = /jenis\s*layanan|jenis\s*service|service\s*type|tipe\s*layanan|服务类型|业务类型|服务类别/i
+
+/** The Supervisor column on the `Fr&Ag` reference tab. */
+const SPV_HEADER_RE = /supervisor|\bspv\b|penyelia|atasan|主管|督导/i
+
+/**
+ * Read a Jenis Layanan cell.
+ *
+ * "Pickup Delivery" contains both words, so the combined case has to be decided
+ * by testing for *both* rather than by whichever word is looked for first — an
+ * ordered chain of single-word tests would classify every combined site as
+ * whichever of the two happened to be checked earlier.
+ *
+ * `Tutup` is tested before either, because a closed site is closed regardless of
+ * what it would otherwise run, and some files write it as "Tutup (Pickup)".
+ *
+ * Anything unrecognised comes back `''`, exactly as `bizModelOf` does — see the
+ * note on `DpKind`.
+ */
+export function serviceKindOf(s: string): DpKind {
+  const t = s.replace(/[\s_\-&/+,.]+/g, ' ').trim()
+  if (!t) return ''
+  if (/tutup|closed?|tidak\s*aktif|non\s*aktif|nonaktif|已关闭|关闭|停用/i.test(t)) return 'closed'
+  const pick = /pick\s*up|pickup|jemput|揽收/i.test(t)
+  const del = /deliver|antar|派送|派件/i.test(t)
+  if (pick && del) return 'both'
+  if (pick) return 'pickup'
+  if (del) return 'delivery'
+  return ''
+}
+
+/**
+ * Strict form, used only to *identify* the column by its contents when no header
+ * matched — the cell has to be one of the four words and nothing else.
+ *
+ * `serviceKindOf` is deliberately loose so it can read a value once the column
+ * is known, but that looseness would hand the job to the drop-point name column:
+ * plenty of sites are called something like `DP_PICKUP_CENTER`.
+ */
+const isServiceWord = (s: string): boolean =>
+  /^(pick\s*up[\s_\-&/+]*(and[\s_\-&/+]*)?deliver(y|i)?|deliver(y|i)?[\s_\-&/+]*(and[\s_\-&/+]*)?pick\s*up|pick\s*up|deliver(y|i)?|tutup|closed?|揽收及派送|仅揽收|仅派送|已关闭)$/i
+    .test(s.trim())
+
+/**
+ * Find a single identity column by header text anywhere in the block above the
+ * data, with a content-based fallback for a column whose title was renamed,
+ * mistyped, or left off entirely.
+ *
+ * Both halves are needed and they fail in opposite directions: a header match is
+ * exact but brittle, and a content match is robust but can be claimed by the
+ * wrong column. So they check each other. A header hit is only taken if the
+ * cells beneath it actually read like the thing being looked for, and the
+ * content pass requires a *majority* of a column's filled cells to match before
+ * it will claim one. Both skip every column already spoken for.
+ *
+ * `isWord` is `null` for a column whose values have no recognisable shape — a
+ * supervisor's name is free text and could be anything. That turns off both the
+ * verification and the fallback, leaving the header as the only evidence, which
+ * for such a column is the only evidence there is.
+ */
+function findValueCol(
+  m: Cell[][], lastC: number, dataStart: number,
+  headerRe: RegExp, isWord: ((s: string) => boolean) | null, taken: (C: number) => boolean,
+): number {
+  const probeEnd = Math.min(m.length, dataStart + 60)
+
+  /** How many of a column's filled cells below the header read like the thing. */
+  const tally = (C: number) => {
+    let hits = 0, filled = 0
+    for (let R = dataStart; R < probeEnd; R++) {
+      const s = txt(m[R]?.[C] ?? null)
+      if (!s) continue
+      filled++
+      if (isWord!(s)) hits++
+    }
+    return { hits, filled }
+  }
+
+  for (let R = 0; R < dataStart; R++) {
+    if (!m[R]) continue
+    for (let C = 0; C <= lastC; C++) {
+      if (taken(C)) continue
+      if (!headerRe.test(txt(m[R][C]))) continue
+      if (!isWord) return C
+      /* A titled column that says nothing recognisable is not the one — most
+         likely the phrase was matched inside a KPI group heading merged across
+         the top of the readings. Keep looking rather than lock onto it. */
+      const { hits, filled } = tally(C)
+      if (filled === 0 || hits > 0) return C
+    }
+  }
+
+  if (!isWord) return -1
+
+  let bestCol = -1, bestHits = 0
+  for (let C = 0; C <= lastC; C++) {
+    if (taken(C)) continue
+    const { hits, filled } = tally(C)
+    if (filled >= 2 && hits * 2 > filled && hits > bestHits) { bestHits = hits; bestCol = C }
+  }
+  return bestCol
+}
+
 /**
  * A report title, as opposed to a column heading.
  *
@@ -917,13 +1148,30 @@ interface RawDpSheet { rows: DpRow[]; kpiCount: number; dates: { key: string; da
 
 /* -------------------------------------------- business-model lookup sheet */
 
-/** One site's business model, as stated on a reference tab. */
+/**
+ * One site's standing facts, as stated on a reference tab.
+ *
+ * "Business model" is the tab's original job and still names the type, but the
+ * same `Fr&Ag` sheet is where the **supervisor** lives too — and it belongs
+ * there for the same reason the model does: it is a fact about the site that
+ * changes when someone is reassigned, not a fact about today's numbers, so
+ * writing it once beside the site's name beats widening a 48-column readings
+ * sheet by hand every morning.
+ */
 export interface BizModelEntry {
   /** Kode Agent, normalised — `AGENT40` */
   agentCode: string
   /** drop-point name, normalised */
   name: string
   model: BizModel
+  /** `''` when the tab has no Supervisor column, or the cell is blank */
+  supervisor: string
+  /**
+   * `''` unless the reference tab happens to carry a Jenis Layanan column too.
+   * The readings tab is the authority; this is only a fallback for a file that
+   * states it here instead.
+   */
+  service: DpKind
 }
 
 /**
@@ -970,6 +1218,22 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
     else if (AGENT_HEADER_RE.test(s)) { if (agentCol < 0) agentCol = C }
   }
 
+  /*
+   * Supervisor, and Jenis Layanan if this tab happens to carry one.
+   *
+   * Header-only, no content fallback: a supervisor's name is free text with no
+   * shape to recognise, and the content pass for Jenis Layanan is the readings
+   * tab's job — a lookup tab is exactly where a stray column of words is most
+   * likely to be mistaken for one. `taken` keeps both off the columns already
+   * spoken for, so `SPV_HEADER_RE`'s "atasan" cannot claim the agent column.
+   */
+  const claimed = (C: number) => C === dpCol || C === modelCol || C === agentCol || C === codeCol
+  const spvCol = findValueCol(m, lastC, headerRow + 4, SPV_HEADER_RE, null, claimed)
+  const svcCol = findValueCol(
+    m, lastC, headerRow + 4, SERVICE_HEADER_RE, null,
+    (C) => claimed(C) || C === spvCol,
+  )
+
   const headerText = txt(m[headerRow][dpCol])
   const entries: BizModelEntry[] = []
   let lastCode = '', blanks = 0
@@ -989,7 +1253,13 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
     if (nums >= 2) return null
 
     const model = bizModelOf(txt(m[R][modelCol]))
-    if (!model) continue                  // blank or unrecognised — nothing to record
+    const supervisor = spvCol >= 0 ? txt(m[R][spvCol]).trim() : ''
+    const service = svcCol >= 0 ? serviceKindOf(txt(m[R][svcCol])) : ''
+    /* Nothing on this row worth carrying. The test used to be `!model` alone,
+       which was right when the model was all this tab held — now a site with a
+       named supervisor but a blank Model Bisnis cell has something to say, and
+       dropping the row would lose it. */
+    if (!model && !supervisor && !service) continue
 
     const c = codeCol >= 0 ? txt(m[R][codeCol]) : ''
     if (c) lastCode = c
@@ -999,6 +1269,8 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
       agentCode: normKey(lastCode) || normKey(agent),
       name: normKey(name),
       model,
+      supervisor,
+      service,
     })
   }
 
@@ -1010,27 +1282,35 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
  * strengths of evidence.
  *
  * `byPair` is Kode Agent plus site name, which is exact. `byName` is the site
- * name alone, and it holds **only names that appear once in the whole file** —
- * a name used by two agents is ambiguous, and guessing which one is meant would
- * put a confident wrong tag on a row, which is worse than the `?` it replaced.
+ * name alone, and it is the weaker one: a name used by two agents is ambiguous,
+ * and guessing which one is meant would put a confident wrong tag on a row,
+ * which is worse than the `?` it replaced.
+ *
+ * Ambiguity is resolved **per field**, not per row, and that is a deliberate
+ * change from when this held one value. Two rows for the same site name that
+ * agree on Franchise but name different supervisors are not "an ambiguous row" —
+ * they are an unambiguous model and an ambiguous supervisor, and blanking the
+ * model along with it would throw away a fact the file states clearly. So the
+ * duplicates are merged field by field and only the fields that actually
+ * disagree go blank.
  */
 function indexBizModels(entries: BizModelEntry[]) {
-  const byPair = new Map<string, BizModel>()
-  const seen = new Map<string, BizModel | null>()   // null marks "seen more than once"
+  const byPair = new Map<string, BizModelEntry>()
+  const seen = new Map<string, BizModelEntry>()
 
   for (const e of entries) {
-    byPair.set(`${e.agentCode}::${e.name}`, e.model)
-    if (seen.has(e.name)) {
-      if (seen.get(e.name) !== e.model) seen.set(e.name, null)
-    } else {
-      seen.set(e.name, e.model)
-    }
+    byPair.set(`${e.agentCode}::${e.name}`, e)
+    const prev = seen.get(e.name)
+    if (!prev) { seen.set(e.name, e); continue }
+    seen.set(e.name, {
+      ...prev,
+      model: prev.model === e.model ? prev.model : '',
+      supervisor: prev.supervisor === e.supervisor ? prev.supervisor : '',
+      service: prev.service === e.service ? prev.service : '',
+    })
   }
 
-  const byName = new Map<string, BizModel>()
-  for (const [name, model] of seen) if (model) byName.set(name, model)
-
-  return { byPair, byName }
+  return { byPair, byName: seen }
 }
 
 /**
@@ -1102,6 +1382,17 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
     }
   }
 
+  /* 2a-ii — "Jenis Layanan": what this site is contracted to run.
+     This is the column the Status badge is now read from, in place of the eight
+     zero-tests that used to guess it. Located here, before step 2b smears the
+     header block sideways, for the same reason Model Bisnis is — and with a
+     content fallback, because unlike Model Bisnis this one cannot be allowed to
+     silently come back empty: nothing downstream can reconstruct it. */
+  const svcCol = findValueCol(
+    m, lastC, dataStart, SERVICE_HEADER_RE, isServiceWord,
+    (C) => C === dpCol || C === modelCol || C === agentCol || C === codeCol,
+  )
+
   /* 2b — close every hole in the header block (see parseOneSheet, step 2b) */
   for (let R = headerRow; R < dataStart - 1; R++) {
     let last: Cell = null
@@ -1160,7 +1451,7 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
     const probeEnd = Math.min(m.length, dataStart + 60)
     let bestCol = -1, bestHits = 0
     for (let C = 0; C <= lastC; C++) {
-      if (cols[C] || C === dpCol || C === agentCol || C === codeCol) continue
+      if (cols[C] || C === dpCol || C === agentCol || C === codeCol || C === svcCol) continue
       let hits = 0, filled = 0
       for (let R = dataStart; R < probeEnd; R++) {
         const s = txt(m[R]?.[C] ?? null)
@@ -1222,6 +1513,10 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
       agentCode: code,
       isCp: /^cp[\s_-]/i.test(name.trim()),
       bizModel: modelCol >= 0 ? bizModelOf(txt(m[R][modelCol])) : '',
+      service: svcCol >= 0 ? serviceKindOf(txt(m[R][svcCol])) : '',
+      /* filled in from the Fr&Ag reference tab once every sheet has been read —
+         see the join in `parseWorkbook` */
+      supervisor: '',
       sheet: sheetName,
       vals,
     })
@@ -1258,65 +1553,44 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
 
 /* ------------------------------------------------- drop-point classification */
 
-/**
- * What a drop point was actually doing on a given day.
+/*
+ * There is no `dpStatusOf` any more, and its absence is the point.
  *
- *   closed   — every one of the eight categories reads 0. The site is shut.
- *   pickup   — 06:30 *and* 07:30 both read 0. Nobody clocks in and nothing
- *              leaves the warehouse here, so no sprinter is based at the site:
- *              it only takes parcels in over the counter. Every delivery
- *              category is then structurally zero rather than bad.
- *   delivery — TPTW reads 0. Couriers deliver out of this site but it hands
- *              nothing over to the pickup flow, so the pickup categories are
- *              the structural zeros instead.
- *   both     — the site runs a delivery shift *and* a pickup flow.
+ * It used to derive a site's kind from the readings: all eight categories zero
+ * meant closed, 06:30 and 07:30 both zero meant pickup-only, TPTW zero meant
+ * delivery-only, anything else meant both. Every branch was an inference about
+ * *why* a cell was zero, and the inference does not hold — a genuinely bad
+ * morning at a full-service site reads exactly like a site with no sprinter
+ * based at it, and the dashboard would then excuse the bad morning as
+ * structural and drop the site out of the rankings that exist to catch it.
  *
- * Order matters twice over. A closed site reads 0 on 06:30 and 07:30 as well,
- * so the all-zero test has to run first or every closed site would come back
- * "pickup only". And a pickup-only site hands nothing over either, so its TPTW
- * is 0 too — the pickup test has to beat the delivery test for the same reason.
- * In both pairs the earlier answer is the more specific one, so it wins.
- *
- * Sites that run a delivery shift (`both` and `delivery`) are the ones ranked;
- * see `DP_RANKABLE`.
+ * The workbook states the answer in its Jenis Layanan column. `DpRow.service`
+ * carries it verbatim, and every consumer reads that instead. The one thing the
+ * classification is still used for is the ranking exclusion (`isRankable`),
+ * which is unchanged — pickup-only and closed sites really are structurally
+ * zero on the delivery categories — it is now told the answer rather than
+ * guessing it.
  */
-export function dpStatusOf(dp: DpRow, dateKey: string): DpKind {
-  const read = (label: string): number | null => {
-    const v = dp.vals[label]?.byDate[dateKey]
-    return v == null ? null : v
-  }
 
-  /* closed — 0 across all eight categories */
-  const all = CANONICAL_ORDER.map(read).filter((v): v is number => v != null)
-  if (!all.length) return 'closed'          // nothing recorded at all — unrankable either way
-  if (all.every((v) => v === 0)) return 'closed'
-
-  /* pickup only — 0 on both 06:30 and 07:30 */
-  const shift = PICKUP_ONLY_LABELS.map(read)
-  /* Guard: if the workbook carried neither column there is nothing to test, and
-     treating "absent" as "zero" would quietly mark every single site pickup-only
-     and leave both ranking charts empty. Same for TPTW below. */
-  if (shift.some((v) => v != null) && shift.every((v) => v == null || v === 0)) return 'pickup'
-
-  /* delivery only — 0 on TPTW, the handover that feeds the pickup flow */
-  if (read(DELIVERY_ONLY_LABEL) === 0) return 'delivery'
-
-  return 'both'
-}
-
+/** Jenis Layanan as it should read on screen and in the export. */
 export const DP_KIND_LABEL: Record<DpKind, string> = {
-  both: 'Delivery and Pick up',
-  delivery: 'Delivery Only',
-  pickup: 'Pick up Only',
+  both: 'Pickup Delivery',
+  delivery: 'Delivery',
+  pickup: 'Pickup',
   closed: 'Tutup',
+  '': '—',
 }
 
 export const DP_KIND_ZH: Record<DpKind, string> = {
-  both: '派送及揽收',
+  both: '揽收及派送',
   delivery: '仅派送',
   pickup: '仅揽收',
   closed: '已关闭',
+  '': '',
 }
+
+/** CSS-safe form of a kind — `''` has no class name of its own. */
+export const dpKindClass = (kind: DpKind): string => kind || 'unknown'
 
 /** Model bisnis as it should read on screen and in the export. */
 export const BIZ_MODEL_LABEL: Record<BizModel, string> = {
@@ -1553,23 +1827,29 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
    * picker has to show one name, not two.
    */
   /**
-   * Fill in the business model from the reference tab, where the readings tab
-   * did not carry one.
+   * Fill in the standing facts from the `Fr&Ag` reference tab: the business
+   * model where the readings tab did not carry one, and the supervisor, which
+   * only ever lives there.
    *
    * Done before the agent join below, which overwrites `agentKey` with the
    * summary sheet's key — `agentCode` is the raw Kode Agent both tabs share, and
    * it is what the exact match is made on.
    *
-   * A model already read off the row itself always wins: the older per-agent
-   * tabs carry their own column, and a reference tab that has drifted out of
-   * date must not overrule the sheet the numbers came from.
+   * Anything already read off the row itself wins. The older per-agent tabs
+   * carry their own Model Bisnis column and `ALL DP DATA` carries Jenis Layanan,
+   * and a reference tab that has drifted out of date must not overrule the sheet
+   * the numbers came from. The supervisor has no such contest — the readings tab
+   * never states it — so it is simply copied across.
    */
   if (bizEntries.length) {
     const { byPair, byName } = indexBizModels(bizEntries)
     for (const d of dps) {
-      if (d.bizModel) continue
       const key = normKey(d.name)
-      d.bizModel = byPair.get(`${d.agentCode}::${key}`) ?? byName.get(key) ?? ''
+      const e = byPair.get(`${d.agentCode}::${key}`) ?? byName.get(key)
+      if (!e) continue
+      if (!d.bizModel) d.bizModel = e.model
+      if (!d.service) d.service = e.service
+      if (!d.supervisor) d.supervisor = e.supervisor
     }
   }
 

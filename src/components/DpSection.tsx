@@ -6,31 +6,39 @@
  * whole section is scoped to whichever agent the toolbar has selected, and
  * pools every drop point in the region when that selection is ALL AGENTS.
  *
- * What each site actually runs shapes everything below (see `dpStatusOf`):
- * a pickup-only site is structurally zero on the delivery categories, a
- * delivery-only site is structurally zero on the handover that feeds pickup,
- * and a closed site is zero on all of them. None of those zeros is
- * underperformance, so pickup-only and closed sites may not appear in a
- * top-five or worst-five list — they are kept in the table with a badge
- * instead, because "why is this one missing?" is a question the table has to be
- * able to answer.
+ * What each site actually runs shapes everything below, and it is now **read
+ * from the workbook's Jenis Layanan column** rather than inferred from the
+ * numbers. A pickup-only site is structurally zero on the delivery categories,
+ * and a closed site is zero on all of them. Neither of those zeros is
+ * underperformance, so those sites may not appear in a top-five or worst-five
+ * list — they are kept in the table with a badge instead, because "why is this
+ * one missing?" is a question the table has to be able to answer.
+ *
+ * That exclusion is the only thing left that turns on the kind. The old rules
+ * that *decided* the kind — all-eight-zero means closed, 06:30 and 07:30 zero
+ * means pickup-only, TPTW zero means delivery-only — are gone: they were
+ * guessing at the reason behind a zero, and they were wrong often enough that a
+ * bad morning could be filed as "this site does not do deliveries" and quietly
+ * excused. The file says which it is; nothing here second-guesses it.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import {
   BIZ_MODEL_LABEL, BIZ_MODEL_TAG, CANONICAL_ORDER, CATEGORY_ZH, DP_KIND_LABEL, DP_KIND_ZH,
-  SPRINTER_LABELS, agentFull, agentZh, dpStatusOf, dpTargetFor, dpValue, exportPng, fmtDate,
-  fmtDateFull, isRankable, isoDay, sectionOf,
+  DP_STATUS_HINT, DP_STATUS_LABEL, DP_STATUS_RANGE, DP_STATUS_ZH, SCORE_TOTAL, SPRINTER_LABELS,
+  UNSCORED_LABELS, agentFull, agentZh, dpKindClass, dpTargetFor, dpValue, exportPng, fmtDate,
+  fmtDateFull, isRankable, isScored, isoDay, scoreStatusOf, sectionOf,
 } from '../lib/jnt'
-import type { BizModel, DateSlot, DpKind, DpRow, Kpi, Model } from '../lib/jnt'
+import type { DateSlot, DpKind, DpRow, DpStatus, Kpi, Model } from '../lib/jnt'
 import { BarChart, HBarChart } from './Charts'
 import type { HBar } from './Charts'
+import MultiSelect from './MultiSelect'
 import Zh from './Zh'
 
 const TOP_N = 5
 
 /**
- * Sentinel category: rank on how many of the eight KPIs the site met, rather
+ * Sentinel category: rank on how many of the scored KPIs the site met, rather
  * than on one KPI's percentage. Not a `Kpi`, so it lives in the dropdown's value
  * space instead — no real category can collide with it.
  */
@@ -46,12 +54,43 @@ const TOTAL_CAT = '__total__'
  */
 const COL_NAME = '__name__'
 const COL_AGENT = '__agent__'
-const COL_STATUS = '__status__'
+const COL_SPV = '__spv__'
+const COL_SERVICE = '__layanan__'
 const COL_ONTARGET = '__ontarget__'
+const COL_STATUS = '__status__'
 
-/** Sort order for the Status column — by how much of the operation runs, so the
- *  column reads as a scale instead of alphabetically (both, closed, delivery…). */
-const KIND_RANK: Record<DpKind, number> = { both: 0, delivery: 1, pickup: 2, closed: 3 }
+/**
+ * Columns switched off before anyone touches anything.
+ *
+ * The table's default was every column on, and eleven columns of a 1,666-row
+ * list is not a starting point, it is something to recover from — the first
+ * thing anyone did was turn three of them off again. These three are the ones
+ * that went: Agen repeats across every row of a single-agent view, Supervisor
+ * is a lookup rather than a measurement, and Sesuai target is the raw count the
+ * new Status column exists to interpret.
+ *
+ * All three are one tick away in the switch above the table, and the counter
+ * there reads "8/11" from the first paint, so the default announces itself
+ * rather than hiding what it did.
+ */
+const DEFAULT_HIDDEN: readonly string[] = [COL_AGENT, COL_SPV, COL_ONTARGET]
+
+/** Sort order for the Status column — worst first, so `▲` puts the work on top. */
+const STATUS_RANK: Record<DpStatus, number> = { urgent: 0, perhatian: 1, stable: 2, '': 3 }
+
+/**
+ * Sort order for the Jenis Layanan column — by how much of the operation runs,
+ * so the column reads as a scale instead of alphabetically (Delivery, Pickup,
+ * Pickup Delivery, Tutup).
+ *
+ * Sites with no stated service sort last whichever way the column is turned, in
+ * the same spirit as the null-sinks-to-the-bottom rule the KPI columns use: an
+ * unknown is not the most-running site and it is not the least, it is a gap in
+ * the data and belongs out of the way of the comparison.
+ */
+const KIND_RANK: Record<DpKind, number> = {
+  both: 0, delivery: 1, pickup: 2, closed: 3, '': 4,
+}
 
 /** One run of the header band: the KPI columns belonging to a single section. */
 interface CatRun { id: string; label: string; zh: string; kpis: Kpi[] }
@@ -83,12 +122,15 @@ function runsOf(kpis: Kpi[]): CatRun[] {
 /** A drop point plus everything the view needs to have decided about it once. */
 interface Scored {
   dp: DpRow
+  /** the workbook's Jenis Layanan for this site, copied off `dp.service` */
   kind: DpKind
-  /** category label → reading on the resolved day */
+  /** category label → reading on the resolved day, scored or not */
   vals: Record<string, number | null>
-  /** categories met, out of those with a reading */
+  /** scored categories met, out of those with a reading */
   onTarget: number
   scored: number
+  /** Urgent / Perhatian / Stable, from how many of `scored` were missed */
+  status: DpStatus
   /**
    * Total distance from target across the scored categories, signed so positive
    * is good (`v - target`, flipped for RETUR). Only a tiebreak: on a count of
@@ -98,7 +140,6 @@ interface Scored {
   margin: number
 }
 
-type StatusFilter = 'all' | DpKind
 type ValueMode = 'day' | 'mtd'
 type SortDir = 'asc' | 'desc'
 
@@ -138,11 +179,13 @@ export default function DpSection({
    * out of the workbook — eight KPIs today, a ninth the day someone adds one —
    * so a stored list of visible columns would have to be reconciled with every
    * file that loads, and a brand-new KPI would arrive hidden because it was not
-   * in a set written before it existed. Storing the exclusions makes "show
-   * everything" the empty set: an unknown column is visible by construction,
-   * which is exactly what "default: every column ticked" has to mean here.
+   * in a set written before it existed. Storing the exclusions means an unknown
+   * column is visible by construction, and the three names in `DEFAULT_HIDDEN`
+   * are the only things anyone has to decide about.
    */
-  const [hiddenCols, setHiddenCols] = useState<ReadonlySet<string>>(() => new Set<string>())
+  const [hiddenCols, setHiddenCols] = useState<ReadonlySet<string>>(
+    () => new Set<string>(DEFAULT_HIDDEN),
+  )
 
   /** the KPI columns the table actually draws */
   const visKpis = useMemo(
@@ -152,8 +195,10 @@ export default function DpSection({
   /* The agent column only exists in the all-agents view at all, so it is hidden
      by either of two independent things and both have to be asked. */
   const showAgent = allAgents && !hiddenCols.has(COL_AGENT)
-  const showStatus = !hiddenCols.has(COL_STATUS)
+  const showSpv = !hiddenCols.has(COL_SPV)
+  const showService = !hiddenCols.has(COL_SERVICE)
   const showOnTarget = !hiddenCols.has(COL_ONTARGET)
+  const showStatus = !hiddenCols.has(COL_STATUS)
 
   /**
    * The switch itself: every column in the grid, grouped the way the header band
@@ -174,7 +219,8 @@ export default function DpSection({
            leaving someone hunting for the one that is missing from it. */
         { id: COL_NAME, label: 'DP / CP', zh: '网点', locked: true },
         ...(allAgents ? [{ id: COL_AGENT, label: 'Agen', zh: '代理区' }] : []),
-        { id: COL_STATUS, label: 'Status', zh: '状态' },
+        { id: COL_SPV, label: 'Supervisor', zh: '主管' },
+        { id: COL_SERVICE, label: 'Jenis Layanan', zh: '服务类型' },
       ],
     },
     ...runsOf(catKpis).map((run) => ({
@@ -182,7 +228,14 @@ export default function DpSection({
       label: run.label,
       cols: run.kpis.map((k) => ({ id: k.label, label: k.label, zh: CATEGORY_ZH[k.label] ?? '' })),
     })),
-    { id: 'skor', label: 'Ringkasan', cols: [{ id: COL_ONTARGET, label: 'Sesuai target', zh: '达标数' }] },
+    {
+      id: 'skor',
+      label: 'Ringkasan',
+      cols: [
+        { id: COL_ONTARGET, label: 'Sesuai target', zh: '达标数' },
+        { id: COL_STATUS, label: 'Status', zh: '状态' },
+      ],
+    },
   ], [catKpis, allAgents])
 
   /* the locked name column is not one of the choices, so it counts in neither
@@ -239,23 +292,35 @@ export default function DpSection({
   const scored = useMemo<Scored[]>(() => {
     const pool = allAgents ? model.dps : model.dps.filter((d) => d.agentKey === agentKey)
     return pool.map((dp) => {
-      const kind = dpStatusOf(dp, day.key)
+      /* Straight off the row. It used to be `dpStatusOf(dp, day.key)`, recomputed
+         per day from the readings; the workbook states it once and it no longer
+         varies with the date being looked at, which is also the honest answer —
+         a site's contracted service does not change because yesterday was slow. */
+      const kind = dp.service
       const vals: Record<string, number | null> = {}
       let onTarget = 0, n = 0, margin = 0
       for (const k of catKpis) {
         const v = dpValue(dp, k.label, day.key)
+        /* Every category lands in `vals`, scored or not — the per-category
+           rankings and the grid cells read from here and still want TTD RITASE 2.
+           Only the counting below skips it. */
         vals[k.label] = v
         if (v == null) continue
-        /* A delivery-only site is zero on the categories it structurally does not
-           run, and counting those as misses would score it 4/8 for doing exactly
-           what it is there to do. Sites that run both flows keep every reading. */
+        /* Off the scorecard by policy, not by data — see `UNSCORED_LABELS`. */
+        if (!isScored(k.label)) continue
+        /* A Delivery site is zero on the categories it structurally does not run,
+           and counting those as misses would score it 4/7 for doing exactly what
+           it is there to do. Pickup Delivery sites keep every reading. */
         if (kind === 'delivery' && v === 0) continue
         n++
         const t = dpTargetFor(dp, k)
         if (k.lowerBetter ? v <= t : v >= t) onTarget++
         margin += k.lowerBetter ? t - v : v - t
       }
-      return { dp, kind, vals, onTarget, scored: n, margin }
+      return {
+        dp, kind, vals, onTarget, scored: n, margin,
+        status: isRankable(kind) ? scoreStatusOf(onTarget, n) : '',
+      }
     })
   }, [model.dps, allAgents, agentKey, catKpis, day.key])
 
@@ -267,15 +332,81 @@ export default function DpSection({
     delivery: scored.filter((s) => s.kind === 'delivery').length,
     pickup: scored.filter((s) => s.kind === 'pickup').length,
     closed: scored.filter((s) => s.kind === 'closed').length,
+    /* Sites whose Jenis Layanan cell was blank or unreadable. Counted so the
+       four kinds above always add up to the total — a stat row that silently
+       does not sum is the fastest way to lose trust in the rest of the page. */
+    unknown: scored.filter((s) => !s.kind).length,
   }), [scored])
+
+  /**
+   * How the scored sites split across the three Status bands.
+   *
+   * Counted over `scored` rather than over the filtered rows on purpose: the
+   * legend below the filters is a key for the column *and* a standing summary of
+   * the agent scope, and a key whose numbers move every time someone types in
+   * the search box is neither. The table's own heading already says how many
+   * rows the filters left.
+   */
+  const statusCounts = useMemo(() => ({
+    urgent: scored.filter((s) => s.status === 'urgent').length,
+    perhatian: scored.filter((s) => s.status === 'perhatian').length,
+    stable: scored.filter((s) => s.status === 'stable').length,
+  }), [scored])
+
+  /**
+   * The three filter dropdowns' contents, counted over the current agent scope.
+   *
+   * The counts are the reason these are built here rather than written out as
+   * static lists in the markup. A dropdown that says "Pickup 37" answers the
+   * question before it is asked, and — more usefully — a "Tutup 0" tells you
+   * straight away that unticking it will change nothing, which is exactly the
+   * click people waste when a filter is opaque.
+   *
+   * They deliberately count the whole scope rather than what the *other*
+   * filters have left. A count that moved every time a neighbouring box was
+   * ticked would be measuring the interaction rather than the data, and the
+   * numbers would stop agreeing with the stat cards above the table.
+   *
+   * The two "not stated" options are conditional. On a clean file they can only
+   * ever match nothing, and an option that cannot do anything is a click into a
+   * dead end; when they do appear, appearing is itself the signal that the
+   * workbook has a gap in it.
+   */
+  const filterOpts = useMemo(() => {
+    const n = (p: (s: Scored) => boolean) => scored.filter(p).length
+    const unknownBiz = n((s) => !s.dp.bizModel)
+    return {
+      service: [
+        { value: 'both', label: DP_KIND_LABEL.both, zh: DP_KIND_ZH.both, n: counts.both },
+        { value: 'delivery', label: DP_KIND_LABEL.delivery, zh: DP_KIND_ZH.delivery, n: counts.delivery },
+        { value: 'pickup', label: DP_KIND_LABEL.pickup, zh: DP_KIND_ZH.pickup, n: counts.pickup },
+        { value: 'closed', label: DP_KIND_LABEL.closed, zh: DP_KIND_ZH.closed, n: counts.closed },
+        ...(counts.unknown > 0
+          ? [{ value: '', label: 'Tanpa jenis layanan', zh: '未填', n: counts.unknown }]
+          : []),
+      ],
+      type: [
+        { value: 'dp', label: 'Drop point', zh: '网点', n: n((s) => !s.dp.isCp) },
+        { value: 'cp', label: 'Collection point', zh: '揽收点', n: n((s) => s.dp.isCp) },
+      ],
+      biz: [
+        { value: 'franchise', label: 'Franchise', zh: '加盟', n: n((s) => s.dp.bizModel === 'franchise') },
+        { value: 'agent', label: 'Agent', zh: '自营', n: n((s) => s.dp.bizModel === 'agent') },
+        ...(unknownBiz > 0
+          ? [{ value: '', label: 'Tanpa model bisnis', zh: '未填', n: unknownBiz }]
+          : []),
+      ],
+    }
+  }, [scored, counts])
 
   /**
    * The five best or worst sites for one category.
    *
    * Two exclusions, and they are different things:
    *
-   *   `dpStatusOf` already removed the sites that do not run a delivery shift at
-   *   all — pickup-only and closed. Only `both` and `delivery` reach here.
+   *   `rankable` already removed the sites the file says do not run a delivery
+   *   shift at all — Pickup and Tutup. Only Pickup Delivery, Delivery, and sites
+   *   with no stated service reach here.
    *
    *   This then drops sites reading exactly 0 *in the category being ranked*. A
    *   site can be active overall and still have no activity in one category —
@@ -312,11 +443,14 @@ export default function DpSection({
 
   /**
    * The same two charts, ranked on the whole scorecard instead of one category:
-   * how many of the eight KPIs the site met.
+   * how many of the scored KPIs the site met.
    *
-   * The counts are the ones already in the table's "Sesuai target" column, so a
-   * bar reading 6 / 8 and the row reading 6/8 can never disagree — a chart that
-   * contradicts the table underneath it is worse than no chart.
+   * The counts are the ones already in the table's "Sesuai target" column and
+   * behind its Status badge, so a bar reading 6 / 7, a row reading 6/7 and a
+   * "Perhatian" plate can never disagree — a chart that contradicts the table
+   * underneath it is worse than no chart. That is also why this is `SCORE_TOTAL`
+   * categories rather than every column: TTD RITASE 2 is off the scorecard, so
+   * it is off these bars too.
    *
    * The two charts measure opposite things on purpose. Worst counts the misses,
    * best counts the hits, so in both the bar grows in the direction the title
@@ -325,7 +459,7 @@ export default function DpSection({
    * Sites with nothing scored are dropped — a site with no readings has met 0 of
    * 0, which is not an achievement or a failure. The zero rule that applies to a
    * single-category ranking does not: a 0 here is a real miss on a real KPI, and
-   * the site is being judged on eight of them rather than on that one.
+   * the site is being judged on seven of them rather than on that one.
    */
   const rankTotal = (worst: boolean): HBar[] => {
     const rows = rankable.filter((s) => s.scored > 0)
@@ -385,9 +519,16 @@ export default function DpSection({
   /* ---------------------------------------------------------- table state */
 
   const [q, setQ] = useState('')
-  const [status, setStatus] = useState<StatusFilter>('all')
-  const [type, setType] = useState<'all' | 'dp' | 'cp'>('all')
-  const [biz, setBiz] = useState<'all' | BizModel>('all')
+  /*
+   * Three filters, and each holds the values switched **off** rather than the
+   * one value chosen. They were single-choice `<select>`s, which could not
+   * express the question people were actually asking — "how are the sites that
+   * do pickups doing" spans Pickup Delivery *and* Pickup — so each is now a
+   * `MultiSelect`. See that file for why the set is stored inside out.
+   */
+  const [svcOff, setSvcOff] = useState<ReadonlySet<string>>(() => new Set<string>())
+  const [typeOff, setTypeOff] = useState<ReadonlySet<string>>(() => new Set<string>())
+  const [bizOff, setBizOff] = useState<ReadonlySet<string>>(() => new Set<string>())
   const [onlyBelow, setOnlyBelow] = useState(false)
   const [mode, setMode] = useState<ValueMode>('day')
   const [sortKey, setSortKey] = useState<string>(COL_NAME)
@@ -521,11 +662,20 @@ export default function DpSection({
      * for.
      */
     let out = basketOn ? scored.filter((s) => picked.has(s.dp.key)) : scored.filter((s) => {
-      if (status !== 'all' && s.kind !== status) return false
-      if (type === 'cp' && !s.dp.isCp) return false
-      if (type === 'dp' && s.dp.isCp) return false
-      if (biz !== 'all' && s.dp.bizModel !== biz) return false
-      if (needle && !`${s.dp.label} ${s.dp.agentLabel}`.toLowerCase().includes(needle)) return false
+      /* One membership test each, against the switched-off set. A value the
+         dropdown has no option for can never be in that set, so it is shown —
+         which is the right default for a workbook that grows a category the
+         dashboard has not been told about yet. */
+      if (svcOff.has(s.kind)) return false
+      if (typeOff.has(s.dp.isCp ? 'cp' : 'dp')) return false
+      if (bizOff.has(s.dp.bizModel)) return false
+      /* The supervisor is searchable even though it has no dropdown of its own:
+         typing a name is the fastest way to scope the table to one person, and
+         it costs nothing to leave in. */
+      if (needle
+        && !`${s.dp.label} ${s.dp.agentLabel} ${s.dp.supervisor}`.toLowerCase().includes(needle)) {
+        return false
+      }
       if (onlyBelow && tableK) {
         const v = cell(s, tableK)
         if (v == null) return false
@@ -539,8 +689,28 @@ export default function DpSection({
     out = [...out].sort((a, b) => {
       if (liveSort === COL_NAME) return dir * a.dp.label.localeCompare(b.dp.label)
       if (liveSort === COL_AGENT) return dir * a.dp.agentLabel.localeCompare(b.dp.agentLabel)
-      if (liveSort === COL_STATUS) return dir * (KIND_RANK[a.kind] - KIND_RANK[b.kind])
+      if (liveSort === COL_SPV) {
+        /* Sites with no named supervisor sink, both ways round — the same rule
+           the KPI columns use for a missing reading, and for the same reason. */
+        if (!a.dp.supervisor !== !b.dp.supervisor) return a.dp.supervisor ? -1 : 1
+        return dir * a.dp.supervisor.localeCompare(b.dp.supervisor)
+      }
+      if (liveSort === COL_SERVICE) {
+        if (!a.kind !== !b.kind) return a.kind ? -1 : 1
+        return dir * (KIND_RANK[a.kind] - KIND_RANK[b.kind])
+      }
       if (liveSort === COL_ONTARGET) return dir * (a.onTarget - b.onTarget)
+      if (liveSort === COL_STATUS) {
+        /* Unscored rows sink both ways — the same rule the KPI columns use for a
+           missing reading. A site with nothing to judge is not the calmest one. */
+        if (!a.status !== !b.status) return a.status ? -1 : 1
+        if (STATUS_RANK[a.status] !== STATUS_RANK[b.status]) {
+          return dir * (STATUS_RANK[a.status] - STATUS_RANK[b.status])
+        }
+        /* Within a band, the one that missed more comes first — "Urgent" covers
+           four misses and seven, and those are not the same morning. */
+        return dir * ((a.scored - a.onTarget) - (b.scored - b.onTarget)) * -1
+      }
       const k = catKpis.find((x) => x.label === liveSort)
       if (!k) return 0
       const av = cell(a, k), bv = cell(b, k)
@@ -551,7 +721,7 @@ export default function DpSection({
       return dir * (av - bv)
     })
     return out
-  }, [scored, q, status, type, biz, onlyBelow, tableK, liveSort, liveDir, mode, catKpis,
+  }, [scored, q, svcOff, typeOff, bizOff, onlyBelow, tableK, liveSort, liveDir, mode, catKpis,
       basketOn, picked])
 
   /* A deliberate selection is never truncated: forty is a guard against dumping
@@ -617,22 +787,32 @@ export default function DpSection({
     const head = [
       'DP / CP 网点',
       ...(showAgent ? ['Agen 代理区'] : []),
+      ...(showSpv ? ['Supervisor 主管'] : []),
       'Jenis 类型',
       'Model Bisnis 商业模式',
-      ...(showStatus ? ['Status 状态'] : []),
+      ...(showService ? ['Jenis Layanan 服务类型'] : []),
       ...visKpis.map((k) => `${k.label}${zh(k)}`),
-      ...(showOnTarget ? ['Sesuai target 达标数'] : []),
+      ...(showOnTarget ? [`Sesuai target (dari ${SCORE_TOTAL}) 达标数`] : []),
+      ...(showStatus ? ['Status 状态'] : []),
     ]
 
     const body = filtered.map((s) => [
       s.dp.label,
       ...(showAgent ? [agentFull(s.dp.agentLabel)] : []),
+      ...(showSpv ? [s.dp.supervisor] : []),
       s.dp.isCp ? 'CP' : 'DP',
       BIZ_MODEL_LABEL[s.dp.bizModel],
-      ...(showStatus ? [`${DP_KIND_LABEL[s.kind]} ${DP_KIND_ZH[s.kind]}`] : []),
+      /* `DP_KIND_ZH['']` is deliberately empty, so an unstated service exports as
+         a bare "—" rather than as a dash trailing a stray space. */
+      ...(showService
+        ? [`${DP_KIND_LABEL[s.kind]}${DP_KIND_ZH[s.kind] ? ` ${DP_KIND_ZH[s.kind]}` : ''}`]
+        : []),
       ...visKpis.map((k) => cell(s, k)),
-      /* only sites that run a delivery shift are scored — see dpStatusOf */
+      /* only sites that run a delivery shift are scored — see `isRankable` */
       ...(showOnTarget ? [isRankable(s.kind) ? `${s.onTarget}/${s.scored}` : ''] : []),
+      /* The band, not the range. A sheet is sorted and filtered on, and
+         "Urgent" is worth more as a value you can group by than as prose. */
+      ...(showStatus ? [s.status ? DP_STATUS_LABEL[s.status] : ''] : []),
     ])
 
     const ws = XLSX.utils.aoa_to_sheet([head, ...body])
@@ -641,7 +821,7 @@ export default function DpSection({
        A real percent format would multiply by 100 and print 9825%.
        Counted off the head rather than hardcoded: which columns precede the
        KPIs now depends on the column switch as well as on the agent scope. */
-    const firstKpi = 1 + (showAgent ? 1 : 0) + 2 + (showStatus ? 1 : 0)
+    const firstKpi = 1 + (showAgent ? 1 : 0) + (showSpv ? 1 : 0) + 2 + (showService ? 1 : 0)
     for (let R = 1; R <= body.length; R++) {
       for (let C = firstKpi; C < firstKpi + visKpis.length; C++) {
         const c = ws[XLSX.utils.encode_cell({ r: R, c: C })]
@@ -652,11 +832,13 @@ export default function DpSection({
     ws['!cols'] = [
       { wch: 28 },
       ...(showAgent ? [{ wch: 20 }] : []),
+      ...(showSpv ? [{ wch: 22 }] : []),
       { wch: 7 },
       { wch: 14 },
-      ...(showStatus ? [{ wch: 24 }] : []),
+      ...(showService ? [{ wch: 24 }] : []),
       ...visKpis.map(() => ({ wch: 15 })),
-      ...(showOnTarget ? [{ wch: 14 }] : []),
+      ...(showOnTarget ? [{ wch: 18 }] : []),
+      ...(showStatus ? [{ wch: 12 }] : []),
     ]
     ws['!autofilter'] = {
       ref: XLSX.utils.encode_range({ s: { r: 0, c: 0 }, e: { r: body.length, c: head.length - 1 } }),
@@ -689,8 +871,8 @@ export default function DpSection({
 
   /* the name column, plus whatever the switch left standing — the empty-state
      row has to span exactly the columns that are there */
-  const colCount = 1 + (showAgent ? 1 : 0) + (showStatus ? 1 : 0) + visKpis.length
-    + (showOnTarget ? 1 : 0)
+  const colCount = 1 + (showAgent ? 1 : 0) + (showSpv ? 1 : 0) + (showService ? 1 : 0)
+    + visKpis.length + (showOnTarget ? 1 : 0) + (showStatus ? 1 : 0)
 
   /* a plain function, not a nested component: React would remount a component
      declared inside render on every keystroke and the select would lose focus */
@@ -699,7 +881,9 @@ export default function DpSection({
       className="hsel" value={cur} aria-label={`Kategori yang ditampilkan pada ${id}`}
       onChange={(e) => onChange(e.target.value)}
     >
-      {withTotal && <option value={TOTAL_CAT}>SEMUA INDIKATOR · jumlah sesuai target</option>}
+      {withTotal && (
+        <option value={TOTAL_CAT}>{SCORE_TOTAL} INDIKATOR · jumlah sesuai target</option>
+      )}
       {catKpis.map((k) => <option key={k.label} value={k.label}>{k.label}</option>)}
     </select>
   )
@@ -752,14 +936,25 @@ export default function DpSection({
 
       <div className="dpstats">
         <Stat n={counts.total} lab="Total DP / CP" zh="网点总数" />
-        <Stat n={counts.both} lab="Delivery and Pick up" zh="派送及揽收" tone="good"
-              hint="Menjalankan pengantaran dan penjemputan. Masuk peringkat." />
-        <Stat n={counts.delivery} lab="Delivery Only" zh="仅派送" tone="good"
-              hint="TPTW bernilai nol — mengantar tetapi tidak menyerahkan paket ke alur penjemputan. Tetap masuk peringkat." />
-        <Stat n={counts.pickup} lab="Pick up Only" zh="仅揽收" tone="warn"
-              hint="Tidak ada sprinter di sini — 06:30 dan 07:30 keduanya nol, sehingga dikeluarkan dari peringkat." />
+        {/* Every hint here now describes what the site *is*, per the workbook's
+            Jenis Layanan column — not what its numbers looked like. The old
+            hints explained the inference ("TPTW bernilai nol…"), which is
+            exactly the reasoning that has been taken out. */}
+        <Stat n={counts.both} lab="Pickup Delivery" zh="揽收及派送" tone="good"
+              hint="Menjalankan penjemputan dan pengantaran. Masuk peringkat." />
+        <Stat n={counts.delivery} lab="Delivery" zh="仅派送" tone="good"
+              hint="Hanya mengantar. Masuk peringkat; kategori penjemputan tidak dinilai." />
+        <Stat n={counts.pickup} lab="Pickup" zh="仅揽收" tone="warn"
+              hint="Hanya menjemput. Dikeluarkan dari peringkat — kategori pengantaran pasti nol." />
         <Stat n={counts.closed} lab="Tutup" zh="已关闭" tone="mute"
-              hint="Semua kategori bernilai nol. Dikeluarkan dari peringkat." />
+              hint="Tidak beroperasi. Dikeluarkan dari peringkat." />
+        {/* Only when there are any. A permanent "0 tanpa jenis layanan" card is
+            noise on every normal day and says nothing; appearing at all is the
+            signal that the Fr&Ag or ALL DP DATA column needs a look. */}
+        {counts.unknown > 0 && (
+          <Stat n={counts.unknown} lab="Tanpa jenis layanan" zh="未填服务类型" tone="mute"
+                hint="Kolom Jenis Layanan kosong atau tidak dikenali di file. Tetap diperingkat agar tidak hilang dari grafik — periksa datanya." />
+        )}
         <Stat
           n={tableK ? rankable.filter((s) => { const v = s.vals[tableK.label]; if (v == null) return false; const t = dpTargetFor(s.dp, tableK); return tableK.lowerBetter ? v > t : v < t }).length : 0}
           lab={tableK ? `Di bawah target · ${tableK.label}` : 'Di bawah target'}
@@ -842,36 +1037,29 @@ export default function DpSection({
             worse answer than one that plainly says it is not in use. */}
         <div className="dpfilters">
           <input
-            type="text" placeholder="Cari DP / CP atau agen…" value={q}
+            type="text" placeholder="Cari DP / CP, agen atau supervisor…" value={q}
             onChange={(e) => setQ(e.target.value)} aria-label="Cari drop point"
             disabled={basketOn}
           />
-          <select
-            value={status} onChange={(e) => setStatus(e.target.value as StatusFilter)}
-            aria-label="Filter status" disabled={basketOn}
-          >
-            <option value="all">Semua status</option>
-            <option value="both">Delivery and Pick up</option>
-            <option value="delivery">Delivery Only</option>
-            <option value="pickup">Pick up Only</option>
-            <option value="closed">Tutup</option>
-          </select>
-          <select
-            value={type} onChange={(e) => setType(e.target.value as 'all' | 'dp' | 'cp')}
-            aria-label="Filter jenis" disabled={basketOn}
-          >
-            <option value="all">DP dan CP</option>
-            <option value="dp">Drop point</option>
-            <option value="cp">Collection point</option>
-          </select>
-          <select
-            value={biz} onChange={(e) => setBiz(e.target.value as 'all' | BizModel)}
-            aria-label="Filter model bisnis" disabled={basketOn}
-          >
-            <option value="all">Semua model bisnis</option>
-            <option value="franchise">Franchise</option>
-            <option value="agent">Agent</option>
-          </select>
+          {/* Three multi-selects where there were four single-choice selects.
+              The supervisor one is gone: with the name searchable in the box to
+              the left and shown in its own column, a fourth dropdown listing
+              thirty people was width spent on a question nobody was asking yet. */}
+          <MultiSelect
+            name="Jenis layanan" zh="服务类型" allLabel="Semua jenis layanan"
+            options={filterOpts.service} off={svcOff} onChange={setSvcOff}
+            disabled={basketOn}
+          />
+          <MultiSelect
+            name="Jenis" zh="类型" allLabel="DP dan CP"
+            options={filterOpts.type} off={typeOff} onChange={setTypeOff}
+            disabled={basketOn}
+          />
+          <MultiSelect
+            name="Model bisnis" zh="商业模式" allLabel="Semua model bisnis"
+            options={filterOpts.biz} off={bizOff} onChange={setBizOff}
+            disabled={basketOn}
+          />
           {/* The category this checkbox measures against is named in the label
               rather than sitting beside it as its own select. On its own that
               select changed nothing you could see — it only parameterised this
@@ -956,6 +1144,47 @@ export default function DpSection({
         </div>
 
         {/*
+          The key for the Status column.
+
+          A three-value column whose values are opinions — "Urgent", "Stable" —
+          is unreadable without its thresholds, and a `title` on the header is
+          not good enough: the question "how bad is Perhatian?" is asked while
+          looking at a row, not at a heading, and an answer that needs a hover on
+          a different part of the screen does not get found.
+
+          So the bands are written out, each with the count of sites currently in
+          it. That second part is what makes this worth its height — the same
+          strip that explains the column also says "31 Urgent" before anyone
+          sorts or filters anything, which is the first thing you would have gone
+          looking for.
+
+          It sits under the column switch rather than above the filters because
+          it belongs to the table, not to the finders: everything above chooses
+          what the table contains, and this describes what is in it. Hidden with
+          the column it explains — a key to something that is not on screen is
+          just noise taking up a row.
+        */}
+        {showStatus && (
+          <div className="stleg">
+            <span className="stleg-h">
+              Status <Zh>状态</Zh>
+              <em>dari {SCORE_TOTAL} indikator yang dinilai</em>
+            </span>
+            <span className="stleg-pills">
+              <StatLeg k="urgent" n={statusCounts.urgent} />
+              <StatLeg k="perhatian" n={statusCounts.perhatian} />
+              <StatLeg k="stable" n={statusCounts.stable} />
+            </span>
+            {/* Named, not just implied by the arithmetic. Someone counting the
+                columns will get eight and the scorecard says seven, and that
+                discrepancy should be answered on the same line it is noticed. */}
+            <span className="stleg-note">
+              {UNSCORED_LABELS.join(', ')} tidak ikut dihitung
+            </span>
+          </div>
+        )}
+
+        {/*
           The selection bar. Appears on the first tick and counts up from there.
 
           It replaced a checkbox sitting among the filters, which was wrong twice
@@ -997,7 +1226,8 @@ export default function DpSection({
                 <tr className="secrow" ref={secRowRef}>
                   <th className="sticky" />
                   {showAgent && <th className="agentcol" />}
-                  {showStatus && <th />}
+                  {showSpv && <th className="spvcol" />}
+                  {showService && <th />}
                   {catRuns.map((run, i) => (
                     <th
                       key={run.id}
@@ -1008,6 +1238,7 @@ export default function DpSection({
                     </th>
                   ))}
                   {showOnTarget && <th />}
+                  {showStatus && <th />}
                 </tr>
                 <tr className="catrow">
                   <th className="sticky" onClick={() => sortOn(COL_NAME)}>
@@ -1018,28 +1249,53 @@ export default function DpSection({
                       Agen{arrow(COL_AGENT)}<Zh>代理区</Zh>
                     </th>
                   )}
-                  {showStatus && (
-                    <th onClick={() => sortOn(COL_STATUS)}>Status{arrow(COL_STATUS)}<Zh>状态</Zh></th>
-                  )}
-                  {visKpis.map((k) => (
-                    <th
-                      key={k.label}
-                      className={`num cat${seamLabels.has(k.label) ? ' seam' : ''}`}
-                      onClick={() => sortOn(k.label)} title={k.label}
-                    >
-                      {k.label}{arrow(k.label)}<Zh>{CATEGORY_ZH[k.label] ?? ''}</Zh>
+                  {showSpv && (
+                    <th className="spvcol" onClick={() => sortOn(COL_SPV)}>
+                      Supervisor{arrow(COL_SPV)}<Zh>主管</Zh>
                     </th>
-                  ))}
+                  )}
+                  {showService && (
+                    <th onClick={() => sortOn(COL_SERVICE)}>
+                      Jenis Layanan{arrow(COL_SERVICE)}<Zh>服务类型</Zh>
+                    </th>
+                  )}
+                  {visKpis.map((k) => {
+                    /* An unscored category is still a column and still sortable —
+                       it just says so, once, in the header where someone
+                       reconciling the count against the columns will look. */
+                    const off = !isScored(k.label)
+                    return (
+                      <th
+                        key={k.label}
+                        className={`num cat${seamLabels.has(k.label) ? ' seam' : ''}${off ? ' unscored' : ''}`}
+                        onClick={() => sortOn(k.label)}
+                        title={off ? `${k.label} — tidak dihitung dalam Sesuai target / Status` : k.label}
+                      >
+                        {k.label}{off ? '*' : ''}{arrow(k.label)}<Zh>{CATEGORY_ZH[k.label] ?? ''}</Zh>
+                      </th>
+                    )
+                  })}
                   {showOnTarget && (
-                    <th className="num" onClick={() => sortOn(COL_ONTARGET)}>
+                    <th
+                      className="num" onClick={() => sortOn(COL_ONTARGET)}
+                      title={`Berapa dari ${SCORE_TOTAL} indikator yang dinilai sudah sesuai target`}
+                    >
                       Sesuai target{arrow(COL_ONTARGET)}<Zh>达标数</Zh>
+                    </th>
+                  )}
+                  {showStatus && (
+                    <th onClick={() => sortOn(COL_STATUS)}>
+                      Status{arrow(COL_STATUS)}<Zh>状态</Zh>
                     </th>
                   )}
                 </tr>
               </thead>
               <tbody>
                 {shown.map((s) => (
-                  <tr key={s.dp.key} className={`k-${s.kind}${picked.has(s.dp.key) ? ' picked' : ''}`}>
+                  <tr
+                    key={s.dp.key}
+                    className={`k-${dpKindClass(s.kind)}${picked.has(s.dp.key) ? ' picked' : ''}`}
+                  >
                     {/*
                       The flex layout lives on the span inside, not on the cell.
 
@@ -1078,18 +1334,39 @@ export default function DpSection({
                         </span>
                         <span className="dptext">{s.dp.label}</span>
                       </span>
-                      {/* The agent, folded into the pinned cell — shown only on a
-                          phone, where the column of its own below is hidden. It
-                          rides along with the name instead of costing width the
-                          indicators need. */}
-                      {showAgent && <span className="dpagent">{s.dp.agentLabel}</span>}
+                      {/* Agent and supervisor, folded into the pinned cell — shown
+                          only on a phone, where their own columns below are
+                          hidden. They ride along with the name instead of costing
+                          width the indicators need, and share one line separated
+                          by a middot rather than taking two: the pinned cell is
+                          nearly the whole screen at that width, and a third line
+                          of it starts pushing the numbers out of sight. */}
+                      {(showAgent || (showSpv && s.dp.supervisor)) && (
+                        <span className="dpagent">
+                          {showAgent ? s.dp.agentLabel : ''}
+                          {showAgent && showSpv && s.dp.supervisor ? ' · ' : ''}
+                          {showSpv && s.dp.supervisor ? s.dp.supervisor : ''}
+                        </span>
+                      )}
                     </td>
                     {showAgent && (
                       <td className="muted agentcol">{s.dp.agentLabel}<Zh>{agentZh(s.dp.agentLabel)}</Zh></td>
                     )}
-                    {showStatus && (
+                    {showSpv && (
+                      <td className="spvcol" title={s.dp.supervisor || undefined}>
+                        {/* An unnamed supervisor is a dash, not a blank cell: a
+                            blank reads as "this column did not load", a dash
+                            reads as "the file does not say", and only one of
+                            those is true. */}
+                        {s.dp.supervisor || <span className="muted">—</span>}
+                      </td>
+                    )}
+                    {showService && (
                       <td>
-                        <span className={`sbadge ${s.kind}`} title={DP_KIND_ZH[s.kind]}>
+                        <span
+                          className={`sbadge ${dpKindClass(s.kind)}`}
+                          title={DP_KIND_ZH[s.kind] || 'Jenis Layanan tidak tercantum di file'}
+                        >
                           {DP_KIND_LABEL[s.kind]}
                         </span>
                       </td>
@@ -1100,12 +1377,16 @@ export default function DpSection({
                       if (v == null) return <td key={k.label} className={`num muted${seam}`}>—</td>
                       const t = dpTargetFor(s.dp, k)
                       const ok = k.lowerBetter ? v <= t : v >= t
-                      /* Pickup-only and closed sites are grey, not red: their
-                         zeros are structural, and colouring them as failures is
-                         exactly the false alarm this section exists to remove.
-                         A delivery-only site is the same story one cell at a
-                         time — only the categories it does not run read 0, so
-                         those go grey and the rest stay scored normally. */
+                      /* Pickup and Tutup sites are grey, not red: their zeros are
+                         structural, and colouring them as failures is exactly the
+                         false alarm this section exists to remove. A Delivery site
+                         is the same story one cell at a time — only the categories
+                         it does not run read 0, so those go grey and the rest stay
+                         scored normally.
+                         This is the last thing that still reasons about a zero,
+                         and it is allowed to: it is not deciding *what the site
+                         is* — the file already said — only how to shade a cell in
+                         a site whose kind is known. */
                       const structural = s.kind === 'delivery' && v === 0
                       const cls = isRankable(s.kind) && !structural
                         ? (ok ? 'hm ok' : 'hm bad')
@@ -1120,6 +1401,23 @@ export default function DpSection({
                       <td className="num">
                         {isRankable(s.kind)
                           ? `${s.onTarget}/${s.scored}`
+                          : <span className="muted">—</span>}
+                      </td>
+                    )}
+                    {showStatus && (
+                      <td>
+                        {s.status
+                          ? (
+                            <span
+                              className={`stbadge ${s.status}`}
+                              /* The row's own arithmetic, not the generic band —
+                                 "4/7 · meleset 3" answers "why is this Urgent?"
+                                 on the row that raised the question. */
+                              title={`${DP_STATUS_HINT[s.status]} Di sini: ${s.onTarget}/${s.scored} sesuai target.`}
+                            >
+                              {DP_STATUS_LABEL[s.status]}
+                            </span>
+                          )
                           : <span className="muted">—</span>}
                       </td>
                     )}
@@ -1147,13 +1445,18 @@ export default function DpSection({
 
       <div className="note">
         Nilai yang ditampilkan: {mode === 'mtd' ? 'pencapaian bulan ini' : dayLabel}.
-        {' '}Status ditentukan dari data hari itu:
-        {' '}<b>Pick up Only</b> — 06:30 dan 07:30 keduanya nol, berarti tidak ada sprinter di sini;
-        {' '}<b>Delivery Only</b> — TPTW bernilai nol, jadi paket diantar tetapi tidak diserahkan ke alur
-        penjemputan; {' '}<b>Delivery and Pick up</b> — semua kategori berjalan;
-        {' '}<b>Tutup</b> — nilai nol pada semua kategori.
+        {' '}<b>Jenis Layanan</b> diambil apa adanya dari kolom Jenis Layanan di file
+        (<i>ALL DP DATA</i>) — <b>Pickup Delivery</b>, <b>Delivery</b>, <b>Pickup</b>, atau
+        {' '}<b>Tutup</b> — bukan lagi ditebak dari angka hari itu. <b>Supervisor</b> diambil dari
+        sheet <i>Fr&amp;Ag</i>; tanda <b>—</b> berarti file tidak mencantumkannya.
+        {' '}<b>Status</b> dihitung dari {SCORE_TOTAL} indikator — {UNSCORED_LABELS.join(', ')}
+        {' '}(bertanda <b>*</b>) tetap ditampilkan tetapi tidak ikut dinilai:
+        {' '}<b>Stable</b> {DP_STATUS_RANGE.stable}, <b>Perhatian</b> {DP_STATUS_RANGE.perhatian},
+        {' '}<b>Urgent</b> {DP_STATUS_RANGE.urgent}. Yang dihitung adalah <i>berapa yang meleset</i>,
+        bukan berapa yang ada nilainya — jadi DP <b>Delivery</b>, yang beberapa kategorinya memang
+        nol karena tidak dijalankan, tidak dihukum untuk kategori yang tidak ada di sana.
         {' '}Tanda <b>FR</b> / <b>AG</b> di depan nama adalah model bisnisnya: Franchise atau Agent.
-        {' '}Tiga hal dikeluarkan dari peringkat lima terbaik dan lima terburuk: <b>Pick up Only</b>,
+        {' '}Tiga hal dikeluarkan dari peringkat lima terbaik dan lima terburuk: <b>Pickup</b>,
         {' '}<b>Tutup</b>, dan <b>DP/CP yang bernilai tepat 0,00% pada kategori yang sedang diperingkat</b>
         {' '}— itu berarti kategorinya tidak berjalan hari itu, bukan performanya nol, jadi kalau ikut
         diperingkat ia akan menguasai daftar terburuk setiap hari tanpa memberi informasi apa pun.
@@ -1171,19 +1474,20 @@ export default function DpSection({
  * costs someone twenty minutes and a phone call.
  */
 /**
- * Says what the bars count when the ranking is over all eight KPIs.
+ * Says what the bars count when the ranking is over the whole scorecard.
  *
- * Without it "6 / 8" is ambiguous in exactly the way that matters — six met or
+ * Without it "6 / 7" is ambiguous in exactly the way that matters — six met or
  * six missed? — and the two charts genuinely do count opposite things.
  */
 function TotalNote({ worst }: { worst: boolean }) {
   return (
     <div className="chartnote">
       {worst
-        ? 'Jumlah Indikator yang di bawah target, dari Indikator yang ada nilainya — makin panjang makin buruk.'
-        : 'Jumlah Indikator yang sudah sesuai target, dari Indikator yang ada nilainya — makin panjang makin baik.'}
-      {' '}Angka ini sama dengan kolom <b>Sesuai target</b> di tabel bawah. Bila jumlahnya seri,
-      urutannya ditentukan oleh seberapa jauh nilainya dari target.
+        ? `Jumlah dari ${SCORE_TOTAL} Indikator yang di bawah target — makin panjang makin buruk.`
+        : `Jumlah dari ${SCORE_TOTAL} Indikator yang sudah sesuai target — makin panjang makin baik.`}
+      {' '}Angka ini sama dengan kolom <b>Sesuai target</b> dan <b>Status</b> di tabel bawah;
+      {' '}{UNSCORED_LABELS.join(', ')} tidak ikut dihitung. Bila jumlahnya seri, urutannya
+      ditentukan oleh seberapa jauh nilainya dari target.
     </div>
   )
 }
@@ -1194,6 +1498,28 @@ function ZeroNote({ n }: { n: number }) {
     <div className="chartnote">
       {n} DP/CP tidak diperingkat: nilainya 0,00% — tidak ada aktivitas pada kategori ini.
     </div>
+  )
+}
+
+/**
+ * One band in the Status key: the name, the range it covers, and how many sites
+ * are in it.
+ *
+ * The range comes from `DP_STATUS_RANGE`, which is computed from the same
+ * constants the classifier uses — a key that is typed out by hand is a key that
+ * eventually lies, and this one is the only explanation the column has.
+ */
+function StatLeg({ k, n }: { k: Exclude<DpStatus, ''>; n: number }) {
+  return (
+    /* No Mandarin gloss on the pill: three of these side by side, each carrying
+       both readings plus a range plus a count, is more text than a key can hold.
+       The band name is glossed once on the heading beside them, and again in the
+       tooltip here. */
+    <span className={`stleg-p ${k}`} title={`${DP_STATUS_LABEL[k]} ${DP_STATUS_ZH[k]} — ${DP_STATUS_HINT[k]}`}>
+      <span className={`stbadge ${k}`}>{DP_STATUS_LABEL[k]}</span>
+      <span className="stleg-r">{DP_STATUS_RANGE[k]}</span>
+      <span className="stleg-n">{n}</span>
+    </span>
   )
 }
 
