@@ -11,6 +11,7 @@
     "secrets": "node scripts/hash-password.mjs"
   },
   "dependencies": {
+    "html2canvas-pro": "^2.3.6",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "xlsx": "^0.18.5"

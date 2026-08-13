@@ -2122,9 +2122,45 @@ function fittingScale(width: number, height: number, want: number): number | nul
 }
 
 /**
- * Renders `el` to a PNG download. html2canvas is fetched on first use only, so
- * the page still loads and parses Excel with no internet — the Excel path never
- * depends on this.
+ * Renders `el` to a PNG download. The renderer is code-split, so it is fetched
+ * on first press only and the Excel path never waits for it.
+ *
+ * The library is `html2canvas-pro`, installed as a dependency, and both halves
+ * of that sentence are a bug fix.
+ *
+ * *Which* library, first. This used to be html2canvas 1.4.1, whose value parser
+ * throws `SyntaxError: Error parsing CSS component value, unexpected EOF` the
+ * moment `getComputedStyle` hands it an **empty string** for any of the seventy
+ * properties it reads:
+ *
+ *     const value = style != null ? style.toString() : descriptor.initialValue
+ *     ...
+ *     if (token.type === EOF) throw new SyntaxError('… unexpected EOF')
+ *
+ * A property the browser does not implement is `undefined`, and `undefined`
+ * takes the `initialValue` branch — that case is safe. A property the browser
+ * *does* implement but resolves to `''` is not: it goes to the tokenizer, the
+ * tokenizer produces nothing but EOF, and the whole capture dies before a single
+ * pixel is drawn. Which properties resolve that way is a per-engine detail
+ * (Safari and older WebKit views are the usual reporters), so the button worked
+ * on the machine it was written on and did nothing on somebody else's phone.
+ * Nothing in this repository could reach inside the library to stop it, because
+ * the library was a `<script>` tag from a CDN.
+ *
+ * html2canvas-pro is the maintained fork of exactly that code, and it fixes this
+ * upstream by treating a blank value as the absent value:
+ *
+ *     if (rawValue.trim() === '') rawValue = descriptor.initialValue
+ *
+ * Same options, same rendering, plus modern colour syntax (`oklch`, `lab`,
+ * `color-mix`) that 1.4.1 could not parse either.
+ *
+ * *Installed* rather than fetched, second. The old loader appended a script tag
+ * pointing at cdnjs and rejected on `onerror`, which made every export depend on
+ * a third party being reachable — a blocked CDN, a captive portal or a corporate
+ * proxy showed up as a button that did nothing. As a dependency it is part of
+ * the build: Vite gives the dynamic `import()` its own chunk, served from this
+ * origin, allowed by the existing `script-src 'self'`, and working offline.
  *
  * Capturing the *whole* dashboard, not just the visible part, needs four things
  * that html2canvas will not infer on its own:
@@ -2151,21 +2187,22 @@ export async function exportPng(
    */
   bodyClass = '',
 ): Promise<void> {
-  const w = window as unknown as { html2canvas?: (e: HTMLElement, o: object) => Promise<HTMLCanvasElement> }
-
-  if (!w.html2canvas) {
-    await new Promise<void>((resolve, reject) => {
-      const tag = document.createElement('script')
-      tag.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js'
-      tag.onload = () => resolve()
-      tag.onerror = () => reject(new Error(
-        /* The Cetak / PDF button these three messages used to point at is gone.
-           The print stylesheet behind it is not, so the fallback still exists —
-           it is just reached with Ctrl+P now, and has to say so. */
-        'Pustaka gambar gagal dimuat — sepertinya Anda sedang offline. '
-        + 'Cetak halaman ini lewat browser (Ctrl+P) sebagai gantinya.'))
-      document.head.appendChild(tag)
-    })
+  /* Loaded before anything is moved on the page: a failure here must leave the
+     dashboard exactly as the user left it, not mid-photograph. The only way this
+     rejects now is a chunk that is missing or stale — a deploy that landed while
+     the tab was open — which is a reload, not an internet problem, so the
+     message says so. */
+  let render: typeof import('html2canvas-pro').default
+  try {
+    render = (await import('html2canvas-pro')).default
+  } catch {
+    throw new Error(
+      /* The Cetak / PDF button these three messages used to point at is gone.
+         The print stylesheet behind it is not, so the fallback still exists —
+         it is just reached with Ctrl+P now, and has to say so. */
+      'Pustaka gambar gagal dimuat. Muat ulang halaman ini (Ctrl+Shift+R) lalu coba lagi, '
+      + 'atau cetak lewat browser (Ctrl+P) sebagai gantinya.',
+    )
   }
 
   const prevX = window.scrollX
@@ -2234,7 +2271,7 @@ export async function exportPng(
       )
     }
 
-    const canvas = await w.html2canvas!(el, {
+    const canvas = await render(el, {
       backgroundColor: pageBackground(),
       scale,
       useCORS: true,
@@ -2256,13 +2293,41 @@ export async function exportPng(
     const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
     if (!blob) throw new Error('Browser tidak dapat mengodekan gambar ini.')
     const url = URL.createObjectURL(blob)
+
+    /*
+     * A picture that exists and never reaches the phone is the same failure as
+     * no picture, so the save is checked rather than assumed.
+     *
+     * `<a download>` is the good path and the only one that gets to name the
+     * file. It is also not universal: the in-app browsers people open a link
+     * from — WhatsApp, Instagram, Facebook — and older iOS Safari either ignore
+     * the attribute or refuse the click outright, and a browser that ignores it
+     * navigates away from the dashboard to the image instead of saving it.
+     *
+     * `'download' in a` is what separates the two, and it is a real feature test
+     * rather than a guess at which browser this is. Where the attribute is not
+     * supported the image is opened in a tab instead — long-press, "Simpan
+     * gambar" — and where even that is blocked the message says which button of
+     * the browser's own to press, because at that point nothing this code does
+     * can save the file for them.
+     */
     const a = document.createElement('a')
-    a.href = url
-    a.download = filename
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
-    setTimeout(() => URL.revokeObjectURL(url), 2000)
+    if ('download' in a) {
+      a.href = url
+      a.download = filename
+      document.body.appendChild(a)
+      a.click()
+      a.remove()
+    } else if (!window.open(url, '_blank')) {
+      URL.revokeObjectURL(url)
+      throw new Error(
+        'Browser ini tidak mengizinkan unduhan otomatis. Izinkan pop-up untuk halaman ini, '
+        + 'atau buka dashboard di Chrome / Safari lalu coba lagi.',
+      )
+    }
+    /* Late enough for the download or the new tab to have taken its copy, early
+       enough that a session of exports does not hold every bitmap in memory. */
+    setTimeout(() => URL.revokeObjectURL(url), 60_000)
   } finally {
     document.body.classList.remove('shooting')
     if (bodyClass) document.body.classList.remove(bodyClass)
