@@ -1384,6 +1384,12 @@ body.shooting .tipbox,
 body.shooting .dpfilters,
 body.shooting .dpcolbar,
 body.shooting .dpmore,
+/* The selection bar is two buttons and a count. `body.shooting .btn` takes the
+   buttons, which used to leave a red-edged strip holding "3 dipilih" and a wide
+   empty space where the actions had been — a control half-erased rather than
+   removed. The count is not lost with it: the panel heading already reads
+   "Perbandingan DP / CP — 3 dipilih". */
+body.shooting .dppicked,
 body.shooting .legend button.off{display:none !important}
 
 /* A bar chart whose x-axis carries agent names keeps its width and pans on a
@@ -1401,6 +1407,41 @@ body.shooting .dpscroll{overflow:visible !important;max-height:none !important}
 body.shooting table.dpgrid thead th,
 body.shooting table.dpgrid th.sticky,
 body.shooting table.dpgrid td.sticky{position:static !important}
+
+/* ---------- no box-shadows on the pinned column while shooting ----------
+
+   This is the red hook that kept appearing under the bottom-left corner of an
+   exported table.
+
+   The pinned cells carry two shadows: the drop shadow that says the column does
+   not move, and — on a ticked row — `inset 3px 0 0` in red, which is how a
+   selected row is marked without a `border-left` shifting its text by 3px. The
+   last row's first cell is also the one that carries the panel's bottom-left
+   `border-radius`.
+
+   html2canvas draws a shadow on a rounded box by filling the corner path rather
+   than clipping it, so at that one cell the 3px inset stripe came out as a solid
+   red wedge sweeping along the bottom of the table — the wider the table, the
+   longer the smear. Only the corner cell is affected, which is why it read as a
+   stray mark rather than as anything to do with the selection.
+
+   Neither shadow is worth keeping in a still: nothing scrolls in a picture, so
+   the drop shadow has nothing to say. The selection mark does, so it is redrawn
+   as a background gradient — a flat 3px band html2canvas renders exactly, and
+   which the cell's own `border-radius` clips properly. It sits over the cell's
+   background-color, so the ticked-row tint underneath is unchanged. */
+body.shooting table.dpgrid th.sticky,
+body.shooting table.dpgrid td.sticky{box-shadow:none !important}
+/* The tick boxes go with them. `appearance:none` is a live-DOM instruction and
+   html2canvas does not honour it — it draws the operating system's own control
+   instead, so the brand's red box came out of the export as a pale grey square
+   with a black check, the one light thing on a black plate. It is also a control:
+   there is nothing to tick in a picture, and a selected row still reads as one
+   from the red edge and the tint. */
+body.shooting .dpgrid input[type=checkbox]{display:none !important}
+body.shooting table.dpgrid tbody tr.picked td.sticky{
+  background-image:linear-gradient(to right,var(--jt-red) 0,var(--jt-red) 3px,transparent 3px);
+}
 
 /* fixed 4-up grid: auto-fit leaves a lone orphan card on the second row */
 body.shooting .cards{grid-template-columns:repeat(4,1fr)}
@@ -1452,8 +1493,33 @@ body.shoot-dp .dptable{display:none !important}
        1480px would cut the right-hand categories off. */
 body.shoot-table .wrap > *:not(.dpsection){display:none !important}
 body.shoot-table .dpsection > *:not(.dptable){display:none !important}
-body.shoot-table .wrap{width:max-content;max-width:none;padding:0}
+body.shoot-table .wrap{width:max-content;max-width:none;min-width:560px;padding:0}
 body.shoot-table .dptable{margin-top:0}
+
+/* ---------- and the width has to come from the grid, not from the chrome ----
+
+   `width:max-content` sizes the wrap to its *widest* child, and with a full
+   table that is the table. Narrow the table — three sites out of the basket, or
+   most of the column chips unticked — and the widest child becomes the panel
+   heading, which is one unbroken line of text ("Perbandingan DP / CP 网点对比 —
+   3 dipilih · Pencapaian Bulan Ini"). The picture then came out with a heading
+   running the full width and a table occupying the left third of it, the rest
+   flat background: `body.shooting .panel .body table{min-width:0}` had already
+   released the grid's `min-width:100%`, so nothing stretched it back out.
+
+   `width:0;min-width:100%` is what keeps a block out of that calculation: zero
+   contributes nothing to the parent's max-content, and the min-width fills the
+   width once the table has decided it. So the heading and the status key follow
+   the grid instead of dictating to it, and both wrap rather than force the
+   picture wider. */
+body.shoot-table .dptable > h3,
+body.shoot-table .dptable .stleg{width:0;min-width:100%}
+
+/* The other end of the same problem: a two-column table is narrower than the
+   560px floor above, and without this it would sit in the left corner of the
+   plate. Specificity has to beat `body.shooting .panel .body table` (three
+   classes), hence the longer selector rather than a bare `table.dpgrid`. */
+body.shoot-table .dptable .body table.dpgrid{min-width:100% !important}
 
 /* ---------- Login ----------
    The one screen an outsider is ever supposed to reach, so it is also the one

@@ -2059,6 +2059,37 @@ async function settleLayout(el: HTMLElement, maxFrames = 60): Promise<void> {
 }
 
 /**
+ * How big the picture has to be to hold all of `el`.
+ *
+ * `scrollWidth`/`scrollHeight` are integers — the browser rounds them *down* —
+ * and the panel is laid out on fractional pixels (353.125px is a real height for
+ * four rows of 14px type). Rounding down a tenth of a pixel and then multiplying
+ * by the capture scale is how the bottom row came out shaved.
+ *
+ * The bounding rect keeps the fraction, so the two are taken together, and the
+ * descendants are measured as well: anything that spills outside its parent —
+ * the grid is wider than the panel by design — is part of the picture whether or
+ * not the parent's scroll box counts it.
+ */
+function capturedSize(el: HTMLElement): { width: number; height: number } {
+  const box = el.getBoundingClientRect()
+  let right = box.right
+  let bottom = box.bottom
+  for (const node of el.querySelectorAll<HTMLElement>('*')) {
+    const r = node.getBoundingClientRect()
+    /* a hidden element reports 0×0 at the origin; including it would stretch the
+       canvas back to the top-left of the viewport */
+    if (!r.width && !r.height) continue
+    if (r.right > right) right = r.right
+    if (r.bottom > bottom) bottom = r.bottom
+  }
+  return {
+    width: Math.ceil(Math.max(el.scrollWidth, box.width, right - box.left)),
+    height: Math.ceil(Math.max(el.scrollHeight, box.height, bottom - box.top)),
+  }
+}
+
+/**
  * The page's own background, read at capture time.
  *
  * It was `#F4F6FA` — a pale grey left over from the light theme, which put a
@@ -2221,8 +2252,7 @@ export async function exportPng(
   await settleLayout(el)
 
   try {
-    const width = Math.ceil(el.scrollWidth)
-    const height = Math.ceil(el.scrollHeight)
+    const { width, height } = capturedSize(el)
 
     /*
      * Nothing left to photograph.
