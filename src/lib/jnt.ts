@@ -91,8 +91,9 @@ export interface SheetInfo {
    * 'dp'     one row per drop point / collection point, with readings
    * 'lookup' no readings at all — a reference table naming each site's business
    *          model, merged into the DP rows rather than shown on its own
+   * 'otpu'   an On Time Pick Up tab, read by `lib/otpu.ts` into its own model
    */
-  kind: 'agent' | 'dp' | 'lookup'
+  kind: 'agent' | 'dp' | 'lookup' | 'otpu'
 }
 
 /* ------------------------------------------------------- drop point level */
@@ -181,6 +182,25 @@ export interface Model {
 /** This dashboard covers the Jawa & Bali region only. */
 export const REGION_RE = /jawa|java|bali/i
 export const REGION_LABEL = 'Jawa & Bali'
+
+/**
+ * The On Time Pick Up tabs, which this parser deliberately does not read.
+ *
+ * They are weekly where everything else here is daily, they carry their own GTL
+ * benchmark, and the seller tab is one row per seller × drop point rather than
+ * one per agent — three different shapes, none of which fits the agent model
+ * below. `lib/otpu.ts` reads them into a model of their own.
+ *
+ * The patterns live here rather than there because `parseWorkbook` has to
+ * recognise these tabs in order to *skip* them: without that they fall through
+ * to `parseOneSheet`, fail, and are reported to the user as two broken sheets in
+ * a file that is perfectly fine. `lib/otpu.ts` imports them from here, so the
+ * two halves cannot disagree about which tab is which.
+ */
+export const OTPU_AGENT_RE = /^\s*otpu\s*[-_ ]*agen/i
+export const OTPU_SELLER_RE = /^\s*otpu\s*[-_ ]*seller/i
+export const isOtpuSheet = (name: string): boolean =>
+  OTPU_AGENT_RE.test(name) || OTPU_SELLER_RE.test(name)
 
 export type Status = 'ok' | 'warn' | 'bad' | 'na'
 
@@ -685,7 +705,7 @@ export function isLowerBetter(text: string): boolean {
 
 /* --------------------------------------------------- worksheet → matrix */
 
-interface Matrix { m: Cell[][]; lastC: number; hadMerges: boolean }
+export interface Matrix { m: Cell[][]; lastC: number; hadMerges: boolean }
 
 /** A cell Excel wrote but left without a value is still empty for our purposes. */
 const isBlank = (c: Cell): boolean => c == null || c.v == null || String(c.v).trim() === ''
@@ -697,7 +717,7 @@ const isBlank = (c: Cell): boolean => c == null || c.v == null || String(c.v).tr
  * all of it twice per load is work with no answer in it. Merges are still applied
  * to the rows that were read, which is what the header block depends on.
  */
-function sheetMatrix(ws: XLSX.WorkSheet, maxRows = Infinity): Matrix {
+export function sheetMatrix(ws: XLSX.WorkSheet, maxRows = Infinity): Matrix {
   if (!ws || !ws['!ref']) return { m: [], lastC: 0, hadMerges: false }
   const r = XLSX.utils.decode_range(ws['!ref'])
   const lastR = Math.min(r.e.r, maxRows - 1), lastC = r.e.c
@@ -1636,6 +1656,14 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
 
   wb.SheetNames.forEach((sheetName, sheetIdx) => {
     const ws = wb.Sheets[sheetName]
+
+    /* On Time Pick Up — a different report in the same workbook. Claimed here
+       so it is recorded as a sheet that was read rather than skipped, and left
+       to `lib/otpu.ts`, which is called alongside this function. */
+    if (isOtpuSheet(sheetName)) {
+      sheets.push({ name: sheetName, ok: true, kind: 'otpu', kpiCount: 0, agentCount: 0 })
+      return
+    }
 
     /* per-agent drop-point tab — parsed into its own model, never merged into
        the agent rows (see `looksLikeDpSheet`) */

@@ -485,6 +485,12 @@ tbody td .zh{opacity:.9}
      when both start at the same y */
   margin-top:1px;
 }
+/* `C1` / `C2` — a part that has halves. Two glyphs do not fit a 30px square at
+   15px, so the badge grows sideways rather than shrinking the type: the letter
+   is the thing being read across the page and it has to stay the size the other
+   bands set. */
+.partband .partnum.two,
+.dphead .partnum.two{width:auto;min-width:30px;padding:0 8px;font-size:13.5px;letter-spacing:.3px}
 .partband .parttitle{display:block;font-size:17px;font-weight:800;letter-spacing:.2px}
 .partband .partsub{
   display:block;margin-top:2px;font-size:12.5px;font-weight:600;line-height:1.4;
@@ -1520,6 +1526,181 @@ body.shoot-table .dptable .stleg{width:0;min-width:100%}
    plate. Specificity has to beat `body.shooting .panel .body table` (three
    classes), hence the longer selector rather than a bare `table.dpgrid`. */
 body.shoot-table .dptable .body table.dpgrid{min-width:100% !important}
+
+/* ---------- On Time Pick Up ----------
+
+   The OTPU pages reuse the DP/CP furniture wholesale — `.dpstat`, `.dpfilters`,
+   `.dpscroll`, `.dpgrid`, `.dphead` — and that reuse is the point rather than a
+   shortcut. Those classes already carry the sticky-header offsets, the capture
+   overrides and the print rules, all of which took a while to get right; a
+   parallel set of table styles would have had to relearn every one of them, and
+   would have drifted the first time one was fixed on only one side.
+
+   What is genuinely new is below: the headline cards, which are not KPI cards,
+   and the comparison pills, which the DP table has no equivalent of. */
+
+.otcards{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));
+  gap:10px;margin-bottom:12px;
+}
+/* The red seam along the top is what ties these to the band above them; the
+   two comparison cards then recolour it to say which way they went. Green and
+   red are the same pair the deltas use everywhere else on the dashboard, so a
+   colour never means two things. */
+.otcard{
+  position:relative;background:var(--card);border-radius:var(--radius);
+  box-shadow:var(--shadow);padding:14px 16px 15px;
+  border-top:3px solid var(--jt-red);
+}
+.otcard.t-up{border-top-color:var(--green)}
+.otcard.t-down{border-top-color:var(--jt-red-lit)}
+.otc-lab{
+  font-size:11.5px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;
+  color:var(--ink-2);
+}
+.otc-lab .zh{letter-spacing:0;text-transform:none;font-weight:700}
+.otc-sub{font-size:12px;font-weight:600;color:var(--ink-3);margin-top:3px;line-height:1.35}
+/* Read from across a desk, and always in tabular figures — these four sit in a
+   row and a proportional `1` would make the columns of digits ripple. */
+.otc-val{
+  font-size:33px;font-weight:800;letter-spacing:-1px;line-height:1.1;
+  margin-top:9px;font-variant-numeric:tabular-nums;
+}
+.otcard.t-up .otc-val{color:var(--green)}
+.otcard.t-down .otc-val{color:var(--jt-red-lit)}
+.otc-foot{font-size:12.5px;font-weight:700;color:var(--ink-3);margin-top:7px}
+.otc-foot .up{color:var(--green)}
+.otc-foot .down{color:var(--jt-red-lit)}
+
+/* The comparison plate. A filled pill rather than the bare `▲ +0,99` the daily
+   report uses, because in this table it shares a row with seven other numbers
+   and has to be findable by shape before it is read. */
+.otpill{
+  display:inline-block;min-width:66px;text-align:center;
+  padding:2px 9px;border-radius:99px;
+  font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums;
+  border:1px solid transparent;
+}
+.otpill.up{background:#15321F;color:#5BE79A;border-color:#1E5636}
+.otpill.down{background:#4A1512;color:#FF8C82;border-color:#6E2019}
+/* Not "no change" — "too small to call". Grey, so it is plainly neither of the
+   two things that matter. */
+.otpill.flatp{background:#2B2B2B;color:#A5A5A5;border-color:#3D3D3D}
+
+/* The band over the weekly columns needs a second line under the `W2`: the
+   short head is what makes eight narrow columns scannable, and the date range
+   is what makes it mean anything. */
+table.otgrid th .otsub{
+  display:block;font-size:10.5px;font-weight:600;letter-spacing:0;
+  color:rgba(255,255,255,.72);text-transform:none;margin-top:1px;
+}
+/* The cumulative percentage is the column the row is judged on, so it is the
+   one number in a run of eight that is allowed to be heavier than its
+   neighbours. On the span rather than the cell: which cell holds it moves with
+   the column switch, the span goes wherever the column does. */
+.otkumv{font-weight:800;color:var(--ink)}
+table.otgrid td.otkum{font-weight:800;color:var(--ink)}
+/* The TOTAL row is not one of the agents and must not read as one. A heavier
+   rule under it rather than a tint, so it separates the summary from the list
+   without competing with the red-and-green cells in it. */
+table.otgrid tbody tr.ottotal td{
+  background:var(--card-2);font-weight:800;
+  border-bottom:2px solid var(--jt-red);
+}
+table.otgrid tbody tr.ottotal td.sticky{background:var(--card-2)}
+.otname{display:flex;flex-direction:column;gap:1px;min-width:0}
+/* The code in J&T red and the city in plain ink: the code is the join key
+   everyone quotes on a call, the city is what makes the row recognisable. */
+.otcode{font-size:11.5px;font-weight:800;letter-spacing:.6px;color:var(--jt-red-lit)}
+.otcity{font-weight:800}
+.otseller{
+  display:block;font-weight:700;max-width:280px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+/* A seller with no orders this week is shown only when asked for, and when it
+   is, it should not look like a seller that scored zero. */
+table.otgrid tbody tr.otzero td{color:var(--ink-3)}
+.otlegend{flex:none;display:flex;gap:14px;font-size:11.5px;font-weight:700}
+.otleg.up{color:#7BF0AF}
+.otleg.down{color:#FFB0A8}
+/* The per-table export button, sitting inside a title that is otherwise text. */
+.otinline{margin-left:10px;vertical-align:middle}
+
+@media (max-width:900px){
+  .otlegend{display:none}
+  .otc-val{font-size:28px}
+}
+
+/* ---------- OTPU capture scope: one picture, whole page ----------
+
+   The DP/CP page splits its export in two because its table is 1,666 rows and
+   genuinely cannot share an image with anything. Neither OTPU table is: the
+   agent one is ten rows and the seller one opens on forty. So there is one
+   button, in the toolbar, and it photographs the page as it stands.
+
+   `body.shooting` has already hidden the rail, the toolbar and the tooltips,
+   and released `.dpscroll` from its scroll box — so a table wider than the
+   pinned 1480px capture simply overflows, and `capturedSize` walks the
+   descendants and grows the canvas to hold it. Nothing else to declare here;
+   what this scope needs is the rules it does *not* have.
+
+   The filter bar and the column switch are gone from the picture too, but not
+   because of anything written here — `body.shooting` already drops `.dpfilters`,
+   `.dpcolbar` and `.dpmore` for the DP/CP shot, and the OTPU tables reuse those
+   exact classes. That reuse is why this scope needs no rules of its own; the
+   class exists so `exportPng` has something to pass and so this note has
+   somewhere to live. */
+
+/* ---------- the column switch's group toggle ----------
+
+   The band name is a button: "Total Order, all three weeks" is one thought and
+   should be one press. Drawn as the same small caps caption it replaced rather
+   than as a button, because a third control style in a bar that already has
+   chips and a master tick would be noise — the count beside it is what says it
+   does something, and it lights up on hover like the chips do. */
+.colgrph.tap{
+  border:0;background:transparent;padding:2px 0;margin-right:1px;
+  font-family:inherit;font-size:11px;font-weight:800;letter-spacing:.4px;
+  text-transform:uppercase;color:var(--ink-3);cursor:pointer;
+}
+.colgrph.tap:hover{color:var(--jt-red-lit)}
+.colgrph.tap:focus-visible{outline:2px solid var(--jt-red-lit);outline-offset:2px;border-radius:4px}
+.colgrph.tap em{
+  font-style:normal;margin-left:5px;color:var(--ink-2);
+  font-variant-numeric:tabular-nums;letter-spacing:0;
+}
+/* Whole band switched off — the group reads as absent rather than as a heading
+   over nothing. */
+.colgrph.tap.off{color:#5E5E5E}
+.colgrph.tap.off em{color:#5E5E5E}
+
+/* Why fewer agents are listed than the file holds, said next to the control
+   that did it — and that the TOTAL row is deliberately not following along. */
+.otfilternote{
+  font-size:12.5px;font-weight:600;color:var(--ink-2);line-height:1.4;
+}
+.otfilternote b{color:var(--ink);font-weight:800}
+
+/* ---------- the rail's sub-entries ----------
+
+   A child destination, indented under the page it belongs to.
+
+   The guide line is what makes the indent read as a relationship rather than as
+   a typo — two entries set in four pixels from the one above them is otherwise
+   just misalignment. It is dropped on the active child, where a 2px line inside
+   a filled red plate is noise, and dropped again in the collapsed rail, where
+   there is no indent left for it to explain. */
+.sbitem{position:relative}
+.sbitem.sub{padding-left:28px;font-size:13.5px;color:var(--ink-3)}
+.sbitem.sub:hover{color:var(--ink)}
+.sbitem.sub .navico{width:18px;height:18px}
+.sbitem.sub::before{
+  content:'';position:absolute;left:15px;top:3px;bottom:3px;
+  width:2px;border-radius:2px;background:var(--line);
+}
+.sbitem.sub.on{color:#fff}
+.sbitem.sub.on::before{display:none}
+.app.mini .sidebar:not(:hover):not(:focus-within) .sbitem.sub::before{display:none}
 
 /* ---------- Login ----------
    The one screen an outsider is ever supposed to reach, so it is also the one

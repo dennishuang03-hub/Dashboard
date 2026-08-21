@@ -49,6 +49,17 @@ export interface NavItem {
   hint?: string
   /** a count or short tag on the right, e.g. "1666" */
   tag?: string
+  /**
+   * A child of the entry above it — indented, and drawn against a guide line
+   * running down the run of children it belongs to.
+   *
+   * A flat `items` list rather than a nested `children` array, because the depth
+   * is the *only* thing that differs: a sub-entry is a destination like any
+   * other, it is selected the same way, and it is never collapsed away — the
+   * parent is a page in its own right, not a folder to open. Nesting the data
+   * would buy an expand/collapse nobody asked for and cost the flat `map` below.
+   */
+  sub?: boolean
 }
 
 export interface NavGroup {
@@ -271,7 +282,7 @@ export default function Sidebar({
               {g.items.map((it) => (
                 <button
                   key={it.id}
-                  className={`sbitem${active === it.id ? ' on' : ''}`}
+                  className={`sbitem${it.sub ? ' sub' : ''}${active === it.id ? ' on' : ''}`}
                   onClick={(e) => { dropPointerFocus(e); onSelect(it.id) }}
                   aria-current={active === it.id ? 'page' : undefined}
                   /* The native tooltip is the label's stand-in while the rail is

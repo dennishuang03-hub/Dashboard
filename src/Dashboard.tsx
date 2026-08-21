@@ -10,9 +10,13 @@ import { BarChart, LineChart, Sparkline } from './components/Charts'
 import type { AxisLabel } from './components/Charts'
 import DpSection from './components/DpSection'
 import JntLogo from './components/JntLogo'
+import OtpuSection from './components/OtpuSection'
+import type { OtpuPart } from './components/OtpuSection'
 import Sidebar, { NavButton } from './components/Sidebar'
 import type { NavGroup } from './components/Sidebar'
 import Zh from './components/Zh'
+import { nfmt, parseOtpu } from './lib/otpu'
+import type { OtpuReport } from './lib/otpu'
 import type { Identity } from './lib/session'
 import './dashboard.css'
 
@@ -28,7 +32,28 @@ import './dashboard.css'
  */
 const VIEW_AGEN = 'agen'
 const VIEW_DP = 'dp'
-type View = typeof VIEW_AGEN | typeof VIEW_DP
+/**
+ * On Time Pick Up: a parent page and its two halves.
+ *
+ * Three ids rather than one id plus a tab state inside the section, so that the
+ * rail is the only thing that says where you are. A tab strip *inside* a page
+ * the rail also points at gives two controls for one decision, and they
+ * disagree the first time somebody links to the wrong one.
+ */
+const VIEW_OTPU = 'otpu'
+const VIEW_OTPU_AGENT = 'otpu-agen'
+const VIEW_OTPU_SELLER = 'otpu-seller'
+
+type View =
+  | typeof VIEW_AGEN | typeof VIEW_DP
+  | typeof VIEW_OTPU | typeof VIEW_OTPU_AGENT | typeof VIEW_OTPU_SELLER
+
+/** The part of the OTPU report each of the three ids asks for. */
+const OTPU_PART: Partial<Record<View, OtpuPart>> = {
+  [VIEW_OTPU]: 'all',
+  [VIEW_OTPU_AGENT]: 'agent',
+  [VIEW_OTPU_SELLER]: 'seller',
+}
 
 /** Below this the rail goes off-canvas and the hamburger appears. */
 const DRAWER_BP = 900
@@ -109,6 +134,11 @@ export default function Dashboard({
   onSignedOut: () => void
 }) {
   const [model, setModel] = useState<Model | null>(null)
+  /* Its own state rather than a field on `Model`: the OTPU tabs are a separate
+     report parsed by a separate function, and a workbook without them has to
+     keep producing a perfectly good daily dashboard. `null` here means "no OTPU
+     in this file", and the rail simply does not offer it. */
+  const [otpu, setOtpu] = useState<OtpuReport | null>(null)
   const [fileName, setFileName] = useState('')
   const [err, setErr] = useState('')
   const [agentKey, setAgentKey] = useState('TOTAL')
@@ -122,7 +152,18 @@ export default function Dashboard({
 
   /* ------------------------------------------------------------- the rail */
 
-  const [view, setView] = useState<View>(VIEW_AGEN)
+  const [viewWanted, setView] = useState<View>(VIEW_AGEN)
+  /**
+   * The destination that is actually reachable.
+   *
+   * Loading a workbook without the OTPU tabs while an OTPU page is open would
+   * otherwise leave the rail pointing at a page that has nothing behind it and
+   * no entry to click back from — the entry it was reached by is gone too. The
+   * fallback is a pure function of what the file has, so it is resolved here
+   * rather than corrected in an effect, which would render the dead page once
+   * before fixing it.
+   */
+  const view: View = OTPU_PART[viewWanted] && !otpu ? VIEW_AGEN : viewWanted
   /** desktop: icons only. Two separate states — see the note in Sidebar.tsx. */
   const [mini, setMini] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -168,8 +209,13 @@ export default function Dashboard({
    *  in how the bytes arrive, never in how they are read. */
   const loadBuffer = useCallback((buf: ArrayBuffer, name: string) => {
     try {
-      const mdl = parseWorkbook(readWorkbook(buf))
+      const wb = readWorkbook(buf)
+      const mdl = parseWorkbook(wb)
       setModel(mdl)
+      /* Parsed from the same workbook but never allowed to break it: `parseOtpu`
+         returns null rather than throwing, so a malformed OTPU tab costs the
+         OTPU pages and nothing else. */
+      setOtpu(parseOtpu(wb))
       setFileName(name)
       setAgentKey('TOTAL')
       setBarKey('')
@@ -177,6 +223,7 @@ export default function Dashboard({
       setErr('')
     } catch (ex) {
       setModel(null)
+      setOtpu(null)
       setErr((ex as Error).message)
     }
   }, [])
@@ -312,13 +359,26 @@ export default function Dashboard({
     if (!wrapRef.current) return
     const d = model?.dates[dateIdx]
     const stamp = d?.date ? isoDay(d.date) : 'export'
-    const dp = view === VIEW_DP
+    /*
+     * Which picture this button takes, per destination.
+     *
+     * The rule is the same in all five cases: photograph the page, minus
+     * whatever on it has an export button of its own. The DP/CP list, the OTPU
+     * agent table and the OTPU seller list are each wider than the page and can
+     * each run to hundreds of rows — one image holding a summary *and* one of
+     * those is unreadable at any scale, so the summary shot leaves them out and
+     * their own buttons take them full width.
+     */
+    const shot: Record<View, { stem: string; cls: string }> = {
+      [VIEW_AGEN]: { stem: `jnt-agen-${stamp}`, cls: 'shoot-main' },
+      [VIEW_DP]: { stem: `jnt-dp-cp-${stamp}`, cls: 'shoot-dp' },
+      [VIEW_OTPU]: { stem: 'jnt-otpu-ringkasan', cls: 'shoot-otpu' },
+      [VIEW_OTPU_AGENT]: { stem: 'jnt-otpu-agent', cls: 'shoot-otpu' },
+      [VIEW_OTPU_SELLER]: { stem: 'jnt-otpu-seller', cls: 'shoot-otpu' },
+    }
+    const pick = shot[view]
     try {
-      await exportPng(
-        wrapRef.current,
-        `jnt-${dp ? 'dp-cp' : 'agen'}-${stamp}.png`,
-        dp ? 'shoot-dp' : 'shoot-main',
-      )
+      await exportPng(wrapRef.current, `${pick.stem}.png`, pick.cls)
     } catch (ex) {
       setErr((ex as Error).message)
     }
@@ -428,7 +488,52 @@ export default function Dashboard({
     },
   ]
 
+  /*
+   * On Time Pick Up — a group of its own, and only when the file carries it.
+   *
+   * Hidden rather than shown-and-empty, which is the opposite of the choice made
+   * for the DP/CP entry a few lines up, and deliberately so. DP/CP is part of
+   * every daily report and a day that happens to be missing it is a gap in the
+   * data; OTPU is a different report that some workbooks simply do not contain,
+   * and offering three destinations that all say "this file has no OTPU tabs"
+   * would be three ways to find the same nothing.
+   *
+   * The parent is a destination in its own right — the summary — with the two
+   * halves indented under it. It is not a folder: clicking it goes somewhere.
+   */
+  if (otpu) {
+    const a = otpu.agent
+    const s = otpu.seller
+    nav.push({
+      id: 'otpu',
+      label: 'On Time Pick Up',
+      items: [
+        {
+          id: VIEW_OTPU, label: 'OTPU', zh: '及时揽收', icon: 'clock',
+          hint: a?.total?.pctTotal != null
+            ? `Kumulatif ${a.total.pctTotal.toFixed(2).replace('.', ',')}%`
+            : 'Agent + Seller',
+        },
+        {
+          id: VIEW_OTPU_AGENT, label: 'OTPU Agent', zh: '揽收代理', icon: 'users', sub: true,
+          hint: a ? `${a.rows.length} agen · ${a.weeks.length} minggu` : 'tab tidak terbaca',
+        },
+        {
+          id: VIEW_OTPU_SELLER, label: 'OTPU Seller', zh: '商家', icon: 'bars', sub: true,
+          hint: s ? `${nfmt(s.rows.length)} baris seller` : 'tab tidak terbaca',
+        },
+      ],
+    })
+  }
+
   const onAgen = view === VIEW_AGEN
+  const otpuPart = OTPU_PART[view]
+
+  /** `AGENT12` → `TANGERANG`, from the daily report's own agent rows. */
+  const cityOf = (code: string): string => {
+    const want = code.replace(/\s+/g, '').toUpperCase()
+    return model.rows.find((r) => r.code.replace(/\s+/g, '').toUpperCase() === want)?.label ?? ''
+  }
 
   /* The report itself, bound to a name rather than returned inline — the shell
      around it is three elements and putting them at the top would push 300 lines
@@ -459,6 +564,18 @@ export default function Dashboard({
             look at yesterday's copy and believe it was live. The drop zone on
             the empty state keeps the ability, where it is a recovery path rather
             than a standing offer. */}
+        {/*
+          The day picker and the agent picker belong to the daily report, and
+          only to it.
+
+          They are hidden rather than disabled on the OTPU pages because they
+          would be lying, not merely inert: OTPU is weekly and covers every agent
+          at once, so a control reading "19 Agustus 2026 · TANGERANG" over a
+          table of ten agents and two weeks describes a scope that is not the one
+          on screen. The OTPU pages carry their own scope in the band and their
+          own filters in the table.
+        */}
+        {!otpuPart && (<>
         <Field label="Tanggal laporan · 报表日期">
           <select value={di} onChange={(e) => setDateIdx(Number(e.target.value))}>
             {dates.map((d, i) => (
@@ -480,6 +597,7 @@ export default function Dashboard({
             ))}
           </select>
         </Field>
+        </>)}
         {/*
           The right-hand end, grouped rather than left as four loose flex items
           after a `.spacer`.
@@ -496,13 +614,21 @@ export default function Dashboard({
         */}
         <div className="toolbar-end">
           <span className="filechip">
-            {model.region} · {model.rows.length} agen · {kpis.length} Indikator · {dates.length} hari
-            {model.dps.length > 0 && ` · ${model.dps.length} DP/CP dari ${dpSheets.length} tab agen`}
+            {otpuPart && otpu
+              ? <>
+                  On Time Pick Up · {otpu.agent ? `${otpu.agent.rows.length} agen · ${otpu.agent.weeks.length} minggu` : 'tab agen tidak terbaca'}
+                  {otpu.seller && ` · ${nfmt(otpu.seller.rows.length)} baris seller`}
+                </>
+              : <>
+                  {model.region} · {model.rows.length} agen · {kpis.length} Indikator · {dates.length} hari
+                  {model.dps.length > 0 && ` · ${model.dps.length} DP/CP dari ${dpSheets.length} tab agen`}
+                </>}
           </span>
           {/* Named for what it will contain. Two buttons on the DP/CP page read
-              "Simpan PNG" and take different pictures, so each has to say which. */}
+              "Simpan PNG" and take different pictures, so each has to say which
+              — and the OTPU pages have between one and three of their own. */}
           <button className="btn" onClick={savePng}>
-            {view === VIEW_DP ? 'Simpan PNG · Ringkasan' : 'Simpan PNG'}
+            {view === VIEW_DP || otpuPart ? 'Simpan PNG · Ringkasan' : 'Simpan PNG'}
           </button>
           {/* "Cetak / PDF" used to sit here. The print stylesheet it drove is
               still in dashboard.css and still correct — the browser's own
@@ -754,19 +880,31 @@ export default function Dashboard({
       </>)}
 
       {/* Part B. It carries its own band and its own export buttons — see
-          DpSection — so there is nothing to add around it here. */}
-      {!onAgen && dpDay && (
+          DpSection — so there is nothing to add around it here.
+
+          Tested against `VIEW_DP` rather than `!onAgen`, which is what it used
+          to say. That negation was exactly right while there were two
+          destinations and became a bug the moment there were five: every OTPU
+          page is "not the agent page", so all three of them rendered the
+          drop-point list underneath themselves. */}
+      {view === VIEW_DP && dpDay && (
         <DpSection
           model={model} kpis={kpis} agentKey={agentKey}
           agentLabel={current.label} day={dpDay} wanted={dToday} onError={setErr}
         />
       )}
 
+      {/* Part C, in three. Same arrangement as Part B: its own band, its own
+          per-table export buttons, nothing to wrap it in here. */}
+      {otpuPart && otpu && (
+        <OtpuSection report={otpu} part={otpuPart} cityOf={cityOf} />
+      )}
+
       {/* The destination exists in the rail whether or not the file has anything
           behind it, so the empty case has to be answered here rather than by an
           entry that quietly disappears. It names the tab the data should have
           come from, because that is the thing to go and check. */}
-      {!onAgen && !dpDay && (
+      {view === VIEW_DP && !dpDay && (
         <div className="dropzone">
           <h2>Belum ada data DP / CP <Zh>暂无网点数据</Zh></h2>
           <p>
