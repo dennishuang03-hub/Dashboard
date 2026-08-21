@@ -400,6 +400,30 @@ export interface HBar {
  * The value axis starts at the *smallest* bar rather than at zero: five drop
  * points that all sit between 94% and 98% are otherwise five identical-looking
  * blocks. `floor` keeps the target line inside the frame when it is close by.
+ *
+ * ── That trade-off is a lie, and `honest` is the way out ─────────────────────
+ *
+ * The paragraph above describes a real problem and the wrong fix. A bar encodes
+ * magnitude by *length*, so a bar that starts at 94 rather than at 0 is drawing
+ * a claim the data does not make: ten GTL hubs spanning 94,39% to 96,83% — two
+ * and a half points — came out as one stub beside four near-full bars, which
+ * reads as five-to-one. The chart was inventing a gap five times the size of the
+ * real one.
+ *
+ * `honest` fixes it by changing the *mark* instead of the axis, which is the
+ * only move that works for both shapes of data this component gets handed:
+ *
+ *   • Values that genuinely spread (29% … 98% across the agents) keep bars, and
+ *     the bars start at zero, where a bar has to start.
+ *   • Values packed into a couple of points (the hub ranking) switch to dots.
+ *     A dot carries its value by *position*, and position is legible on a zoomed
+ *     axis in a way length is not — so the zoom becomes legitimate rather than
+ *     something to apologise for. The axis then prints its own end labels, so
+ *     the window it is showing is on the page rather than implied.
+ *
+ * Opt-in rather than the default: the DP/CP report draws its two charts with
+ * this same component, and the same reasoning applies there, but changing that
+ * page is a separate decision from fixing this one.
  */
 interface HBarProps {
   bars: HBar[]
@@ -407,6 +431,8 @@ interface HBarProps {
   lowerBetter?: boolean
   w?: number
   rowH?: number
+  /** Truthful magnitude: zero-anchored bars, or dots when the values cluster. */
+  honest?: boolean
 }
 
 /**
@@ -424,25 +450,47 @@ export function HBarChart(props: HBarProps) {
 }
 
 function HBarChartSvg({
-  bars, targetLine, lowerBetter = false, w = 560, rowH = 30,
+  bars, targetLine, lowerBetter = false, w = 560, rowH = 30, honest = false,
 }: HBarProps) {
   if (!bars.length) return EMPTY
 
   const P = { t: 8, r: 62, b: 22, l: 176 }
-  const h = P.t + P.b + bars.length * rowH
   const vals = bars.map((b) => b.value)
+  const dataLo = Math.min(...vals)
+  const dataHi = Math.max(...vals)
 
-  let lo = Math.min(...vals, targetLine ?? Infinity)
-  let hi = Math.max(...vals, targetLine ?? -Infinity)
-  const span = hi - lo
-  lo = Math.max(0, lo - (span > 0 ? span * 0.25 : Math.max(2, Math.abs(lo) * 0.05)))
-  hi = hi + (span > 0 ? span * 0.12 : Math.max(2, Math.abs(hi) * 0.05) )
+  /* Can zero-anchored bars still tell these apart?
+     If the shortest bar is within a sixth of the longest, they cannot — every
+     bar comes out very nearly full and the ranking is carried by the labels
+     alone, which is the same failure as the truncated axis wearing the opposite
+     costume. That is the case dots are for. */
+  const clustered = honest && dataHi > 0 && (dataHi - dataLo) / dataHi < 0.16
+  const asDots = clustered
+
+  let lo: number
+  let hi: number
+  if (honest && !asDots) {
+    /* A bar starts at zero. Nothing else about this branch matters as much. */
+    lo = Math.min(0, dataLo)
+    hi = Math.max(dataHi, targetLine ?? -Infinity) * 1.06
+  } else {
+    lo = Math.min(dataLo, targetLine ?? Infinity)
+    hi = Math.max(dataHi, targetLine ?? -Infinity)
+    const span = hi - lo
+    lo = Math.max(0, lo - (span > 0 ? span * 0.25 : Math.max(2, Math.abs(lo) * 0.05)))
+    hi = hi + (span > 0 ? span * 0.12 : Math.max(2, Math.abs(hi) * 0.05))
+  }
   if (hi - lo < 0.5) hi = lo + 1
+
+  /* Dots need a bottom band for the axis end labels; bars do not. */
+  const bottom = asDots ? P.b + 12 : P.b
+  const h = P.t + bottom + bars.length * rowH
 
   const plot = w - P.l - P.r
   const X = (v: number) => P.l + ((v - lo) / (hi - lo)) * plot
 
   const clip = (s: string, n: number) => (s.length > n ? `${s.slice(0, n - 1)}…` : s)
+  const fmt = (v: number) => `${v.toFixed(2)}%`
 
   return (
     <svg viewBox={`0 0 ${w} ${h}`} style={{ width: '100%', height: 'auto', display: 'block' }}>
@@ -453,6 +501,8 @@ function HBarChartSvg({
           ? !b.bad
           : targetLine == null ? true : lowerBetter ? b.value <= targetLine : b.value >= targetLine
         const x = X(b.value)
+        const ink = ok ? 'var(--c-ok-ink)' : 'var(--c-bad-ink)'
+        const fill = ok ? 'var(--c-ok)' : 'var(--c-bad)'
         return (
           <g key={`${b.name}-${i}`}>
             <line x1={P.l} y1={y + rowH - 0.5} x2={w - P.r} y2={y + rowH - 0.5} stroke="var(--c-grid)" />
@@ -464,25 +514,56 @@ function HBarChartSvg({
                 {clip(b.sub, 28)}
               </text>
             )}
-            <rect
-              x={P.l} y={cy - 7} width={Math.max(2, x - P.l)} height={14} rx={3}
-              fill={ok ? 'var(--c-ok)' : 'var(--c-bad)'}
-            />
-            <text x={x + 7} y={cy + 4} fontSize={11.5} fontWeight={500} fill={ok ? 'var(--c-ok-ink)' : 'var(--c-bad-ink)'}>
-              {b.label ?? `${b.value.toFixed(2)}%`}
+            {asDots ? (
+              <>
+                {/* A recessive full-width track, so a dot sitting near the left
+                    edge still reads as "low on this scale" rather than as a mark
+                    floating in blank space. */}
+                <line
+                  x1={P.l} y1={cy} x2={w - P.r} y2={cy}
+                  stroke="var(--c-grid)" strokeWidth={3} strokeLinecap="round" opacity={0.55}
+                />
+                {/* The surface ring keeps the dot legible where it lands on the
+                    track or the target line. */}
+                <circle cx={x} cy={cy} r={6.5} fill="var(--c-halo)" />
+                <circle cx={x} cy={cy} r={5} fill={fill} />
+              </>
+            ) : (
+              <rect
+                x={P.l} y={cy - 6} width={Math.max(2, x - P.l)} height={12} rx={4}
+                fill={fill}
+              />
+            )}
+            <text x={x + 10} y={cy + 4} fontSize={11.5} fontWeight={600} fill={ink}>
+              {b.label ?? fmt(b.value)}
             </text>
           </g>
         )
       })}
 
+      {/* The axis window, printed rather than implied — the one thing a zoomed
+          scale owes the reader. Bars start at zero and need no such notice. */}
+      {asDots && (
+        <g fontSize={10} fill="var(--c-axis-2)">
+          <text x={P.l} y={h - bottom + 26} textAnchor="start">{fmt(lo)}</text>
+          <text x={w - P.r} y={h - bottom + 26} textAnchor="end">{fmt(hi)}</text>
+        </g>
+      )}
+
       {targetLine != null && targetLine >= lo && targetLine <= hi && (
         <g>
+          {/* Solid, and in the GTL blue the tables use for the same number.
+              It was a dashed red rule, which read as a third status colour on a
+              chart whose bars are already saying pass or fail. */}
           <line
-            x1={X(targetLine)} y1={P.t} x2={X(targetLine)} y2={h - P.b}
-            stroke="var(--c-bad)" strokeWidth={1.2} strokeDasharray="5 4"
+            x1={X(targetLine)} y1={P.t} x2={X(targetLine)} y2={h - bottom}
+            stroke="var(--gtl)" strokeWidth={2}
           />
-          <text x={X(targetLine)} y={h - P.b + 14} textAnchor="middle" fontSize={10.5} fill="var(--c-bad)">
-            Target {lowerBetter ? '≤ ' : '≥ '}{targetLine.toFixed(2)}%
+          <text
+            x={X(targetLine)} y={h - bottom + 14} textAnchor="middle"
+            fontSize={10.5} fontWeight={700} fill="var(--gtl)"
+          >
+            {lowerBetter ? '≤ ' : '≥ '}{targetLine.toFixed(2)}%
           </text>
         </g>
       )}

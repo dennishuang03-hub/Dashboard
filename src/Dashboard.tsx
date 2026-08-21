@@ -558,7 +558,12 @@ export default function Dashboard({
       />
 
       {/* -------- toolbar -------- */}
-      <div className="toolbar">
+      {/* `solo` when the two pickers below are hidden. On the OTPU pages they
+          are, which left `.toolbar-end` alone in a full-width bar with its
+          `margin-left:auto` pushing everything into the right quarter and two
+          thirds of the bar empty — a gap that reads as a control that failed to
+          render rather than as space. */}
+      <div className={`toolbar${otpuPart ? ' solo' : ''}`}>
         {/* No upload button here any more. The report comes from the server now,
             and a control that swaps it for a local file only invited someone to
             look at yesterday's copy and believe it was live. The drop zone on

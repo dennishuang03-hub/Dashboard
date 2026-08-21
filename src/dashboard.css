@@ -30,6 +30,20 @@
   --radius:12px;
   --shadow:0 1px 3px rgba(0,0,0,.5), 0 6px 18px rgba(0,0,0,.38);
 
+  /* The one easing curve for things that arrive.
+
+     Everything short and interruptible in here used to run on a curve whose
+     final control point sat past 1, so it overshot and settled back. Over the
+     distances this interface actually animates — a 15px tick, a 7px dot, a 5px
+     tooltip nudge — there is nothing far enough for a bounce to read as weight;
+     it read as wobble, and three separate places wobbled slightly differently
+     because the curve had been pasted rather than shared.
+
+     Exponential decel: fast off the mark, and stopped when it arrives. A token
+     rather than a literal, so the next transition inherits the decision instead
+     of copying a number. */
+  --ease-out-quint:cubic-bezier(.22,1,.36,1);
+
   /* consumed by the SVG charts, which have no stylesheet of their own */
   --c-grid:#333333;
   --c-axis:#C9C9C9;
@@ -77,10 +91,16 @@ input[type=checkbox]{
 }
 /* The tick is a clipped rectangle rather than a rotated pseudo-element border:
    it scales from the centre cleanly, and there is no half-pixel rounding to make
-   the two arms of the check different weights at 15px. */
+   the two arms of the check different weights at 15px.
+
+   Eased with `--ease-out-quint`, not the overshoot curve this used to carry. A
+   tick that springs past its own size and settles back is reading as a flourish
+   on a control that is answering a question — and at 15px the overshoot is two
+   pixels of wobble rather than anything that registers as spring. Exponential
+   decel arrives just as fast and stops when it gets there. */
 input[type=checkbox]::before{
   content:'';width:9px;height:9px;background:#fff;
-  transform:scale(0);transition:transform .13s cubic-bezier(.2,.9,.3,1.4);
+  transform:scale(0);transition:transform .13s var(--ease-out-quint);
   clip-path:polygon(13% 46%,0 61%,38% 100%,100% 22%,86% 8%,38% 71%);
 }
 input[type=checkbox]:checked,
@@ -120,7 +140,7 @@ input[type=radio]{
 }
 input[type=radio]::before{
   content:'';width:7px;height:7px;border-radius:50%;background:#fff;
-  transform:scale(0);transition:transform .13s cubic-bezier(.2,.9,.3,1.4);
+  transform:scale(0);transition:transform .13s var(--ease-out-quint);
 }
 input[type=radio]:checked{background:var(--jt-red);border-color:var(--jt-red)}
 input[type=radio]:checked::before{transform:scale(1)}
@@ -504,6 +524,16 @@ tbody td .zh{opacity:.9}
   display:flex;align-items:center;justify-content:flex-end;
   gap:8px;flex-wrap:wrap;margin-left:auto;
 }
+/* The bar with nothing on its left.
+   `margin-left:auto` is right when the group follows the two pickers; with the
+   pickers hidden it is the whole layout, and it huddled the chip and the button
+   into the right quarter of a full-width bar. Spread across the bar instead: the
+   chip states the scope, the button acts on it, and the space between them is
+   the bar rather than a hole in it. */
+.toolbar.solo .toolbar-end{margin-left:0;flex:1 1 auto;justify-content:space-between}
+@media (max-width:560px){
+  .toolbar.solo .toolbar-end{justify-content:flex-start}
+}
 /* kept for the empty-state toolbars, which still use it */
 .spacer{flex:1}
 .filechip{
@@ -764,7 +794,10 @@ span.tip{display:inline-block}
   text-align:left;white-space:normal;
   box-shadow:0 10px 28px rgba(16,24,40,.26);
   opacity:0;pointer-events:none;
-  transition:opacity .16s ease, transform .2s cubic-bezier(.2,.9,.3,1.4);
+  /* The tooltip travels 5px and scales 4%. An overshoot curve over that distance
+     cannot read as physics — there is nothing far enough to have momentum — so
+     it read as the panel wobbling on arrival. Exponential decel instead. */
+  transition:opacity .16s ease, transform .2s var(--ease-out-quint);
 }
 .tipbox::after{content:"";position:absolute;width:9px;height:9px;background:#000;border:1px solid #4A4A4A;transform:rotate(45deg)}
 
@@ -859,7 +892,7 @@ body.shooting .chartscroll{overflow:visible !important}
 
 /* The number carries the colour; the card itself stays plain. Five tinted,
    bordered, bold boxes in a row competed with the charts underneath them. */
-.dpstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px}
+.dpstats{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:10px;margin-bottom:10px;margin-top:20px;}
 .dpstat{
   background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
   padding:9px 13px;display:flex;flex-direction:column;gap:2px;
@@ -2528,4 +2561,274 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
   .kcard .spark{height:22px}
   .panel .body{padding:8px 10px}
   .row-bot{grid-template-columns:1.35fr 1fr}
+}
+/* ============================================================================
+   On Time Pick Up — the finish pass
+   ============================================================================
+
+   Everything below is scoped to `.otpusection`. The OTPU pages borrow the DP
+   report's furniture on purpose (see the note above `.otcards`), and that reuse
+   is worth keeping — but it also means the two reports share every surface
+   style, so an unscoped change here would restyle a page nobody asked about.
+   The scope is the point of this block, not tidiness.
+
+   What it changes, and why any of it counts as "premium":
+
+   Depth instead of flatness. The page was built from flat fills — a solid red
+   band, solid grey cards, a solid red table head — and flat fills at this size
+   read as unfinished rather than as restrained. Every surface here now carries a
+   shallow vertical gradient, a hairline top edge where light would catch, and a
+   two-part shadow: a tight dark one for contact, a wide soft one for lift. That
+   is the whole trick, and it is the difference between a panel sitting *on* the
+   page and being *printed* on it.
+
+   Less raw saturation, same colour. `--jt-red` at full strength across a tall
+   band is the loudest thing on a black page, and loud is the opposite of
+   expensive. The band and the table head keep the exact brand red, but as the
+   light end of a gradient that falls to `--jt-red-dark` — same hue, same
+   identity, a surface rather than a slab.
+
+   Numbers that line up. Every figure on the page is tabular, so a column of them
+   has straight edges, and the display figures get negative tracking, which is
+   what stops a 33px number reading as a shout. */
+
+.otpusection{
+  /* The hairline that suggests an edge catching light. Deliberately weak: at
+     .10 it reads as a border, which is a different and cheaper effect. */
+  --ot-hair:rgba(255,255,255,.065);
+  --ot-hair-lit:rgba(255,255,255,.10);
+  /* Contact shadow plus lift shadow. One shadow cannot do both — a tight one
+     alone looks stuck down, a wide one alone looks like it is floating away. */
+  --ot-lift:0 1px 2px rgba(0,0,0,.45), 0 10px 28px -10px rgba(0,0,0,.65);
+  --ot-lift-hi:0 2px 4px rgba(0,0,0,.5), 0 18px 40px -12px rgba(0,0,0,.7);
+}
+
+/* ---------- the section band ---------- */
+.otpusection .dphead{
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 42%),
+    linear-gradient(112deg, var(--jt-red) 0%, var(--jt-red-dark) 100%);
+  border:1px solid rgba(255,255,255,.11);
+  /* The red bloom is the one place on the page colour is allowed into a shadow.
+     Kept under 20% and well spread, so it reads as the band lighting the page
+     rather than as a glow effect. */
+  box-shadow:
+    0 1px 2px rgba(0,0,0,.45),
+    0 14px 34px -14px rgba(226,35,26,.42),
+    0 10px 28px -12px rgba(0,0,0,.6);
+  padding:14px 18px;
+}
+.otpusection .dphead h2{letter-spacing:.1px}
+.otpusection .dphead .partnum{
+  background:rgba(0,0,0,.34);
+  border:1px solid rgba(255,255,255,.14);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.10);
+}
+.otpusection .dphead .dpday{border-top-color:rgba(255,255,255,.24)}
+
+/* ---------- headline cards ---------- */
+.otpusection .otcard{
+  background:linear-gradient(180deg, #262626 0%, var(--card) 62%);
+  border:1px solid var(--ot-hair);
+  /* the brand accent stays; it is what ties these to the band */
+  border-top:3px solid var(--jt-red);
+  box-shadow:var(--ot-lift);
+  padding:15px 17px 16px;
+  transition:transform .17s cubic-bezier(.2,.7,.3,1), box-shadow .17s ease;
+}
+.otpusection .otcard:hover{transform:translateY(-2px);box-shadow:var(--ot-lift-hi)}
+.otpusection .otc-val{letter-spacing:-1.1px}
+/* The label is the quietest thing on the card and was competing with the value
+   at the same weight; dropping it a step is what lets the figure carry. */
+.otpusection .otc-lab{color:var(--ink-3);font-size:11px;letter-spacing:1.2px}
+
+/* ---------- the counter row ---------- */
+.otpusection .dpstat{
+  background:linear-gradient(180deg, #242424 0%, var(--card) 70%);
+  border:1px solid var(--ot-hair);
+  border-left:4px solid #4A4A4A;
+  box-shadow:var(--ot-lift);
+  padding:11px 14px;
+}
+.otpusection .dpstat.good{border-left-color:var(--green)}
+.otpusection .dpstat.warn{border-left-color:#B47607}
+.otpusection .dpstat.bad{border-left-color:var(--jt-red)}
+.otpusection .dpstat.mute{border-left-color:#5A5A5A}
+.otpusection .dpstat[title]:hover{background:linear-gradient(180deg,#2A2A2A 0%,var(--card-2) 70%)}
+.otpusection .dpstat .n{font-variant-numeric:tabular-nums;letter-spacing:-.7px}
+
+/* ---------- panels ---------- */
+.otpusection .panel{
+  border:1px solid var(--ot-hair);
+  box-shadow:var(--ot-lift);
+}
+.otpusection .panel > h3{
+  background:linear-gradient(180deg, #323232 0%, var(--card-2) 100%);
+  box-shadow:inset 0 1px 0 var(--ot-hair-lit);
+}
+
+/* ---------- the table ---------- */
+/* Same red, given a surface. The category row is the one people read across for
+   minutes at a time, and a flat saturated fill under 12.5px white type is the
+   most tiring version of it. */
+.otpusection table.otgrid thead th{
+  background:linear-gradient(180deg, #EC2A20 0%, var(--jt-red) 55%, var(--jt-red-dark) 100%);
+}
+.otpusection table.otgrid thead tr.secrow th{
+  background:linear-gradient(180deg, #1C1C1C 0%, var(--jt-black) 100%);
+  box-shadow:inset 0 1px 0 var(--ot-hair);
+}
+.otpusection table.otgrid thead tr.secrow th:hover{background:var(--jt-black)}
+.otpusection table.otgrid thead th:not(.secband):hover{
+  background:linear-gradient(180deg, var(--jt-red) 0%, var(--jt-red-dark) 100%);
+}
+/* Every number in the body on the same rail. Mixed tabular and proportional
+   figures is the detail that makes a table look assembled rather than designed. */
+.otpusection table.otgrid tbody td.num,
+.otpusection table.otgrid tbody td.ctr{font-variant-numeric:tabular-nums}
+/* A quieter zebra. #242424 against #1F1F1F was a visible stripe; the row
+   separation does its job at half that. */
+.otpusection table.otgrid tbody tr:nth-child(even) td{background:#222222}
+.otpusection table.otgrid tbody tr:nth-child(even) td.sticky{background:#252525}
+
+/* ---------- controls ---------- */
+.otpusection .dpfilters,
+.otpusection .dailybar{
+  background:linear-gradient(180deg, #2A2A2A 0%, var(--card-2) 100%);
+}
+.otpusection .ms-btn,
+.otpusection .colchip{
+  box-shadow:0 1px 2px rgba(0,0,0,.3);
+}
+.otpusection .of-pop,
+.otpusection .ms-pop{
+  box-shadow:0 2px 6px rgba(0,0,0,.5), 0 22px 48px -14px rgba(0,0,0,.8);
+}
+
+/* ---------- responsive ----------
+
+   The report is built for a desk, and that is not going to change — a
+   thirty-column table has no phone layout worth having. What these breakpoints
+   do is make the *page around it* survive a narrow window, so the cards,
+   counters and filter bar reflow instead of forcing the whole document sideways.
+   The table keeps its own horizontal scroll, which is the documented answer for
+   wide tabular data rather than a fallback. */
+@media (max-width:1180px){
+  .otpusection .otcards{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
+  .otpusection .row-dp{grid-template-columns:1fr}
+}
+@media (max-width:860px){
+  .otpusection .dphead{padding:12px 14px}
+  .otpusection .dphead h2{font-size:15.5px}
+  .otpusection .otcards{grid-template-columns:1fr 1fr;gap:8px}
+  .otpusection .otc-val{font-size:26px;letter-spacing:-.7px}
+  .otpusection .dpstats{grid-template-columns:1fr 1fr;gap:8px}
+  .otpusection .dpstat .n{font-size:25px}
+  .otpusection .otcard{padding:12px 14px 13px}
+}
+@media (max-width:560px){
+  .otpusection .otcards,
+  .otpusection .dpstats{grid-template-columns:1fr}
+  .otpusection .dpfilters{gap:7px}
+  .otpusection .dpfilters input[type=text]{max-width:none;flex:1 1 100%}
+  .otpusection .ms,
+  .otpusection .of{flex:1 1 100%}
+  .otpusection .ms-btn,
+  .otpusection .of-btn{width:100%;max-width:none}
+  /* the panels anchor left at this width, so a right-anchored popover would
+     hang off the other edge instead */
+  .otpusection .dpfilters .ms:nth-of-type(n+3) .ms-pop,
+  .otpusection .dpfilters .of:nth-of-type(n+3) .of-pop{left:0;right:auto}
+}
+
+/* The capture path paints its own flat surfaces — gradients and lift shadows
+   photograph as banding and grey haze, and the PNG is meant to look like the
+   report, not like a screenshot of a screen. */
+body.shooting .otpusection .otcard,
+body.shooting .otpusection .dpstat,
+body.shooting .otpusection .panel{
+  transform:none !important;box-shadow:var(--shadow) !important;
+}
+
+/* The finish pass, undone for paper.
+
+   The block above is unconditional, and it is declared after the print theme —
+   so on an office laser every one of those gradients and lift shadows would beat
+   the light tokens that were carefully set up above. Gradients print as banding,
+   lift shadows print as grey haze, and a #222 zebra prints as a solid bar.
+
+   Restoring the flat values the components had before, in the print palette, is
+   all this needs to do; the tokens themselves are already flipped by then. */
+@media print{
+  .otpusection .dphead{
+    background:var(--jt-red) !important;box-shadow:none !important;border:none !important;
+  }
+  .otpusection .dphead .partnum{background:rgba(0,0,0,.30) !important;border:none !important;box-shadow:none !important}
+  .otpusection .otcard,
+  .otpusection .dpstat{
+    background:var(--card) !important;
+    box-shadow:none !important;transform:none !important;
+    border:1px solid var(--line) !important;
+  }
+  .otpusection .otcard{border-top:3px solid var(--jt-red) !important}
+  .otpusection .dpstat{border-left:4px solid #C4CBD6 !important}
+  .otpusection .dpstat.good{border-left-color:var(--green) !important}
+  .otpusection .dpstat.bad{border-left-color:var(--jt-red) !important}
+  .otpusection .panel{box-shadow:none !important;border:1px solid var(--line) !important}
+  .otpusection .panel > h3{background:var(--card-2) !important;box-shadow:none !important}
+  .otpusection .dpfilters,
+  .otpusection .dailybar{background:var(--card-2) !important}
+  .otpusection table.otgrid thead th,
+  .otpusection table.otgrid thead th:not(.secband):hover{background:var(--jt-red) !important}
+  .otpusection table.otgrid thead tr.secrow th{
+    background:var(--jt-black) !important;box-shadow:none !important;
+  }
+  /* the zebra the print theme already chose, reasserted at cell level because
+     the screen rule paints the cell rather than the row */
+  .otpusection table.otgrid tbody tr:nth-child(even) td,
+  .otpusection table.otgrid tbody tr:nth-child(even) td.sticky{background:#FAFBFD !important}
+  .otpusection table.otgrid tbody td.sticky{background:#fff !important}
+}
+
+/* ---------- OTPU summary: the two ranking panels ----------
+
+   Scoped like the rest of the finish pass. These two panels are the only charts
+   on the summary page, and they sit directly under a row of counters — so they
+   were competing with the counters for the same attention while carrying less of
+   it, which is backwards.
+
+   Nothing here changes what the charts encode; that lives in Charts.tsx, where
+   the axis was the actual problem. This is spacing, weight and the panel head. */
+
+/* A quieter head. The 3px red rule under every panel title is the brand accent
+   repeated twice on one screen — once on the section band, once here — and at
+   this size it reads as a warning stripe rather than as a heading. Two pixels
+   and a fade: still unmistakably the accent, no longer the loudest edge in the
+   panel. */
+.otpusection .panel > h3{
+  border-bottom:2px solid transparent;
+  border-image:linear-gradient(90deg, var(--jt-red) 0%, rgba(226,35,26,.25) 100%) 1;
+}
+.otpusection .panel > h3 .ptitle{font-size:14.5px;letter-spacing:.15px}
+
+/* Charts want air on the sides more than above: the value labels sit to the
+   right of the longest mark and were running close to the panel edge. */
+.otpusection .row-dp .panel .body{padding:12px 16px 14px}
+
+/* The caption reads as a footnote, so it is set like one — the old size and
+   weight had it competing with the axis labels directly above it. */
+.otpusection .chartnote{
+  font-size:11.5px;font-weight:500;color:var(--ink-3);line-height:1.55;
+  padding-top:9px;margin-top:10px;border-top:1px solid var(--ot-hair-lit);
+}
+.otpusection .chartnote b{color:var(--ink-2)}
+
+@media print{
+  /* `border-image` with a gradient prints as a grey smear on most drivers, and
+     the caption has to stay readable on white — it is the line explaining which
+     hubs were left out of the ranking. */
+  .otpusection .panel > h3{
+    border-image:none !important;border-bottom:3px solid var(--jt-red) !important;
+  }
+  .otpusection .chartnote{color:var(--ink-2) !important;border-top-color:var(--line) !important}
 }

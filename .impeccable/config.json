@@ -26,6 +26,12 @@
         "value": "border-top:3px solid",
         "createdAt": "2026-08-21T15:03:10.464Z",
         "reason": "user confirmed: J&T red brand accent plus the kcard tone indicator; asked whether to keep or revisit, answered 'left exactly as is'"
+      },
+      {
+        "rule": "broken-image",
+        "value": "<img>",
+        "createdAt": "2026-08-21T16:37:33.398Z",
+        "reason": "false positive verified by reading Dashboard.tsx:948-955: the match is prose inside a JSDoc comment explaining why the wordmark is drawn as inline SVG *rather than* an <img>; there is no img element in the file"
       }
     ]
   }

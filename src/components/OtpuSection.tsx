@@ -1358,6 +1358,7 @@ export default function OtpuSection({
                         value: p.pct as number,
                       })))}
                     targetLine={agent?.gtl ?? null}
+                    honest
                   />
                 </div>
               </div>
@@ -1374,6 +1375,7 @@ export default function OtpuSection({
                       value: h.pct as number,
                     })))}
                     targetLine={agent?.gtl ?? null}
+                    honest
                   />
                   <div className="chartnote">
                     Hub dengan kurang dari {MIN_RANK_VOL} order dalam periode ini tidak
