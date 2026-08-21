@@ -39,6 +39,11 @@
   --c-bad:#FF4438;
   --c-ok-ink:#5BE79A;
   --c-bad-ink:#FF7A70;
+  /* The GTL benchmark. Deliberately off the red/green scale everything else on
+     the page is drawn on: GTL is not a result and never "good" or "bad" — it is
+     the line the results are measured against. A cool blue says "reference"
+     without joining the argument about whether a number is passing. */
+  --gtl:#7FB2FF;
 }
 
 *{box-sizing:border-box}
@@ -91,6 +96,69 @@ input[type=checkbox]:focus-visible{
   outline:2px solid var(--jt-red-lit);outline-offset:2px;
 }
 input[type=checkbox]:disabled{opacity:.45;cursor:not-allowed}
+
+/* ---------- One radio, everywhere ----------
+
+   Same problem the block above solves, and the same answer. The order-floor list
+   was rendering the browser's own radio — a pale blue-grey circle — inside a
+   red-and-black panel, sitting directly under a column of J&T-red tick boxes.
+
+   Drawn to match those tick boxes exactly: same 15px, same 1.5px border in the
+   same grey, same red fill, same hover, press and focus behaviour. The one thing
+   deliberately kept different is the shape. Round still means "one of these",
+   square still means "any of these" — and the floors *are* mutually exclusive,
+   so a square here would promise a second pick that the control then takes away.
+   Matching the theme is worth doing; matching it so closely that the two lists
+   stop being distinguishable is not. */
+input[type=radio]{
+  appearance:none;-webkit-appearance:none;
+  flex:none;width:15px;height:15px;margin:0;
+  display:inline-grid;place-content:center;
+  border:1.5px solid #5A5A5A;border-radius:50%;background:var(--card-2);
+  cursor:pointer;
+  transition:background .12s ease,border-color .12s ease,box-shadow .12s ease;
+}
+input[type=radio]::before{
+  content:'';width:7px;height:7px;border-radius:50%;background:#fff;
+  transform:scale(0);transition:transform .13s cubic-bezier(.2,.9,.3,1.4);
+}
+input[type=radio]:checked{background:var(--jt-red);border-color:var(--jt-red)}
+input[type=radio]:checked::before{transform:scale(1)}
+input[type=radio]:hover:not(:disabled){border-color:var(--jt-red-lit)}
+input[type=radio]:active:not(:disabled){transform:scale(.92)}
+input[type=radio]:focus-visible{outline:2px solid var(--jt-red-lit);outline-offset:2px}
+input[type=radio]:disabled{opacity:.45;cursor:not-allowed}
+
+/* ---------- Scrollbars ----------
+
+   The dropdowns and the seller table all scroll, and every one of them was
+   drawing the platform's default bar: on Windows a light-grey trough with a
+   chunky mid-grey thumb, which inside a #1F1F1F popover is the brightest thing
+   on the panel. It pulled the eye straight to the one element carrying no
+   information at all.
+
+   A track that is not painted, and a thumb that is: the bar reads as an edge to
+   the content rather than as furniture beside it. Red on hover, because that is
+   the colour everything else in this app uses for "you are touching this", and
+   because a permanently red bar down the side of a list would be shouting the
+   same thing the tick boxes are already saying.
+
+   The thumb's rounding comes from a transparent border plus `background-clip`,
+   which is the only way to inset a webkit thumb — `margin` does nothing there. */
+*{scrollbar-width:thin;scrollbar-color:#4E4E4E transparent}
+::-webkit-scrollbar{width:11px;height:11px}
+::-webkit-scrollbar-track{background:transparent}
+::-webkit-scrollbar-thumb{
+  background:#4E4E4E;border-radius:99px;
+  border:3px solid transparent;background-clip:padding-box;
+  transition:background .13s ease;
+}
+::-webkit-scrollbar-thumb:hover{background:#6E6E6E;background-clip:padding-box}
+::-webkit-scrollbar-thumb:active{background:var(--jt-red);background-clip:padding-box}
+/* where a pinned row and a pinned column meet, the little square between the two
+   bars — left unpainted so it does not read as a cell */
+::-webkit-scrollbar-corner{background:transparent}
+*:hover{scrollbar-color:#6E6E6E transparent}
 
 /* ---------- One focus ring, everywhere ----------
    The UA default is a thin system blue, which on #141414 is close to invisible
@@ -562,8 +630,10 @@ tbody td .zh{opacity:.9}
      screen, and the one most worth switching off when asked to. The rest are
      small, but "reduce motion" is a request, not a severity threshold. */
   .sidebar,.main,.sbscrim,.ms-caret,.btn,.colchip,.legend button,
-  input[type=checkbox],input[type=checkbox]::before{transition:none}
-  .btn:active,input[type=checkbox]:active{transform:none}
+  input[type=checkbox],input[type=checkbox]::before,
+  input[type=radio],input[type=radio]::before,
+  ::-webkit-scrollbar-thumb{transition:none}
+  .btn:active,input[type=checkbox]:active,input[type=radio]:active{transform:none}
 }
 .kcard .dot{position:absolute;top:11px;right:11px;width:9px;height:9px;border-radius:50%}
 /* min-height keeps every card's value row on the same baseline; it allows for
@@ -978,6 +1048,77 @@ body.shooting .chartscroll{overflow:visible !important}
 .ms-btn:disabled{opacity:.4;cursor:not-allowed}
 .ms-btn:disabled:hover{background:var(--card);border-color:var(--line)}
 
+/* ---------- the daily-order filter ----------
+
+   Borrows `.ms-btn`, `.ms-pop` and `.ms-row` wholesale rather than restyling
+   them: it sits on the same bar as three MultiSelects and has to be the same
+   object, not a lookalike. What it adds is the structure a single list does not
+   have — two titled sections, and a footer, because this panel is staged and
+   needs somewhere to say so. */
+.of{position:relative;display:inline-flex}
+.of-btn{max-width:none}
+.of.open .ms-caret{transform:rotate(180deg)}
+.of.open .ms-btn{border-color:var(--jt-red);background:var(--card-3)}
+.of-ico{flex:none;width:14px;height:14px;color:var(--ink-3)}
+.of-btn.filtered .of-ico{color:var(--jt-red-lit)}
+/* Taller than a plain MultiSelect: this one carries two lists, a section head
+   each and a footer, and at `.ms-pop`'s 340px the flex box paid for the footer
+   by squeezing both lists down to three rows. Capped against the viewport too,
+   so a short window scrolls the panel rather than running it off the bottom. */
+.of-pop{min-width:264px;max-width:300px;max-height:min(470px,78vh)}
+/* Opens leftwards, for the reason spelled out above `.ms-pop`: this control sits
+   fourth among the bar's divs, far enough right that a 300px panel anchored to
+   its left edge runs off the page. Same static counting rule, same trade. */
+.dpfilters .of:nth-of-type(n+3) .of-pop{left:auto;right:0}
+
+/* A section head, not a panel head: `.ms-head` has a rule under it that would
+   cut the panel in three once there are two of them. The separation between the
+   two halves is carried by the margin above the second instead. */
+.of-sec{
+  display:flex;align-items:center;gap:8px;
+  padding:5px 8px 6px;
+}
+.of-sec2{margin-top:5px;border-top:1px solid var(--line);padding-top:9px}
+.of-secico{flex:none;width:14px;height:14px;color:var(--ink-3)}
+.of-sectitle{
+  flex:1;min-width:0;font-size:12.5px;font-weight:800;color:var(--ink);
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+}
+/* Right-aligned in the section head, as in the reference. Smaller and greyer
+   than a day row so it reads as a control over the list rather than the first
+   item in it. */
+.of-master{
+  flex:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer;
+  font-size:12px;font-weight:700;color:var(--ink-3);
+}
+.of-master:has(input:disabled){opacity:.45;cursor:not-allowed}
+/* Both lists get a ceiling of their own rather than sharing whatever the panel
+   has left. Left to flex, adding a ninth floor silently stole a row from the
+   days below it. */
+.of-list{overflow-y:auto;min-height:0;max-height:166px}
+.of-days{max-height:176px}
+/* Greyed, not hidden. The days keep their ticks while there is no floor to read
+   them on, and a list that vanished would make the panel jump under the cursor
+   every time the top section changed. */
+.of-idle{opacity:.45;pointer-events:none}
+.of-radio input{flex:none}
+
+.of-foot{
+  display:flex;gap:7px;margin-top:6px;padding-top:7px;border-top:1px solid var(--line);
+}
+.of-foot button{
+  flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;
+  padding:7px 10px;border-radius:8px;cursor:pointer;
+  font-family:inherit;font-size:13px;font-weight:700;
+  transition:background .13s ease,border-color .13s ease;
+}
+.of-foot svg{flex:none;width:13px;height:13px}
+.of-reset{border:1.5px solid var(--line);background:var(--card);color:var(--ink-2)}
+.of-reset:hover{background:var(--card-3);border-color:#4A4A4A;color:var(--ink)}
+.of-apply{border:1.5px solid var(--jt-red);background:var(--jt-red);color:#fff}
+.of-apply:hover{background:var(--jt-red-lit);border-color:var(--jt-red-lit)}
+.of-foot button:focus-visible{outline:2px solid var(--jt-red-lit);outline-offset:1px}
+
 /* ---------- the column switch ----------
 
    A row of tick boxes across the top of the table, not a dropdown. It was a
@@ -1015,6 +1156,36 @@ body.shooting .chartscroll{overflow:visible !important}
 .colgrph{
   font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;
   color:var(--ink-3);margin-right:1px;
+}
+
+/* ---------- Daily-column switches (OTPU Seller) ----------
+
+   Three figures — Total Order, Volume OTPU, %OTPU — each with a tick that shows
+   or hides its band and a dropdown that picks which of the week's days that band
+   covers. They sit on a bar of their own under the filter row because they are
+   not filters: nothing here changes which sellers are listed, only how much of
+   each one the table draws.
+
+   One figure per line, stacked, rather than three pairs strung along a single
+   row. Side by side they read as one long list of six controls and the tick
+   that belongs to a dropdown is ambiguous at a glance; stacked, each line is
+   one figure and the eye can run down the ticks alone. */
+.dailybar{
+  display:flex;flex-direction:column;align-items:flex-start;gap:6px;
+  padding:9px 13px;border-bottom:1px solid var(--line);background:var(--card-2);
+}
+.dailybar-lab{
+  font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;
+  color:var(--ink-3);
+}
+.dailyrow{display:flex;align-items:center;gap:8px}
+/* A floor under the tick so the three dropdowns start on the same x. The labels
+   are different lengths — "%OTPU Harian" against "Volume OTPU Harian" — and
+   ragged dropdowns make the block look like three unrelated controls. */
+.dailyrow .colchip{min-width:250px}
+@media (max-width:720px){
+  .dailyrow{flex-wrap:wrap}
+  .dailyrow .colchip{min-width:0}
 }
 .colchip{
   display:inline-flex;align-items:center;gap:7px;white-space:nowrap;cursor:pointer;
@@ -1600,6 +1771,37 @@ table.otgrid th .otsub{
    the column switch, the span goes wherever the column does. */
 .otkumv{font-weight:800;color:var(--ink)}
 table.otgrid td.otkum{font-weight:800;color:var(--ink)}
+
+/* The GTL benchmark, in both OTPU tables.
+   It used to be `muted` — the same grey as GTL Hub and DP Pickup, which made
+   the one number every result on the row is measured against look like more
+   filing. Blue instead, so the comparison figure is visibly a different kind of
+   number from the results around it.
+   The column head is left alone: `.catrow` is a red band, and blue on red is
+   the one place this colour would fight rather than label. */
+.gtlv,table.otgrid td.gtlv{color:var(--gtl);font-weight:700}
+
+/* ---------- Where the slack goes ----------
+
+   `table.dpgrid` is `min-width:100%`, so whenever the columns add up to less
+   than the panel — which is most of the time now that each daily figure opens on
+   one or three days instead of all seven — the browser has spare width to hand
+   out. Left alone it spreads it evenly, and the result is what it looks like:
+   five-digit numbers floating in the middle of columns twice the width they
+   need, with the gap sitting *inside* the data rather than around it.
+
+   The band head stops forcing its columns wide. "Total Order Harian" set on one
+   line is about 150px, which a single day column carrying `8.255` has no use
+   for; wrapped, the band asks for what it needs and the day column keeps its own
+   width. `--secrow-h` is measured in OtpuSection, so a band on two lines still
+   has the category row pinned exactly beneath it.
+
+   Padding is deliberately untouched. The rows stay as tall and the cells as
+   roomy as they were — the gap being closed is the one *inside* a column, not
+   the breathing room around the numbers. */
+table.otgrid thead tr.secrow th.secband{
+  white-space:normal;line-height:1.25;padding:4px 9px;
+}
 /* The TOTAL row is not one of the agents and must not read as one. A heavier
    rule under it rather than a tint, so it separates the summary from the list
    without competing with the red-and-green cells in it. */
@@ -2251,6 +2453,8 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
     --jt-black:#12151A; --jt-black-2:#2A2F38; --green:#00913F;
     --c-grid:#EDF0F5; --c-axis:#5A6474; --c-axis-2:#8A94A6; --c-halo:#fff;
     --c-ok:#00A650; --c-bad:#E2231A; --c-ok-ink:#2A7A52; --c-bad-ink:#B81810;
+    /* Darkened for white paper — #7FB2FF on white is about 2:1 and unreadable. */
+    --gtl:#1D5FBF;
   }
   html,body{background:#fff;color:var(--ink)}
   tbody tr:nth-child(even),
@@ -2271,6 +2475,16 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
   input[type=checkbox]:checked,input[type=checkbox]:indeterminate{
     background:var(--jt-red) !important;border-color:var(--jt-red) !important;
   }
+  /* the radio follows the tick box for the same reason */
+  input[type=radio]{border-color:#C6CCD8 !important}
+  input[type=radio]:checked{
+    background:var(--jt-red) !important;border-color:var(--jt-red) !important;
+  }
+  /* A thumb that reads on paper-white: the dark-theme #4E4E4E is nearly black
+     against #fff and turns a scroll hint into a hard rule. */
+  *{scrollbar-color:#C2C8D4 transparent}
+  ::-webkit-scrollbar-thumb{background:#C2C8D4;background-clip:padding-box}
+  ::-webkit-scrollbar-thumb:hover{background:#A6AEBD;background-clip:padding-box}
   /* the Status column survives into the PDF — it is the column the sheet is
      read for, so it gets light-mode plates rather than being flattened */
   .stbadge.urgent{background:#F9D3CF !important;color:#8E1109 !important}

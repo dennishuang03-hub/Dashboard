@@ -183,6 +183,18 @@ export interface OtpuSellerRow {
   gtlMonths: { label: string; value: number | null }[]
   /** weekly %OTPU minus GTL, in percentage points */
   vsGtl: number | null
+  /**
+   * The sheet's own two difference-against-GTL columns, kept apart rather than
+   * folded into `vsGtl`.
+   *
+   * `Perbedaan % OTPU Daily - GTL` and `Perbedaan % OTPU Weekly - GTL` answer
+   * different questions — the last day against the benchmark, and the whole week
+   * against it — and a seller can sit on opposite sides of the two. `vsGtl`
+   * stays the computed weekly figure it always was; these are what the file
+   * says, for the filters that ask about each separately.
+   */
+  vsDaily: number | null
+  vsWeekly: number | null
 }
 
 export interface OtpuSellerReport {
@@ -421,9 +433,15 @@ function parseAgentSheet(ws: XLSX.WorkSheet): OtpuAgentReport | null {
     const prev = pct.length > 1 ? pct[pct.length - 2] : null
     const computedDelta = last != null && prev != null ? last - prev : null
     const statedDelta = deltaCol != null ? ratio(cv(m[r][deltaCol])) : null
-    if (statedDelta != null && computedDelta != null && Math.abs(statedDelta - computedDelta) > 0.5) {
-      warnSet.add('kolom Perbandingan (占比)')
-    }
+    /* No warning when the sheet's 占比 disagrees with the two weekly percentages.
+       The other warnings in here exist because a number on the page might not be
+       the number in the file, and the reader has to be told which. This one has
+       nothing on the page to be about: the Perbandingan column was taken out of
+       the table, and what is left of `delta` is the recomputed figure on the
+       OTPU KUMULATIF card. A banner across the top of a report, naming a column
+       nobody can see, over a value that was never taken from the sheet in the
+       first place, only asks the reader to go looking for something that is not
+       there. `computedDelta` still wins below, exactly as it did. */
     const delta = computedDelta ?? statedDelta
 
     const gtl = gtlHead ? ratio(cv(m[r][gtlHead.c])) : null
@@ -612,7 +630,9 @@ function parseSellerSheet(ws: XLSX.WorkSheet): OtpuSellerReport | null {
       value: ratio(at(r, g.c)),
     }))
     const gtl = gtlMonths.length ? gtlMonths[gtlMonths.length - 1].value : null
-    const statedVs = ratio(at(r, vsWeeklyCol)) ?? ratio(at(r, vsDailyCol))
+    const vsDaily = ratio(at(r, vsDailyCol))
+    const vsWeekly = ratio(at(r, vsWeeklyCol))
+    const statedVs = vsWeekly ?? vsDaily
     const vsGtl = gtl != null && pct != null ? pct - gtl : statedVs
 
     const row: OtpuSellerRow = {
@@ -622,7 +642,7 @@ function parseSellerSheet(ws: XLSX.WorkSheet): OtpuSellerReport | null {
       key: `${String(r[0] ?? '') || `${seller}|${dp}`}|${i}`,
       seller, hub, dp, agent,
       dailyOrders, dailyPicked, dailyPct,
-      orders, picked, pct, gtl, gtlMonths, vsGtl,
+      orders, picked, pct, gtl, gtlMonths, vsGtl, vsDaily, vsWeekly,
     }
 
     if (isTotal && !total) total = row

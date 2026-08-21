@@ -27,17 +27,19 @@
  * building. Every page therefore states its handling class in the band itself,
  * where it is part of the picture rather than part of the chrome.
  */
-import { useMemo, useState } from 'react'
+import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import { agentZh } from '../lib/jnt'
 import {
   dfmt, isActive, longDate, nfmt, pfmt, poolPct, shortDate, toneOf,
 } from '../lib/otpu'
 import type {
-  OtpuAgentReport, OtpuAgentRow, OtpuReport, OtpuSellerReport, OtpuSellerRow,
+  OtpuAgentReport, OtpuAgentRow, OtpuPeriod, OtpuReport, OtpuSellerReport, OtpuSellerRow,
 } from '../lib/otpu'
 import { HBarChart } from './Charts'
 import MultiSelect from './MultiSelect'
+import OrderFilter from './OrderFilter'
+import type { OrderFilterValue } from './OrderFilter'
 import type { MsOption } from './MultiSelect'
 import Zh from './Zh'
 
@@ -237,23 +239,15 @@ function agentCols(agent: OtpuAgentReport): ACol[] {
     cell: (r) => <span className="otkumv">{pfmt(r.pctTotal)}</span>,
   })
 
-  const lastWeek = agent.weeks.length ? agent.weeks[agent.weeks.length - 1].short : ''
-  const prevWeek = agent.weeks.length > 1 ? agent.weeks[agent.weeks.length - 2].short : ''
-  out.push({
-    id: 'delta', band: 'cmp', label: 'Perbandingan', zh: '占比', chip: 'Perbandingan',
-    ctr: true,
-    sort: (r) => r.delta,
-    cell: (r) => (
-      <DeltaPill
-        v={r.delta}
-        title={prevWeek ? `${lastWeek} dibanding ${prevWeek}` : 'Minggu terakhir dibanding sebelumnya'}
-      />
-    ),
-  })
+  /* No Perbandingan (占比) column. It carried last week against the week
+     before, which is a different question from the one the rest of the
+     comparison band asks — everything beside it measures against GTL. The
+     figure itself is still on the OTPU KUMULATIF card as "vs minggu lalu",
+     which is where a single week-on-week number belongs. */
   out.push({
     id: 'gtl', band: 'cmp', label: agent.gtlLabel, chip: agent.gtlLabel,
     sort: (r) => r.gtl,
-    cell: (r) => <span className="muted">{pfmt(r.gtl)}</span>,
+    cell: (r) => <span className="gtlv">{pfmt(r.gtl)}</span>,
   })
   out.push({
     id: 'vsgtl', band: 'cmp', label: 'Banding GTL', zh: '对比GTL', chip: 'Banding GTL',
@@ -596,11 +590,96 @@ const BAND_LABEL: Record<Band, string> = {
   kosong: 'Tanpa GTL',
 }
 
-function bandOf(r: OtpuSellerRow): Band {
-  if (r.vsGtl == null) return 'kosong'
-  if (r.vsGtl < -0.5) return 'bawah'
-  if (r.vsGtl > 0.5) return 'atas'
+/**
+ * Which side of GTL a difference sits on.
+ *
+ * Takes the number rather than the row, because there are now two of them —
+ * the daily difference and the weekly one — and a seller can be above the
+ * benchmark on the week while below it on the last day.
+ */
+function bandOfValue(v: number | null): Band {
+  if (v == null) return 'kosong'
+  if (v < -0.5) return 'bawah'
+  if (v > 0.5) return 'atas'
   return 'setara'
+}
+
+/**
+ * The three figures the sheet carries for every day, in the order the columns
+ * appear. `%OTPU` is last because it is the one computed from the other two.
+ */
+const DAILY_METRICS = [
+  { id: 'orders', label: 'Total Order', zh: '订单量', field: 'dailyOrders' },
+  { id: 'picked', label: 'Volume OTPU', zh: '实际揽收件量', field: 'dailyPicked' },
+  { id: 'pct', label: '%OTPU', zh: '实际揽收及时率', field: 'dailyPct' },
+] as const
+
+type DailyMetric = (typeof DAILY_METRICS)[number]
+
+/**
+ * The two weekly counts that can be switched off.
+ *
+ * `%OTPU` is not in the list on purpose: it is the column the row is judged on
+ * and the one every comparison beside it refers to, so it is not offered as
+ * something to hide.
+ */
+const WEEK_COLS = [
+  { id: 'orders', label: 'Total Order', zh: '订单量', sort: 'orders' },
+  { id: 'picked', label: 'Volume OTPU', zh: '实际揽收件量', sort: 'picked' },
+] as const
+
+/* One shared empty set for the figures nobody has narrowed yet. A fresh
+   `new Set()` in the render would be a new prop identity every pass. */
+const NO_DAYS_OFF: ReadonlySet<string> = new Set<string>()
+
+/**
+ * How many days each figure opens on, counted back from the most recent.
+ *
+ * Not the whole week for any of them. Twenty-one daily columns is the *capacity*
+ * of this block, not a sensible first screen — it pushes Total Order, %OTPU and
+ * Banding GTL off to the right, which are the columns the page is read for. The
+ * counts here are what the report is usually opened to answer: yesterday's two
+ * volumes, and enough of a percentage run to see which way it is moving.
+ *
+ * Every one of them is a tick away from the full seven.
+ */
+const DEFAULT_DAYS: Record<string, number> = { orders: 1, picked: 1, pct: 3 }
+
+/** The opening day picks, as the off-sets `MultiSelect` speaks in. */
+function defaultDayOff(days: OtpuPeriod[]): Record<string, ReadonlySet<string>> {
+  const out: Record<string, ReadonlySet<string>> = {}
+  for (const m of DAILY_METRICS) {
+    /* `days` is oldest-first, so the newest N are the tail and everything
+       before them starts switched off. */
+    const keep = DEFAULT_DAYS[m.id] ?? days.length
+    out[m.id] = new Set(days.slice(0, Math.max(0, days.length - keep)).map((d) => d.key))
+  }
+  return out
+}
+
+/** `d#pct#3` — metric and day index, kept apart from the weekly sort keys. */
+const dailySortKey = (id: string, i: number) => `d#${id}#${i}`
+const DAILY_SORT_RE = /^d#(orders|picked|pct)#(\d+)$/
+
+/* The floors offered by the daily-order filter, biggest first — the list is
+   read as "at least this big", so the strictest choice sits at the top. */
+const ORDER_FLOORS = [800, 700, 600, 500, 400, 300, 200, 100]
+
+/**
+ * Does this seller clear `min` orders on any of the chosen days?
+ *
+ * A missing daily figure is a no rather than a zero: the column being absent
+ * means the day was not reported, and answering "under 800" for a day nobody
+ * measured would put the row on the wrong side of the filter.
+ */
+function meetsDailyFloor(
+  r: OtpuSellerRow, days: OtpuPeriod[], picked: ReadonlySet<string>, min: number,
+): boolean {
+  return days.some((d, i) => {
+    if (!picked.has(d.key)) return false
+    const v = r.dailyOrders[i] ?? null
+    return v != null && v >= min
+  })
 }
 
 /* --------------------------------------------------------- seller roll-ups */
@@ -659,15 +738,71 @@ function SellerTable({
 }) {
   const [q, setQ] = useState('')
   const [agentOff, setAgentOff] = useState<ReadonlySet<string>>(() => new Set<string>())
-  const [hubOff, setHubOff] = useState<ReadonlySet<string>>(() => new Set<string>())
-  const [bandOff, setBandOff] = useState<ReadonlySet<string>>(() => new Set<string>())
+  /* Two GTL comparisons, filtered apart. The sheet gives a daily difference and
+     a weekly one, and they disagree often enough that folding them into a
+     single control would hide the disagreement. */
+  /* The daily comparison opens on "Di bawah GTL" alone. Six thousand active
+     sellers is not a list anybody reads top to bottom, and the ones under the
+     benchmark yesterday are the reason this page gets opened. The other three
+     bands are one tick away, and the trigger says which band is showing rather
+     than leaving a narrowed table to be discovered. */
+  const [dayBandOff, setDayBandOff] = useState<ReadonlySet<string>>(
+    () => new Set(BAND_ORDER.filter((b) => b !== 'bawah')),
+  )
+  const [weekBandOff, setWeekBandOff] = useState<ReadonlySet<string>>(() => new Set<string>())
+  /* The harian block: which of the three figures are showing, and which days
+     each of them is showing. The day list is kept *per figure* rather than
+     shared — "Total Order for the whole week, but %OTPU only for the days it
+     went wrong" is the shape of the question, and one shared list cannot say
+     it. All three figures start ticked; the days they open on are in
+     `DEFAULT_DAYS`. */
+  const [metricOff, setMetricOff] = useState<ReadonlySet<string>>(() => new Set<string>())
+  const [dayOffBy, setDayOffBy] = useState<Record<string, ReadonlySet<string>>>(
+    () => defaultDayOff(seller.days),
+  )
+
+  /* The two weekly counts, off to begin with. They are what the weekly %OTPU is
+     computed *from* rather than what the page is read for, and the same
+     reasoning already keeps them off by default in the agent table above. */
+  const [weekOff, setWeekOff] = useState<ReadonlySet<string>>(
+    () => new Set(WEEK_COLS.map((c) => c.id)),
+  )
+  const toggleWeek = useCallback((id: string) => {
+    setWeekOff((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+  const weekShown = useMemo(() => WEEK_COLS.filter((c) => !weekOff.has(c.id)), [weekOff])
+
+  const setDayOffFor = useCallback((id: string, next: ReadonlySet<string>) => {
+    setDayOffBy((prev) => ({ ...prev, [id]: next }))
+  }, [])
+
+  const toggleMetric = useCallback((id: string) => {
+    setMetricOff((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }, [])
+  /* Volume floor on the daily order count, and the day it is read on.
+     Two controls rather than one because the day is the interesting half:
+     a seller that clears 800 on Saturday and 40 on Tuesday is a different
+     conversation depending on which day is being asked about. `'any'` keeps
+     the row if *any* single day clears the floor. */
+  const [order, setOrder] = useState<OrderFilterValue>(
+    () => ({ min: null, days: new Set(seller.days.map((d) => d.key)) }),
+  )
   /* Off by default: eleven thousand of the seventeen thousand rows shipped
      nothing this week, and a list that opens on them buries the six thousand
      that did. It is a switch rather than a silent filter for the usual reason —
      "where did my seller go?" has to have an answer on the page. */
   const [showZero, setShowZero] = useState(false)
   const [showAll, setShowAll] = useState(false)
-  const [showDaily, setShowDaily] = useState(false)
   const [sortKey, setSortKey] = useState<string>('orders')
   const [sortDir, setSortDir] = useState<SortDir>('desc')
 
@@ -676,11 +811,9 @@ function SellerTable({
 
   const opts = useMemo(() => {
     const agents = new Map<string, number>()
-    const hubs = new Map<string, number>()
     for (const r of seller.rows) {
       if (!showZero && !isActive(r)) continue
       agents.set(r.agent || '—', (agents.get(r.agent || '—') ?? 0) + 1)
-      hubs.set(r.hub || '—', (hubs.get(r.hub || '—') ?? 0) + 1)
     }
     const mk = (m: Map<string, number>, label?: (k: string) => string): MsOption[] =>
       [...m.entries()]
@@ -691,16 +824,15 @@ function SellerTable({
         const city = agentOf(k)
         return city ? `${k} · ${city}` : k
       }),
-      hub: mk(hubs),
     }
   }, [seller.rows, showZero, agentOf])
 
-  /** Three bands against GTL, so the list can be narrowed to the problem. */
-  const bandOpts = useMemo<MsOption[]>(() => {
+  /** Bands against GTL, so the list can be narrowed to the problem. */
+  const bandOptsFor = useCallback((pick: (r: OtpuSellerRow) => number | null): MsOption[] => {
     const m = new Map<Band, number>()
     for (const r of seller.rows) {
       if (!showZero && !isActive(r)) continue
-      const b = bandOf(r)
+      const b = bandOfValue(pick(r))
       m.set(b, (m.get(b) ?? 0) + 1)
     }
     /* Listed in the fixed order rather than in the order they happen to turn
@@ -711,13 +843,79 @@ function SellerTable({
       .map((b) => ({ value: b, label: BAND_LABEL[b], n: m.get(b) }))
   }, [seller.rows, showZero])
 
+  const dayBandOpts = useMemo(() => bandOptsFor((r) => r.vsDaily), [bandOptsFor])
+  /* `vsGtl`, not the sheet's `vsWeekly`: the Selisih Mingguan column draws
+     `vsGtl`, and a filter that sorted rows by a number the table does not show
+     can put a row the user asked for "below GTL" on screen reading `+0,4%`.
+     The two agree almost everywhere — `vsGtl` is `pct - gtl` recomputed — which
+     is exactly why the disagreements would be impossible to account for. */
+  const weekBandOpts = useMemo(() => bandOptsFor((r) => r.vsGtl), [bandOptsFor])
+
+  const dayOpts = useMemo<MsOption[]>(
+    () => seller.days.map((d) => ({ value: d.key, label: d.from ? shortDate(d.from) : d.label })),
+    [seller.days],
+  )
+
+  /*
+   * The daily blocks actually drawn, in column order.
+   *
+   * Each carries the days it survived with the index each day has in the row
+   * arrays. The index has to travel with the day: once days can be switched off
+   * per figure, position in this list stops matching position in `dailyOrders`.
+   *
+   * A figure whose days are all unticked drops out here rather than rendering a
+   * band nought columns wide, which would leave a stray header over nothing.
+   */
+  const dailyBands = useMemo(() => DAILY_METRICS
+    .filter((m) => !metricOff.has(m.id))
+    .map((m) => ({
+      m: m as DailyMetric,
+      days: seller.days
+        .map((d, i) => ({ d, i }))
+        .filter(({ d }) => !dayOffBy[m.id]?.has(d.key)),
+    }))
+    .filter((b) => b.days.length > 0),
+  [seller.days, metricOff, dayOffBy])
+
+  const dailyWidth = dailyBands.reduce((n, b) => n + b.days.length, 0)
+
+  /**
+   * Publish the band row's real height as `--secrow-h`, which is what the
+   * category row sticks below — the same measurement `DpSection` takes, for the
+   * same reason.
+   *
+   * This table was running on the 30px fallback, which was already a guess and
+   * became a wrong one the moment the band heads were allowed to wrap. A band
+   * that grows to two lines under a category row pinned at 30px leaves the two
+   * overlapping as the body scrolls under them.
+   */
+  const secRowRef = useRef<HTMLTableRowElement>(null)
+  useLayoutEffect(() => {
+    const row = secRowRef.current
+    if (!row) return
+    const table = row.closest('table') as HTMLElement | null
+    if (!table) return
+    const apply = () => {
+      /* Floored, for the reason spelled out in DpSection: a fractional height
+         resolves to a device pixel that can land either side of the band's edge,
+         and rounding down always takes the invisible overlap over the seam. */
+      const h = row.getBoundingClientRect().height
+      table.style.setProperty('--secrow-h', `${Math.max(0, Math.floor(h))}px`)
+    }
+    apply()
+    const ro = new ResizeObserver(apply)
+    ro.observe(row)
+    return () => ro.disconnect()
+  }, [dailyBands])
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
     const out = seller.rows.filter((r) => {
       if (!showZero && !isActive(r)) return false
       if (agentOff.has(r.agent || '—')) return false
-      if (hubOff.has(r.hub || '—')) return false
-      if (bandOff.has(bandOf(r))) return false
+      if (dayBandOff.has(bandOfValue(r.vsDaily))) return false
+      if (weekBandOff.has(bandOfValue(r.vsGtl))) return false
+      if (order.min != null && !meetsDailyFloor(r, seller.days, order.days, order.min)) return false
       if (needle) {
         const hay = `${r.seller} ${r.hub} ${r.dp} ${r.agent}`.toLowerCase()
         if (!hay.includes(needle)) return false
@@ -736,17 +934,20 @@ function SellerTable({
         case 'pct': return cmpNum(a.pct, b.pct, dir)
         case 'gtl': return cmpNum(a.gtl, b.gtl, dir)
         case 'vsgtl': return cmpNum(a.vsGtl, b.vsGtl, dir)
+        case 'vsdaily': return cmpNum(a.vsDaily, b.vsDaily, dir)
         default: {
-          if (sortKey.startsWith('d')) {
-            const i = Number(sortKey.slice(1))
-            return cmpNum(a.dailyPct[i] ?? null, b.dailyPct[i] ?? null, dir)
+          const m = DAILY_SORT_RE.exec(sortKey)
+          if (m) {
+            const field = m[1] === 'orders' ? 'dailyOrders' : m[1] === 'picked' ? 'dailyPicked' : 'dailyPct'
+            const i = Number(m[2])
+            return cmpNum(a[field][i] ?? null, b[field][i] ?? null, dir)
           }
           return cmpNum(a.orders, b.orders, dir)
         }
       }
     })
     return out
-  }, [seller.rows, q, agentOff, hubOff, bandOff, showZero, sortKey, sortDir])
+  }, [seller.rows, seller.days, q, agentOff, dayBandOff, weekBandOff, order, showZero, sortKey, sortDir])
 
   const shown = showAll ? filtered : filtered.slice(0, PAGE)
   const pool = useMemo(() => poolPct(filtered), [filtered])
@@ -773,9 +974,9 @@ function SellerTable({
    * `capturedSize` measures the descendants, so the canvas grows to fit.
    */
 
-  const dailyCols = showDaily ? seller.days : []
-  /* seller, hub, DP, agent · the daily block · order, volume, %OTPU, GTL, selisih */
-  const colCount = 4 + dailyCols.length + 5
+  /* seller, hub, DP, agent · the daily block · the weekly counts still showing,
+     then %OTPU, GTL and the two selisih columns */
+  const colCount = 4 + dailyWidth + weekShown.length + 4
 
   return (
     <div className="panel dptable">
@@ -796,37 +997,86 @@ function SellerTable({
           options={opts.agent} off={agentOff} onChange={setAgentOff}
         />
         <MultiSelect
-          name="GTL Hub" zh="抖音网点" allLabel="Semua GTL Hub"
-          options={opts.hub} off={hubOff} onChange={setHubOff}
+          name="Banding GTL Harian" zh="日度对比GTL" allLabel="Banding GTL Harian"
+          options={dayBandOpts} off={dayBandOff} onChange={setDayBandOff}
         />
         <MultiSelect
-          name="Banding GTL" zh="对比GTL" allLabel="Semua posisi GTL"
-          options={bandOpts} off={bandOff} onChange={setBandOff}
+          name="Banding GTL Mingguan" zh="周度对比GTL" allLabel="Banding GTL Mingguan"
+          options={weekBandOpts} off={weekBandOff} onChange={setWeekBandOff}
+        />
+        <OrderFilter
+          days={seller.days} floors={ORDER_FLOORS} value={order} onApply={setOrder}
         />
         <label className="colchip">
           <input type="checkbox" checked={showZero} onChange={() => setShowZero(!showZero)} />
           Tampilkan {nfmt(zeroCount)} baris tanpa order
         </label>
-        <label className="colchip">
-          <input type="checkbox" checked={showDaily} onChange={() => setShowDaily(!showDaily)} />
-          Kolom harian ({seller.days.length} hari)
-        </label>
+      </div>
+
+      {/* The daily switches get their own bar rather than a place in the filter
+          row above. They answer a different question — what the table *shows*,
+          not which rows it keeps — and six more controls in that row pushed the
+          search box onto a line of its own. */}
+      <div className="dailybar">
+        <span className="dailybar-lab">Data harian<Zh>日度数据</Zh></span>
+        {DAILY_METRICS.map((m) => {
+          const on = !metricOff.has(m.id)
+          return (
+            <div className="dailyrow" key={m.id}>
+              <label className={`colchip${on ? '' : ' off'}`}>
+                <input type="checkbox" checked={on} onChange={() => toggleMetric(m.id)} />
+                {m.label} Harian<Zh>{`日度${m.zh}`}</Zh>
+              </label>
+              <MultiSelect
+                name={`Hari ${m.label}`} zh="日期"
+                allLabel={`Semua hari (${seller.days.length})`}
+                options={dayOpts}
+                off={dayOffBy[m.id] ?? NO_DAYS_OFF}
+                onChange={(next) => setDayOffFor(m.id, next)}
+                /* Greyed rather than hidden when the figure is switched off: the
+                   day picks survive the tick, and a control that vanished would
+                   make it look as though they had been forgotten. */
+                disabled={!on}
+              />
+            </div>
+          )
+        })}
+
+        <span className="dailybar-lab">Data mingguan<Zh>周度数据</Zh></span>
+        {WEEK_COLS.map((c) => (
+          <div className="dailyrow" key={c.id}>
+            <label className={`colchip${weekOff.has(c.id) ? ' off' : ''}`}>
+              <input
+                type="checkbox"
+                checked={!weekOff.has(c.id)}
+                onChange={() => toggleWeek(c.id)}
+              />
+              {c.label} Mingguan<Zh>{`周度${c.zh}`}</Zh>
+            </label>
+          </div>
+        ))}
       </div>
 
       <div className="body" style={{ padding: 0 }}>
         <div className="dpscroll">
           <table className="dpgrid otgrid">
             <thead>
-              <tr className="secrow">
+              <tr className="secrow" ref={secRowRef}>
+                {/* The frozen name column keeps an empty band cell — it is one
+                    column wide and the row beneath already says "Nama Seller",
+                    so a label here would only repeat it. The three that follow
+                    get a head of their own rather than three more empty black
+                    cells: they are a group, and an unlabelled gap over them read
+                    as the table missing something. */}
                 <th className="sticky" />
-                <th /><th /><th />
-                {dailyCols.length > 0 && (
-                  <th className="secband seam" colSpan={dailyCols.length}>
-                    %OTPU Harian<Zh>日度</Zh>
+                <th className="secband" colSpan={3}>Lokasi &amp; Agen<Zh>网点与代理</Zh></th>
+                {dailyBands.map(({ m, days }) => (
+                  <th key={m.id} className="secband seam" colSpan={days.length}>
+                    {m.label} Harian<Zh>{`日度${m.zh}`}</Zh>
                   </th>
-                )}
-                <th className="seam" colSpan={3}>Mingguan<Zh>周度</Zh></th>
-                <th colSpan={2} className="seam">Banding GTL<Zh>对比GTL</Zh></th>
+                ))}
+                <th className="seam" colSpan={weekShown.length + 1}>Mingguan<Zh>周度</Zh></th>
+                <th colSpan={3} className="seam">Banding GTL<Zh>对比GTL</Zh></th>
               </tr>
               <tr className="catrow">
                 <th className="sticky" onClick={() => sortOn('seller')}>
@@ -835,28 +1085,41 @@ function SellerTable({
                 <th onClick={() => sortOn('hub')}>GTL Hub{arrow('hub')}<Zh>抖音网点</Zh></th>
                 <th onClick={() => sortOn('dp')}>DP Pickup{arrow('dp')}<Zh>实际取件网点</Zh></th>
                 <th onClick={() => sortOn('agent')}>Agent{arrow('agent')}<Zh>寄件代理</Zh></th>
-                {dailyCols.map((d, i) => (
+                {dailyBands.map(({ m, days }) => (
+                  days.map(({ d, i }, k) => {
+                    const key = dailySortKey(m.id, i)
+                    return (
+                      <th
+                        key={`${m.id}-${d.key}`} className={`num cat${k === 0 ? ' seam' : ''}`}
+                        onClick={() => sortOn(key)}
+                      >
+                        {d.short}{arrow(key)}
+                      </th>
+                    )
+                  })
+                ))}
+                {weekShown.map((c, k) => (
                   <th
-                    key={d.key} className={`num cat${i === 0 ? ' seam' : ''}`}
-                    onClick={() => sortOn(`d${i}`)}
+                    key={c.id} className={`num cat${k === 0 ? ' seam' : ''}`}
+                    onClick={() => sortOn(c.sort)}
                   >
-                    {d.short}{arrow(`d${i}`)}
+                    {c.label}{arrow(c.sort)}<Zh>{c.zh}</Zh>
                   </th>
                 ))}
-                <th className="num cat seam" onClick={() => sortOn('orders')}>
-                  Total Order{arrow('orders')}<Zh>订单量</Zh>
-                </th>
-                <th className="num cat" onClick={() => sortOn('picked')}>
-                  Volume OTPU{arrow('picked')}<Zh>实际揽收件量</Zh>
-                </th>
-                <th className="num cat" onClick={() => sortOn('pct')}>
+                <th
+                  className={`num cat${weekShown.length === 0 ? ' seam' : ''}`}
+                  onClick={() => sortOn('pct')}
+                >
                   %OTPU{arrow('pct')}<Zh>及时率</Zh>
                 </th>
                 <th className="num cat seam" onClick={() => sortOn('gtl')}>
                   {seller.gtlLabel}{arrow('gtl')}
                 </th>
+                <th className="ctr cat" onClick={() => sortOn('vsdaily')}>
+                  Selisih Harian{arrow('vsdaily')}<Zh>日度差值</Zh>
+                </th>
                 <th className="ctr cat" onClick={() => sortOn('vsgtl')}>
-                  Selisih{arrow('vsgtl')}<Zh>差值</Zh>
+                  Selisih Mingguan{arrow('vsgtl')}<Zh>周度差值</Zh>
                 </th>
               </tr>
             </thead>
@@ -869,25 +1132,48 @@ function SellerTable({
                   <td className="muted">{r.hub || '—'}</td>
                   <td className="muted">{r.dp || '—'}</td>
                   <td>{r.agent || '—'}</td>
-                  {dailyCols.map((d, i) => {
-                    const v = r.dailyPct[i] ?? null
-                    if (v == null) return <td key={d.key} className={`num muted${i === 0 ? ' seam' : ''}`}>—</td>
-                    const bad = r.gtl != null && v < r.gtl
-                    return (
-                      <td
-                        key={d.key}
-                        className={`num hm ${bad ? 'bad' : 'ok'}${i === 0 ? ' seam' : ''}`}
-                        title={`${shortDate(d.from!)} · ${nfmt(r.dailyPicked[i])} dari ${nfmt(r.dailyOrders[i])}`}
-                      >
-                        {pfmt(v, 1)}
-                      </td>
-                    )
-                  })}
-                  <td className="num seam">{nfmt(r.orders)}</td>
-                  <td className="num">{nfmt(r.picked)}</td>
-                  <td className="num otkum">{pfmt(r.pct)}</td>
-                  <td className="num muted seam">{pfmt(r.gtl)}</td>
-                  <td className="ctr"><DeltaPill v={r.vsGtl} /></td>
+                  {dailyBands.map(({ m, days }) => (
+                    days.map(({ d, i }, k) => {
+                      const seam = k === 0 ? ' seam' : ''
+                      const when = d.from ? shortDate(d.from) : d.label
+                      const tip = `${when} · ${nfmt(r.dailyPicked[i])} dari ${nfmt(r.dailyOrders[i])}`
+                      const cellKey = `${m.id}-${d.key}`
+                      /* Counts read as plain numbers; only the percentage gets the
+                         heat, and it is measured against the same GTL the rest of
+                         the row is. */
+                      if (m.id !== 'pct') {
+                        const n = r[m.field][i] ?? null
+                        return (
+                          <td key={cellKey} className={`num${n == null ? ' muted' : ''}${seam}`} title={tip}>
+                            {nfmt(n)}
+                          </td>
+                        )
+                      }
+                      const v = r.dailyPct[i] ?? null
+                      if (v == null) return <td key={cellKey} className={`num muted${seam}`}>—</td>
+                      const bad = r.gtl != null && v < r.gtl
+                      return (
+                        <td key={cellKey} className={`num hm ${bad ? 'bad' : 'ok'}${seam}`} title={tip}>
+                          {pfmt(v, 1)}
+                        </td>
+                      )
+                    })
+                  ))}
+                  {weekShown.map((c, k) => (
+                    <td key={c.id} className={`num${k === 0 ? ' seam' : ''}`}>
+                      {nfmt(c.id === 'orders' ? r.orders : r.picked)}
+                    </td>
+                  ))}
+                  <td className={`num otkum${weekShown.length === 0 ? ' seam' : ''}`}>
+                    {pfmt(r.pct)}
+                  </td>
+                  <td className="num gtlv seam">{pfmt(r.gtl)}</td>
+                  <td className="ctr">
+                    <DeltaPill v={r.vsDaily} title={`%OTPU harian dibanding ${seller.gtlLabel}`} />
+                  </td>
+                  <td className="ctr">
+                    <DeltaPill v={r.vsGtl} title={`%OTPU mingguan dibanding ${seller.gtlLabel}`} />
+                  </td>
                 </tr>
               ))}
               {!shown.length && (
@@ -951,14 +1237,14 @@ export default function OtpuSection({
     const active = seller.rows.filter(isActive)
     const byAgent = poolBy(active, (r) => r.agent || '—').sort((a, b) => b.orders - a.orders)
     const byHub = poolBy(active, (r) => r.hub || '—')
-    const rankable = active.filter((r) => (r.orders ?? 0) >= MIN_RANK_VOL && r.pct != null)
-    const worst = [...rankable].sort((a, b) => (a.pct ?? 0) - (b.pct ?? 0)).slice(0, 10)
-    const best = [...rankable].sort((a, b) => (b.pct ?? 0) - (a.pct ?? 0)).slice(0, 10)
+    /* No per-seller worst/best ten any more — the two charts that read them are
+       gone, and the seller table sorts on %OTPU for the same question. Hubs are
+       still ranked: that chart lives on the summary page. */
     const worstHubs = byHub
       .filter((h) => h.orders >= MIN_RANK_VOL && h.pct != null)
       .sort((a, b) => (a.pct ?? 0) - (b.pct ?? 0))
       .slice(0, 10)
-    return { active, byAgent, byHub, rankable, worst, best, worstHubs, pool: poolPct(active) }
+    return { active, byAgent, byHub, worstHubs, pool: poolPct(active) }
   }, [seller])
 
   const warnings = [...(agent?.warnings ?? []), ...(seller?.warnings ?? [])]
@@ -1098,42 +1384,10 @@ export default function OtpuSection({
             </div>
           )}
 
-          {part === 'seller' && (
-            <div className="row-dp">
-              <div className="panel">
-                <h3><span className="ptitle">10 Seller Terendah <Zh>后十名商家</Zh></span></h3>
-                <div className="body">
-                  <HBarChart
-                    bars={(sellerRanked.worst.map((r) => ({
-                      name: r.seller,
-                      sub: `${r.hub || '—'} · ${nfmt(r.orders)} order`,
-                      value: r.pct as number,
-                    })))}
-                    targetLine={agent?.gtl ?? null}
-                  />
-                  <div className="chartnote">
-                    Hanya seller dengan minimal {MIN_RANK_VOL} order pada periode ini.
-                    {' '}{nfmt(sellerRanked.active.length - sellerRanked.rankable.length)} seller
-                    aktif lainnya bervolume terlalu kecil untuk diperingkat.
-                  </div>
-                </div>
-              </div>
-              <div className="panel">
-                <h3><span className="ptitle">10 Seller Tertinggi <Zh>前十名商家</Zh></span></h3>
-                <div className="body">
-                  <HBarChart
-                    bars={(sellerRanked.best.map((r) => ({
-                      name: r.seller,
-                      sub: `${r.hub || '—'} · ${nfmt(r.orders)} order`,
-                      value: r.pct as number,
-                    })))}
-                    targetLine={agent?.gtl ?? null}
-                  />
-                  <div className="chartnote">Ambang volume yang sama: minimal {MIN_RANK_VOL} order.</div>
-                </div>
-              </div>
-            </div>
-          )}
+          {/* The worst-ten and best-ten seller charts used to sit here. They
+              ranked by %OTPU, which the table already sorts on, and the table
+              is what this page is for — the charts only pushed it further down
+              the first screen. */}
 
           {part === 'seller' && (
             <SellerTable

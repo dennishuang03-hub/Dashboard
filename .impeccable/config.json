@@ -1,0 +1,32 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "side-tab",
+        "value": "border-left:5px solid var(--jt-red)",
+        "createdAt": "2026-08-21T15:03:03.187Z",
+        "reason": "user confirmed: J&T red leading-edge accent is the established brand look across the dashboard; asked whether to keep or revisit, answered 'left exactly as is'"
+      },
+      {
+        "rule": "side-tab",
+        "value": "border-left:3px solid var(--jt-red)",
+        "createdAt": "2026-08-21T15:03:03.321Z",
+        "reason": "user confirmed: J&T red leading-edge accent is the established brand look across the dashboard; asked whether to keep or revisit, answered 'left exactly as is'"
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "border-bottom:3px solid",
+        "createdAt": "2026-08-21T15:03:10.306Z",
+        "reason": "user confirmed: J&T red brand accent on topbar/section cards; asked whether to keep or revisit, answered 'left exactly as is'"
+      },
+      {
+        "rule": "border-accent-on-rounded",
+        "value": "border-top:3px solid",
+        "createdAt": "2026-08-21T15:03:10.464Z",
+        "reason": "user confirmed: J&T red brand accent plus the kcard tone indicator; asked whether to keep or revisit, answered 'left exactly as is'"
+      }
+    ]
+  }
+}
