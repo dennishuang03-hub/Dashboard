@@ -2832,3 +2832,65 @@ body.shooting .otpusection .panel{
   }
   .otpusection .chartnote{color:var(--ink-2) !important;border-top-color:var(--line) !important}
 }
+
+/* ============================================================================
+   Pinning the rest of the layout for a capture
+   ============================================================================
+
+   The block up at `body.shooting .row-mid` explains the rule this file has to
+   follow and why: html2canvas copies the *computed style of each live element*,
+   so `windowWidth` does not re-evaluate media queries in the clone. Whatever the
+   real viewport matched is already baked in. Every phone rule therefore has to
+   be undone in the live document before the shot, or it goes into the picture.
+
+   Two sets of rules were missed.
+
+   The top bar, which is what broke the OTPU Agent export. `@media
+   (max-width:640px)` gives the wordmark `width:100%` so it can be a full-width
+   band on a phone; `body.shooting` then pins `.wrap` to 1480px without undoing
+   that, so "100%" became 1480px and the export came out as a single letter of
+   the logo two thousand pixels across, with the rest of the report pushed off
+   the bottom of the canvas. Nothing about it looked like a width bug, because
+   the width was the one thing that was correct.
+
+   And the OTPU responsive block added later in this file, which had exactly the
+   same hole: single-column cards and counters, full-width filter chips. Those
+   never reached a bug report only because nobody had yet exported that page from
+   a narrow window.
+
+   `!important` throughout, and for the reason given up there — these compete
+   with later rules of equal specificity and lose on source order otherwise. */
+
+/* ---------- the top bar ---------- */
+body.shooting .topbar{gap:0 !important;position:static !important}
+body.shooting .logo{padding:0 18px !important}
+body.shooting .logo:has(img.jtlogo){padding:0 !important}
+body.shooting .logo .jtlogo{width:146px !important;height:auto !important}
+body.shooting .logo img.jtlogo{
+  width:196px !important;height:100% !important;min-height:64px !important;
+}
+body.shooting .logo.plain img.jtlogo{width:186px !important;height:60px !important;min-height:0 !important}
+body.shooting .titleblock,
+body.shooting .topbar .titleblock{padding:11px 0 !important;text-align:center !important}
+body.shooting .titleblock h1{font-size:23px !important;line-height:1.2 !important}
+body.shooting .titleblock .meta{font-size:13.5px !important;line-height:1.5 !important}
+
+/* ---------- the OTPU page's own responsive rules ---------- */
+body.shooting .otpusection .otcards{
+  grid-template-columns:repeat(auto-fit,minmax(238px,1fr)) !important;gap:10px !important;
+}
+body.shooting .otpusection .dpstats{
+  grid-template-columns:repeat(auto-fit,minmax(150px,1fr)) !important;gap:10px !important;
+}
+body.shooting .otpusection .row-dp{grid-template-columns:1fr 1fr !important}
+body.shooting .otpusection .otcard{padding:15px 17px 16px !important}
+body.shooting .otpusection .otc-val{font-size:33px !important;letter-spacing:-1.1px !important}
+body.shooting .otpusection .dpstat .n{font-size:31px !important}
+body.shooting .otpusection .dphead{padding:14px 18px !important}
+body.shooting .otpusection .dphead h2{font-size:17px !important}
+/* The filter bars are hidden in a shot (see `body.shooting .dpfilters`), but the
+   chips inside them are laid out before that takes effect on some engines. */
+body.shooting .otpusection .ms,
+body.shooting .otpusection .of{flex:0 0 auto !important}
+body.shooting .otpusection .ms-btn{width:auto !important;max-width:230px !important}
+body.shooting .otpusection .of-btn{width:auto !important;max-width:none !important}
