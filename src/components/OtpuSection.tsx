@@ -570,11 +570,20 @@ function AgentTable({
 /**
  * A seller's position against its own GTL benchmark, as one of four words.
  *
- * The half-point dead band is the part that matters. Without it "Di atas GTL"
- * includes a seller three hundredths of a point ahead, and the filter that is
- * supposed to isolate the problem returns half the list — the comparison is
- * between two percentages computed from different populations, and it is simply
- * not precise enough to call a hundredth of a point a direction.
+ * There is no tolerance around zero. Below the benchmark by any amount at all is
+ * below it, and "Setara GTL" means the two numbers are the same number.
+ *
+ * This used to carry a half-point dead band, on the reasoning that a daily
+ * %OTPU and a GTL figure are computed from different populations and a few
+ * hundredths of a point between them is not a real direction. That is a fair
+ * description of the *measurement*, and it was still the wrong rule for a
+ * filter: the band quietly took rows out of "Di bawah GTL" — the list this page
+ * opens on — for being only slightly under, so a seller sitting at −0,43% was
+ * absent from the one view meant to show everything that is behind. A reader
+ * comparing the page against the workbook finds a row missing and no reason
+ * given, which costs more than the false precision the band was avoiding. If a
+ * near-miss should be treated as level, that is a judgement for whoever reads
+ * the number, and the figure is in the column next to it.
  *
  * Module scope rather than inside the component so the two `useMemo`s that use
  * it have honest dependency lists instead of a suppression comment.
@@ -599,8 +608,8 @@ const BAND_LABEL: Record<Band, string> = {
  */
 function bandOfValue(v: number | null): Band {
   if (v == null) return 'kosong'
-  if (v < -0.5) return 'bawah'
-  if (v > 0.5) return 'atas'
+  if (v < 0) return 'bawah'
+  if (v > 0) return 'atas'
   return 'setara'
 }
 
