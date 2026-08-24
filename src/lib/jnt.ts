@@ -2135,6 +2135,97 @@ function pageBackground(): string {
 }
 
 /**
+ * The page's own CSS, read out of the live document as text, keyed by the exact
+ * `href` its `<link>` carries.
+ *
+ * ── Why the export came out unstyled ────────────────────────────────────────
+ *
+ * html2canvas photographs a *clone* of the page, and the clone does not live in
+ * this document — it is written into an `about:blank` iframe with
+ * `document.open()` / `write()` / `close()`, and the cloned `<html>` is adopted
+ * into it afterwards. Everything the clone needs in order to look like the page
+ * therefore has to survive that move.
+ *
+ * A `<style>` block does: its rules are inline, they travel with the node.
+ * A `<link rel="stylesheet">` does not. It is a *reference*, and once adopted
+ * into the iframe it has to be fetched and applied all over again before the
+ * clone means anything. Two separate things then go wrong with that fetch:
+ *
+ *   The load is not waited for. `close()` is what queues the iframe's `load`
+ *   event, and it is called *before* the cloned `<html>` — the one holding the
+ *   link — is adopted in. So the document reaches `readyState: 'complete'` on
+ *   the strength of an empty `<html></html>`, and the library's poll, which
+ *   waits for exactly that, is satisfied while the stylesheet is still in
+ *   flight. Nothing in the library ever waits for it again.
+ *
+ *   The URL may not even resolve. An `about:blank` document has no base of its
+ *   own, so `/assets/index-*.css` is meaningless inside it; the library injects
+ *   a `<base>` to cover that, and this app's Content-Security-Policy sets
+ *   `base-uri 'none'`, which is the browser's instruction to drop that element
+ *   on the floor.
+ *
+ * Either one alone produces the same picture, and it is the one being reported:
+ * a page with no CSS at all. The wordmark is an `<img>` with its size in a
+ * class, so with the class gone it draws at the PNG's own resolution and fills
+ * the frame; the header below it falls back to serif; the sidebar and the
+ * buttons, which are hidden by `body.shooting` rules that no longer exist,
+ * come back. Meanwhile the canvas was sized from the *real* page, so what lands
+ * in Downloads is that giant logo with the report cropped off underneath.
+ *
+ * Reading the rules here and handing them to the clone as text removes the
+ * fetch from the picture entirely: nothing to race, nothing to resolve. It is
+ * legal to read them because the stylesheet is same-origin — a cross-origin
+ * sheet throws on `.cssRules`, and that one is skipped and left as a link,
+ * which is no worse than today.
+ */
+function stylesheetText(): Map<string, string> {
+  const out = new Map<string, string>()
+  for (const sheet of Array.from(document.styleSheets)) {
+    const node = sheet.ownerNode as HTMLLinkElement | null
+    /* `<style>` blocks are already inline and travel with the clone; only the
+       links need rescuing */
+    if (!node || node.tagName !== 'LINK') continue
+    const href = node.getAttribute('href')
+    if (!href) continue
+    let css = ''
+    try {
+      const rules = (sheet as CSSStyleSheet).cssRules
+      if (!rules) continue
+      for (const rule of Array.from(rules)) css += `${rule.cssText}\n`
+    } catch {
+      /* SecurityError — a cross-origin sheet. Leave its link alone. */
+      continue
+    }
+    if (css) out.set(href, css)
+  }
+  return out
+}
+
+/**
+ * Swap every `<link rel="stylesheet">` in the clone for a `<style>` holding the
+ * same rules.
+ *
+ * In place, rather than appending one block to `<head>`, because the cascade is
+ * an ordering: a rule appended after the page's own `<style>` elements would
+ * start winning ties it does not win on screen, and the export would differ from
+ * the dashboard in exactly the small ways nobody would think to look for.
+ *
+ * Matched on the raw `href` attribute, which is character-identical between the
+ * live node and its clone. The *resolved* `.href` is not — that is the property
+ * the missing `<base>` breaks.
+ */
+function inlineStylesheets(doc: Document, sheets: Map<string, string>): void {
+  if (!sheets.size) return
+  for (const link of Array.from(doc.querySelectorAll<HTMLLinkElement>('link[rel~="stylesheet"]'))) {
+    const css = sheets.get(link.getAttribute('href') ?? '')
+    if (css == null) continue
+    const style = doc.createElement('style')
+    style.textContent = css
+    link.replaceWith(style)
+  }
+}
+
+/**
  * Can this browser actually allocate a bitmap this big?
  *
  * Over the limit, engines do not agree on how to fail: some return a canvas
@@ -2334,6 +2425,12 @@ export async function exportPng(
       scale,
       useCORS: true,
       logging: false,
+      /* Everything the clone needs in order to look like the dashboard, handed
+         over as text. Without this the picture comes out with no CSS at all —
+         see `stylesheetText`. Read here, inside the shot, so `body.shooting` is
+         already on: not that it changes the rules, but it keeps the read and the
+         use in the same state. */
+      onclone: (doc: Document) => { inlineStylesheets(doc, stylesheetText()) },
       scrollX: 0,
       scrollY: 0,
       width,
