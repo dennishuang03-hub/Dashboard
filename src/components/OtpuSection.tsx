@@ -395,9 +395,17 @@ function AgentTable({
    */
   const filtered = agentOff.size > 0
 
-  const body = (r: OtpuAgentRow) =>
+  /*
+   * The GTL figure is one regional benchmark, not a per-agent one: every agent
+   * row carried the same number, which read as data and was not. It stays on the
+   * TOTAL row, which is what the benchmark is about, and the agent rows leave the
+   * cell empty — the per-agent answer is Banding GTL beside it.
+   */
+  const body = (r: OtpuAgentRow, isTotal = false) =>
     visible.map((c) => (
-      <td key={c.id} className={c.ctr ? 'ctr' : 'num'}>{c.cell(r)}</td>
+      <td key={c.id} className={c.ctr ? 'ctr' : 'num'}>
+        {c.id === 'gtl' && !isTotal ? null : c.cell(r)}
+      </td>
     ))
 
   return (
@@ -533,7 +541,7 @@ function AgentTable({
                    sorted, because everything below it is read against it. */
                 <tr className="ottotal">
                   <td className="sticky"><b>TOTAL</b><Zh>全部</Zh></td>
-                  {body(agent.total)}
+                  {body(agent.total, true)}
                 </tr>
               )}
               {rows.map((r) => {
