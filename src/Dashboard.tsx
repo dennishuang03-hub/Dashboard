@@ -2,8 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   BAR_CHOICES, CATEGORY_ZH, KPI_SECTIONS, PALETTE, STATUS_COLOR, agentFull, agentZh, averageRows,
-  dayName, explain, fmtDate, fmtDateFull, iconFor, exportPng, isoDay, kpiSeries, parseWorkbook, pct,
-  readWorkbook, resolveDpDate, statusOf, targetFor,
+  dayName, explain, fmtDate, fmtDateFull, iconFor, exportPng, isOtpuSheet, isoDay, kpiSeries,
+  parseWorkbook, pct, readSheetNames, readWorkbookSheets, resolveDpDate, statusOf, targetFor,
 } from './lib/jnt'
 import type { AgentRow, DateSlot, Explanation, Kpi, Model, Status } from './lib/jnt'
 import { BarChart, LineChart, Sparkline } from './components/Charts'
@@ -139,6 +139,21 @@ export default function Dashboard({
      keep producing a perfectly good daily dashboard. `null` here means "no OTPU
      in this file", and the rail simply does not offer it. */
   const [otpu, setOtpu] = useState<OtpuReport | null>(null)
+  /**
+   * Whether the file has OTPU tabs, kept apart from whether they have been read.
+   *
+   * These used to be one fact, because the tabs were read on the way in and
+   * `otpu` was either a report or the file’s answer that there is none. They are
+   * two facts now: reading those tabs is three quarters of the load, so it waits
+   * until somebody asks for the page, and between opening the dashboard and that
+   * moment "the file has OTPU" is true while `otpu` is still null.
+   *
+   * The rail is built from this one, not from `otpu` — an entry that appears only
+   * after you visit it is an entry nobody can visit.
+   */
+  const [hasOtpu, setHasOtpu] = useState(false)
+  /** `none` — nothing to read · `idle` — not read yet · `reading` · `done`. */
+  const [otpuState, setOtpuState] = useState<'none' | 'idle' | 'reading' | 'done'>('none')
   const [fileName, setFileName] = useState('')
   const [err, setErr] = useState('')
   const [agentKey, setAgentKey] = useState('TOTAL')
@@ -163,7 +178,10 @@ export default function Dashboard({
    * rather than corrected in an effect, which would render the dead page once
    * before fixing it.
    */
-  const view: View = OTPU_PART[viewWanted] && !otpu ? VIEW_AGEN : viewWanted
+  const view: View = OTPU_PART[viewWanted] && !hasOtpu ? VIEW_AGEN : viewWanted
+  /* Hoisted above the loading branches below, because the effect that reads the
+     OTPU tabs is driven by it and hooks cannot sit after an early return. */
+  const otpuPart = OTPU_PART[view]
   /** desktop: icons only. Two separate states — see the note in Sidebar.tsx. */
   const [mini, setMini] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -201,6 +219,12 @@ export default function Dashboard({
 
   const fileRef = useRef<HTMLInputElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
+  /* The workbook’s bytes, kept for the second read. 5 MB of ArrayBuffer against
+     the ~150 MB of cell objects that reading every tab would have built — and
+     without them the OTPU pages could only be opened by downloading the file
+     again. */
+  const bufRef = useRef<ArrayBuffer | null>(null)
+  const otpuTabsRef = useRef<string[]>([])
   const rerender = () => force((n) => n + 1)
 
   /* ------------------------------------------------------------ loading */
@@ -209,13 +233,28 @@ export default function Dashboard({
    *  in how the bytes arrive, never in how they are read. */
   const loadBuffer = useCallback((buf: ArrayBuffer, name: string) => {
     try {
-      const wb = readWorkbook(buf)
+      /*
+       * Two reads, and the first one reads nothing.
+       *
+       * The names come back for a fraction of the cost of the cells, and they are
+       * enough to split the file in two: the daily report, which is the page this
+       * dashboard opens on, and the OTPU tabs, which are most of the work and are
+       * not on screen yet. Only the first half is read here. The second half is
+       * read by the effect below, the first time somebody asks for it.
+       *
+       * `isOtpuSheet` is the same test `parseWorkbook` uses to hand those tabs to
+       * `lib/otpu.ts`, so the two halves cannot drift apart.
+       */
+      const names = readSheetNames(buf)
+      const otpuTabs = names.filter(isOtpuSheet)
+      const wb = readWorkbookSheets(buf, names.filter((n) => !isOtpuSheet(n)))
       const mdl = parseWorkbook(wb)
+      bufRef.current = buf
+      otpuTabsRef.current = otpuTabs
       setModel(mdl)
-      /* Parsed from the same workbook but never allowed to break it: `parseOtpu`
-         returns null rather than throwing, so a malformed OTPU tab costs the
-         OTPU pages and nothing else. */
-      setOtpu(parseOtpu(wb))
+      setOtpu(null)
+      setHasOtpu(otpuTabs.length > 0)
+      setOtpuState(otpuTabs.length > 0 ? 'idle' : 'none')
       setFileName(name)
       setAgentKey('TOTAL')
       setBarKey('')
@@ -224,9 +263,46 @@ export default function Dashboard({
     } catch (ex) {
       setModel(null)
       setOtpu(null)
+      bufRef.current = null
+      otpuTabsRef.current = []
+      setHasOtpu(false)
+      setOtpuState('none')
       setErr((ex as Error).message)
     }
   }, [])
+
+  /**
+   * The other half of the workbook, read the first time an OTPU page is opened.
+   *
+   * The `setTimeout` is not a delay, it is a paint. Reading those tabs takes the
+   * main thread for seconds, and starting it in the same tick as the navigation
+   * would mean the browser never draws the screen that says so — the rail would
+   * highlight the entry and then the tab would freeze with the previous page
+   * still on it. Yielding once lets "Memuat On Time Pick Up…" reach the glass
+   * first, so the wait is something the reader can see rather than something
+   * that looks like a crash.
+   *
+   * It runs once: `otpuState` leaves `idle` before the timer is set, and lands on
+   * `done` whether the read worked or not, so a broken tab is answered on screen
+   * instead of being retried on every render.
+   */
+  useEffect(() => {
+    if (!otpuPart || otpuState !== 'idle') return
+    const buf = bufRef.current
+    if (!buf) return
+    setOtpuState('reading')
+    const id = window.setTimeout(() => {
+      try {
+        /* Same contract as the daily half: `parseOtpu` answers `null` rather than
+           throwing, so an unreadable OTPU tab costs the OTPU pages alone. */
+        setOtpu(parseOtpu(readWorkbookSheets(buf, otpuTabsRef.current)))
+      } catch {
+        setOtpu(null)
+      }
+      setOtpuState('done')
+    }, 0)
+    return () => window.clearTimeout(id)
+  }, [otpuPart, otpuState])
 
   const handleFile = useCallback((f: File | undefined | null) => {
     if (!f) return
@@ -501,9 +577,13 @@ export default function Dashboard({
    * The parent is a destination in its own right — the summary — with the two
    * halves indented under it. It is not a folder: clicking it goes somewhere.
    */
-  if (otpu) {
-    const a = otpu.agent
-    const s = otpu.seller
+  if (hasOtpu) {
+    /* Null until the tabs have been read. The hints then say what the pages are
+       rather than how big they are — a count is the better hint and it arrives a
+       moment later, but a rail that renders nothing until then is worse than one
+       that describes its destinations. */
+    const a = otpu?.agent ?? null
+    const s = otpu?.seller ?? null
     nav.push({
       id: 'otpu',
       label: 'On Time Pick Up',
@@ -516,18 +596,19 @@ export default function Dashboard({
         },
         {
           id: VIEW_OTPU_AGENT, label: 'OTPU Agent', zh: '揽收代理', icon: 'users', sub: true,
-          hint: a ? `${a.rows.length} agen · ${a.weeks.length} minggu` : 'tab tidak terbaca',
+          hint: a ? `${a.rows.length} agen · ${a.weeks.length} minggu`
+            : otpuState === 'done' ? 'tab tidak terbaca' : 'per agen · mingguan',
         },
         {
           id: VIEW_OTPU_SELLER, label: 'OTPU Seller', zh: '商家', icon: 'bars', sub: true,
-          hint: s ? `${nfmt(s.rows.length)} baris seller` : 'tab tidak terbaca',
+          hint: s ? `${nfmt(s.rows.length)} baris seller`
+            : otpuState === 'done' ? 'tab tidak terbaca' : 'per seller · harian',
         },
       ],
     })
   }
 
   const onAgen = view === VIEW_AGEN
-  const otpuPart = OTPU_PART[view]
 
   /** `AGENT12` → `TANGERANG`, from the daily report's own agent rows. */
   const cityOf = (code: string): string => {
@@ -619,7 +700,9 @@ export default function Dashboard({
         */}
         <div className="toolbar-end">
           <span className="filechip">
-            {otpuPart && otpu
+            {otpuPart && !otpu
+              ? <>On Time Pick Up · {otpuState === 'done' ? 'tab tidak terbaca' : 'memuat…'}</>
+              : otpuPart && otpu
               ? <>
                   On Time Pick Up · {otpu.agent ? `${otpu.agent.rows.length} agen · ${otpu.agent.weeks.length} minggu` : 'tab agen tidak terbaca'}
                   {otpu.seller && ` · ${nfmt(otpu.seller.rows.length)} baris seller`}
@@ -903,6 +986,26 @@ export default function Dashboard({
           per-table export buttons, nothing to wrap it in here. */}
       {otpuPart && otpu && (
         <OtpuSection report={otpu} part={otpuPart} cityOf={cityOf} />
+      )}
+
+      {/* The OTPU tabs are the biggest thing in the workbook and they are read on
+          arrival rather than on startup, so arriving is a wait. It is named, and
+          it says why — a screen that only spins reads as a fault, and this one is
+          the price of the dashboard having opened quickly in the first place. */}
+      {otpuPart && !otpu && otpuState !== 'done' && (
+        <div className="dropzone">
+          <h2>Memuat On Time Pick Up… <Zh>正在加载</Zh></h2>
+          <p>Tab OTPU adalah bagian terbesar dari workbook dan dibaca saat dibuka,
+            supaya halaman lain tidak ikut menunggu.</p>
+        </div>
+      )}
+
+      {otpuPart && !otpu && otpuState === 'done' && (
+        <div className="dropzone">
+          <h2>Tab OTPU tidak dapat dibaca <Zh>无法读取</Zh></h2>
+          <p>Workbook ini memuat tab OTPU, tetapi isinya tidak dikenali. Periksa
+            sheet <b>OTPU Agent</b> dan <b>OTPU Seller</b> pada file sumber.</p>
+        </div>
       )}
 
       {/* The destination exists in the rail whether or not the file has anything

@@ -2065,6 +2065,46 @@ export function readWorkbook(buf: ArrayBuffer): XLSX.WorkBook {
   return XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: false, cellNF: true })
 }
 
+/**
+ * The workbook’s sheet names, and not one cell.
+ *
+ * `bookSheets` returns from the reader before it reaches the worksheet loop, so
+ * this costs the zip directory and `workbook.xml` — a fraction of a second on a
+ * file whose full read is several. It exists so the caller can decide *which*
+ * sheets are worth reading before paying to read any of them, which is the whole
+ * of `readWorkbookSheets` below.
+ */
+export function readSheetNames(buf: ArrayBuffer): string[] {
+  const wb = XLSX.read(new Uint8Array(buf), { type: 'array', bookSheets: true })
+  return wb.SheetNames ?? []
+}
+
+/**
+ * `readWorkbook`, restricted to the sheets named.
+ *
+ * The cost of reading a workbook is the cost of turning its cells into objects,
+ * and it is not spread evenly: in the current file the OTPU Seller tab is 88% of
+ * the cells and roughly three quarters of the time. Reading the tabs the page in
+ * front of the reader actually needs, and the rest when it is asked for, is the
+ * difference between a dashboard that opens and one that hangs.
+ *
+ * `SheetNames` still lists every tab — SheetJS fills it from the workbook part,
+ * not from what it parsed — so `parseWorkbook` still reports the file’s true
+ * shape, and the sheets it was not given simply have no worksheet behind them.
+ * It already tolerates that: OTPU tabs are claimed by name before the worksheet
+ * is touched, and `looksLikeDpSheet` answers `false` for a missing one.
+ *
+ * An empty list means "no opinion" rather than "nothing": it falls through to a
+ * full read, because `sheets: []` matches no tab at all and would turn a file
+ * this function was merely unsure about into an unreadable one.
+ */
+export function readWorkbookSheets(buf: ArrayBuffer, names: string[]): XLSX.WorkBook {
+  if (!names.length) return readWorkbook(buf)
+  return XLSX.read(new Uint8Array(buf), {
+    type: 'array', cellDates: false, cellNF: true, sheets: names,
+  })
+}
+
 /* ------------------------------------------------------------- PNG export */
 
 const frame = () => new Promise<void>((r) => requestAnimationFrame(() => r()))
