@@ -3,6 +3,7 @@ import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
+import { partOf, splitWorkbook } from './api/_lib/xlsxsplit.js'
 
 /**
  * The API, stood in for while developing.
@@ -77,10 +78,16 @@ function devApi(): Plugin {
               error: 'Tidak ada workbook di folder data/ (atau src/Data/) pada mesin ini.',
             }, 404)
           }
-          const bytes = readFileSync(found.path)
+          /* Split exactly as the real route splits it, by the same function.
+             A dev server that always sent the whole workbook would hide the one
+             thing worth watching locally: whether the page still has everything
+             it needs when half the file does not arrive. */
+          const part = partOf(new URL(req.url ?? '/', 'http://localhost').searchParams.get('part'))
+          const bytes = splitWorkbook(readFileSync(found.path), part)
           res.statusCode = 200
           res.setHeader('Content-Type', XLSX_MIME)
           res.setHeader('Cache-Control', 'no-store')
+          res.setHeader('X-Report-Part', part)
           res.setHeader('X-Report-Filename', encodeURIComponent(found.name))
           return res.end(bytes)
         }

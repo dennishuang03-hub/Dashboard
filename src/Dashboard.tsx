@@ -219,18 +219,42 @@ export default function Dashboard({
 
   const fileRef = useRef<HTMLInputElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
-  /* The workbook’s bytes, kept for the second read. 5 MB of ArrayBuffer against
-     the ~150 MB of cell objects that reading every tab would have built — and
-     without them the OTPU pages could only be opened by downloading the file
-     again. */
-  const bufRef = useRef<ArrayBuffer | null>(null)
+  /* The OTPU tab names, learned from the daily response — `workbook.xml` names
+     every sheet whether or not its part was sent — and used twice: to decide
+     whether the rail offers OTPU at all, and to say which tabs to read out of
+     the second response when it arrives. */
   const otpuTabsRef = useRef<string[]>([])
+  /**
+   * Two flags the OTPU load needs that must not be React state.
+   *
+   * `otpuStarted` is the once-only guard. It cannot be `otpuState`, because an
+   * effect that both reads a state and sets it re-runs itself: the run that set
+   * `reading` was torn down mid-`await` by its own state change, its `cancelled`
+   * flag went true, and the four megabytes it had just finished downloading were
+   * thrown away — the page then sat on "Memuat…" for ever. Dev survived it on
+   * scheduling luck; the built bundle did not.
+   *
+   * `alive` replaces that per-run `cancelled`. What the load actually has to
+   * respect is the component going away, not the view changing under it, and a
+   * reader who clicks OTPU and then OTPU Seller while it downloads means to keep
+   * waiting, not to start again.
+   */
+  const otpuStartedRef = useRef(false)
+  const aliveRef = useRef(true)
   const rerender = () => force((n) => n + 1)
 
   /* ------------------------------------------------------------ loading */
 
   /** One path in for both sources — an upload and the served report differ only
    *  in how the bytes arrive, never in how they are read. */
+  /* Set on mount as well as cleared on unmount: StrictMode mounts twice in
+     development, and a flag that only ever goes false would leave the second
+     mount unable to finish anything it started. */
+  useEffect(() => {
+    aliveRef.current = true
+    return () => { aliveRef.current = false }
+  }, [])
+
   const loadBuffer = useCallback((buf: ArrayBuffer, name: string) => {
     try {
       /*
@@ -249,8 +273,8 @@ export default function Dashboard({
       const otpuTabs = names.filter(isOtpuSheet)
       const wb = readWorkbookSheets(buf, names.filter((n) => !isOtpuSheet(n)))
       const mdl = parseWorkbook(wb)
-      bufRef.current = buf
       otpuTabsRef.current = otpuTabs
+      otpuStartedRef.current = false
       setModel(mdl)
       setOtpu(null)
       setHasOtpu(otpuTabs.length > 0)
@@ -263,8 +287,8 @@ export default function Dashboard({
     } catch (ex) {
       setModel(null)
       setOtpu(null)
-      bufRef.current = null
       otpuTabsRef.current = []
+      otpuStartedRef.current = false
       setHasOtpu(false)
       setOtpuState('none')
       setErr((ex as Error).message)
@@ -272,37 +296,58 @@ export default function Dashboard({
   }, [])
 
   /**
-   * The other half of the workbook, read the first time an OTPU page is opened.
+   * The other half of the workbook, fetched and read the first time an OTPU page
+   * is opened.
    *
-   * The `setTimeout` is not a delay, it is a paint. Reading those tabs takes the
-   * main thread for seconds, and starting it in the same tick as the navigation
-   * would mean the browser never draws the screen that says so — the rail would
-   * highlight the entry and then the tab would freeze with the previous page
-   * still on it. Yielding once lets "Memuat On Time Pick Up…" reach the glass
-   * first, so the wait is something the reader can see rather than something
-   * that looks like a crash.
+   * It is a second download, not a second look at the bytes already here: the
+   * server sends the daily tabs alone on the first request, so these ones have
+   * genuinely not arrived yet. That is the point — the OTPU Seller tab is three
+   * quarters of the file, and a reader who never opens the page never waits for
+   * it, on the wire or on the thread.
    *
-   * It runs once: `otpuState` leaves `idle` before the timer is set, and lands on
-   * `done` whether the read worked or not, so a broken tab is answered on screen
-   * instead of being retried on every render.
+   * The `setTimeout` around the parse is not a delay, it is a paint. Reading
+   * those tabs takes the main thread for seconds, and starting it in the tick
+   * the bytes land in would mean the browser never draws the screen that says
+   * so. Yielding once lets "Memuat On Time Pick Up…" reach the glass first, so
+   * the wait is something the reader can see rather than something that looks
+   * like a crash.
+   *
+   * It runs once, guarded by `otpuStartedRef`, and lands on `done` however it
+   * turns out, so a failure is answered on screen rather than retried on every
+   * render.
    */
   useEffect(() => {
-    if (!otpuPart || otpuState !== 'idle') return
-    const buf = bufRef.current
-    if (!buf) return
+    if (!otpuPart || otpuStartedRef.current || !otpuTabsRef.current.length) return
+    otpuStartedRef.current = true
     setOtpuState('reading')
-    const id = window.setTimeout(() => {
+
+    void (async () => {
+      let buf: ArrayBuffer
       try {
-        /* Same contract as the daily half: `parseOtpu` answers `null` rather than
-           throwing, so an unreadable OTPU tab costs the OTPU pages alone. */
-        setOtpu(parseOtpu(readWorkbookSheets(buf, otpuTabsRef.current)))
+        const res = await fetch(`${REPORT_URL}?part=otpu`, { credentials: 'same-origin' })
+        if (!res.ok) throw new Error(String(res.status))
+        buf = await res.arrayBuffer()
       } catch {
-        setOtpu(null)
+        if (aliveRef.current) { setOtpu(null); setOtpuState('done') }
+        return
       }
-      setOtpuState('done')
-    }, 0)
-    return () => window.clearTimeout(id)
-  }, [otpuPart, otpuState])
+      if (!aliveRef.current) return
+
+      window.setTimeout(() => {
+        if (!aliveRef.current) return
+        try {
+          /* Filtered by name even though the response should already hold only
+             these tabs: `splitWorkbook` falls back to sending the whole file when
+             it cannot split one safely, and this keeps that fallback cheap to
+             read rather than turning it back into the parse this all avoids. */
+          setOtpu(parseOtpu(readWorkbookSheets(buf, otpuTabsRef.current)))
+        } catch {
+          setOtpu(null)
+        }
+        setOtpuState('done')
+      }, 0)
+    })()
+  }, [otpuPart])
 
   const handleFile = useCallback((f: File | undefined | null) => {
     if (!f) return
@@ -319,6 +364,8 @@ export default function Dashboard({
 
     ;(async () => {
       try {
+        /* The daily half. `/api/report` defaults to it, and the OTPU tabs are a
+           second request made only if somebody opens one of those pages. */
         const res = await fetch(REPORT_URL, { credentials: 'same-origin' })
 
         /* The session expired while the tab sat open. Hand the user back to the
