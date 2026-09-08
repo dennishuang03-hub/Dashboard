@@ -1316,6 +1316,17 @@ table.dpgrid tbody tr:nth-child(even) td.sticky{background:#242424}
    DpSection.tsx for why that distinction keeps the column pinned on iOS */
 .dpname{font-weight:700;display:flex;align-items:center;gap:8px;min-width:0}
 .dpname .dptext{min-width:0}
+/* Kode DP. Monospace, dimmed, and never allowed to shrink: it is a string read
+   character by character against another screen, so a proportional face that
+   renders O and 0 alike is the wrong one and an ellipsis through it would make
+   it useless. The name gives up the width instead — it is the half a reader can
+   still recognise from its first few letters. */
+.dpname .dpcode{
+  flex:none;font-family:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  font-size:11px;font-weight:700;letter-spacing:.3px;
+  color:var(--ink-2);background:rgba(255,255,255,.06);
+  border:1px solid var(--line);border-radius:4px;padding:2px 5px;
+}
 /* The comparison tick. Nothing to declare: it is the shared box at the top of
    this file, which is already sized past the browser default for exactly this
    row — it has to be hittable with a thumb, not just a mouse. */

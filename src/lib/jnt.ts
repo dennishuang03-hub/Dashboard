@@ -160,6 +160,12 @@ export interface DpRow {
    * `''` when that tab is absent or has no row for this site.
    */
   supervisor: string
+  /**
+   * The site’s own code — `JKT08L` — from the `Fr&Ag` tab’s 网点代码 Kode DP
+   * column. `''` when that tab is absent or states none for this site. The
+   * readings tabs do not carry it, so the reference join is the only source.
+   */
+  dpCode: string
   sheet: string
   /** canonical KPI label → readings */
   vals: Record<string, DpKpiVals>
@@ -989,6 +995,14 @@ const SERVICE_HEADER_RE = /jenis\s*layanan|jenis\s*service|service\s*type|tipe\s
 const SPV_HEADER_RE = /supervisor|\bspv\b|penyelia|atasan|主管|督导/i
 
 /**
+ * The site’s own code column on the `Fr&Ag` reference tab — 网点代码 Kode DP.
+ *
+ * Narrower than `CODE_HEADER_RE`, which matches "kode" on its own and would take
+ * the Kode Agent column standing two places to the left of it.
+ */
+const DP_CODE_HEADER_RE = /网点代码|网点编码|kode\s*dp\b|kode\s*drop\s*point|dp\s*code|drop\s*point\s*code/i
+
+/**
  * Read a Jenis Layanan cell.
  *
  * "Pickup Delivery" contains both words, so the combined case has to be decided
@@ -1187,6 +1201,8 @@ export interface BizModelEntry {
   model: BizModel
   /** `''` when the tab has no Supervisor column, or the cell is blank */
   supervisor: string
+  /** the site’s own code; `''` when the tab has no Kode DP column */
+  dpCode: string
   /**
    * `''` unless the reference tab happens to carry a Jenis Layanan column too.
    * The readings tab is the authority; this is only a fallback for a file that
@@ -1248,7 +1264,18 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
    * likely to be mistaken for one. `taken` keeps both off the columns already
    * spoken for, so `SPV_HEADER_RE`'s "atasan" cannot claim the agent column.
    */
-  const claimed = (C: number) => C === dpCol || C === modelCol || C === agentCol || C === codeCol
+  /* The site’s own code sits to the *right* of the name on this tab, so the
+     identity scan above — which only looks left of it — never reaches it.
+     Header-only for the same reason the supervisor is: a site code is a short
+     opaque string with no shape to verify, and a content pass looking for one
+     would be claimed by the first column of short opaque strings it met. */
+  const dpCodeCol = findValueCol(
+    m, lastC, headerRow + 4, DP_CODE_HEADER_RE, null,
+    (C) => C === dpCol || C === modelCol || C === agentCol || C === codeCol,
+  )
+
+  const claimed = (C: number) =>
+    C === dpCol || C === modelCol || C === agentCol || C === codeCol || C === dpCodeCol
   const spvCol = findValueCol(m, lastC, headerRow + 4, SPV_HEADER_RE, null, claimed)
   const svcCol = findValueCol(
     m, lastC, headerRow + 4, SERVICE_HEADER_RE, null,
@@ -1276,11 +1303,12 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
     const model = bizModelOf(txt(m[R][modelCol]))
     const supervisor = spvCol >= 0 ? txt(m[R][spvCol]).trim() : ''
     const service = svcCol >= 0 ? serviceKindOf(txt(m[R][svcCol])) : ''
+    const dpCode = dpCodeCol >= 0 ? txt(m[R][dpCodeCol]).trim() : ''
     /* Nothing on this row worth carrying. The test used to be `!model` alone,
        which was right when the model was all this tab held — now a site with a
        named supervisor but a blank Model Bisnis cell has something to say, and
        dropping the row would lose it. */
-    if (!model && !supervisor && !service) continue
+    if (!model && !supervisor && !service && !dpCode) continue
 
     const c = codeCol >= 0 ? txt(m[R][codeCol]) : ''
     if (c) lastCode = c
@@ -1292,6 +1320,7 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
       model,
       supervisor,
       service,
+      dpCode,
     })
   }
 
@@ -1328,6 +1357,7 @@ function indexBizModels(entries: BizModelEntry[]) {
       model: prev.model === e.model ? prev.model : '',
       supervisor: prev.supervisor === e.supervisor ? prev.supervisor : '',
       service: prev.service === e.service ? prev.service : '',
+      dpCode: prev.dpCode === e.dpCode ? prev.dpCode : '',
     })
   }
 
@@ -1535,9 +1565,10 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
       isCp: /^cp[\s_-]/i.test(name.trim()),
       bizModel: modelCol >= 0 ? bizModelOf(txt(m[R][modelCol])) : '',
       service: svcCol >= 0 ? serviceKindOf(txt(m[R][svcCol])) : '',
-      /* filled in from the Fr&Ag reference tab once every sheet has been read —
-         see the join in `parseWorkbook` */
+      /* both filled in from the Fr&Ag reference tab once every sheet has been
+         read — see the join in `parseWorkbook` */
       supervisor: '',
+      dpCode: '',
       sheet: sheetName,
       vals,
     })
@@ -1879,6 +1910,7 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
       if (!d.bizModel) d.bizModel = e.model
       if (!d.service) d.service = e.service
       if (!d.supervisor) d.supervisor = e.supervisor
+      if (!d.dpCode) d.dpCode = e.dpCode
     }
   }
 

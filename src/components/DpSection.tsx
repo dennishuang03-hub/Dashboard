@@ -726,7 +726,8 @@ export default function DpSection({
          typing a name is the fastest way to scope the table to one person, and
          it costs nothing to leave in. */
       if (needle
-        && !`${s.dp.label} ${s.dp.agentLabel} ${s.dp.supervisor}`.toLowerCase().includes(needle)) {
+        && !`${s.dp.label} ${s.dp.dpCode} ${s.dp.agentLabel} ${s.dp.supervisor}`
+          .toLowerCase().includes(needle)) {
         return false
       }
       return true
@@ -996,7 +997,7 @@ export default function DpSection({
             worse answer than one that plainly says it is not in use. */}
         <div className="dpfilters">
           <input
-            type="text" placeholder="Cari DP / CP, agen atau supervisor…" value={q}
+            type="text" placeholder="Cari DP / CP, kode, agen atau supervisor…" value={q}
             onChange={(e) => setQ(e.target.value)} aria-label="Cari drop point"
             disabled={basketOn}
           />
@@ -1268,7 +1269,10 @@ export default function DpSection({
                       Keeping the cell a cell and giving the span the flexbox
                       costs one element and makes the pinning work everywhere.
                     */}
-                    <td className="sticky dpcell" title={s.dp.label}>
+                    <td
+                      className="sticky dpcell"
+                      title={s.dp.dpCode ? `${s.dp.label} · ${s.dp.dpCode}` : s.dp.label}
+                    >
                       <span className="dpname">
                         {/* Inside the pinned cell on purpose: the tick has to stay
                             reachable while the row is scrolled sideways, or
@@ -1292,6 +1296,12 @@ export default function DpSection({
                           {BIZ_MODEL_TAG[s.dp.bizModel]}
                         </span>
                         <span className="dptext">{s.dp.label}</span>
+                        {/* The site’s own code, beside the name rather than in a
+                            column of its own: it is an identifier you match against
+                            another system once you have already found the row, not a
+                            figure you scan down — a column would cost the indicators
+                            width on every row to say the same thing louder. */}
+                        {s.dp.dpCode && <span className="dpcode">{s.dp.dpCode}</span>}
                       </span>
                       {/* Agent and supervisor, folded into the pinned cell — shown
                           only on a phone, where their own columns below are
