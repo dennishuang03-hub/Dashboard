@@ -1,15 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
-  BAR_CHOICES, CATEGORY_ZH, KPI_SECTIONS, PALETTE, STATUS_COLOR, agentFull, agentZh, averageRows,
+  CATEGORY_ZH, KPI_SECTIONS, PALETTE, STATUS_COLOR, agentFull, agentZh, averageRows,
   dayName, explain, fmtDate, fmtDateFull, iconFor, exportPng, isOtpuSheet, isoDay, kpiSeries,
   parseWorkbook, pct, readSheetNames, readWorkbookSheets, resolveDpDate, statusOf, targetFor,
 } from './lib/jnt'
-import type { AgentRow, DateSlot, Explanation, Kpi, Model, Status } from './lib/jnt'
-import { BarChart, LineChart, Sparkline } from './components/Charts'
+import type { Explanation, Kpi, Model } from './lib/jnt'
+import { LineChart, Sparkline } from './components/Charts'
 import type { AxisLabel } from './components/Charts'
+import BtnIcon from './components/BtnIcon'
 import DpSection from './components/DpSection'
-import ExportButtons from './components/ExportButtons'
 import JntLogo from './components/JntLogo'
 import OtpuSection from './components/OtpuSection'
 import type { OtpuPart } from './components/OtpuSection'
@@ -19,7 +19,6 @@ import Zh from './components/Zh'
 import { nfmt, parseOtpu } from './lib/otpu'
 import type { OtpuReport } from './lib/otpu'
 import type { Identity } from './lib/session'
-import type { ExportTable, ExportValue } from './lib/tableExport'
 import './dashboard.css'
 
 /* ------------------------------------------------------------- navigation */
@@ -97,13 +96,6 @@ function reportName(res: Response): string {
 
 /* --------------------------------------------------------------- helpers */
 
-function Badge({ st }: { st: Status }) {
-  if (st === 'ok') return <span className="badge ok">✓</span>
-  if (st === 'warn') return <span className="badge warn">!</span>
-  if (st === 'bad') return <span className="badge bad">×</span>
-  return <span className="muted">—</span>
-}
-
 /** Animated hover panel explaining why a KPI is green or red. */
 function TipBox({ ex, placement }: { ex: Explanation; placement: 'below' | 'left' }) {
   return (
@@ -154,13 +146,18 @@ export default function Dashboard({
    * after you visit it is an entry nobody can visit.
    */
   const [hasOtpu, setHasOtpu] = useState(false)
-  /** `none` — nothing to read · `idle` — not read yet · `reading` · `done`. */
-  const [otpuState, setOtpuState] = useState<'none' | 'idle' | 'reading' | 'done'>('none')
+  /** `none` — nothing to read · `idle` — not read yet · `reading` · `done` ·
+   *  `failed` — the request never came back, so a retry is offered. */
+  const [otpuState, setOtpuState] = useState<'none' | 'idle' | 'reading' | 'done' | 'failed'>('none')
+  /* Bumped by "Coba lagi" to run the OTPU read again after a failed request. */
+  const [otpuTry, setOtpuTry] = useState(0)
+  /* The toolbar picture is locked while it is being taken — a second press used
+     to start a second capture and save the same file twice. */
+  const [pngBusy, setPngBusy] = useState(false)
   const [fileName, setFileName] = useState('')
   const [err, setErr] = useState('')
   const [agentKey, setAgentKey] = useState('TOTAL')
   const [dateIdx, setDateIdx] = useState(0)
-  const [barKey, setBarKey] = useState('')
   const [hot, setHot] = useState(false)
   // true while the report is in flight, so the drop zone does not flash up for a
   // moment before the data it was asking for arrives anyway
@@ -213,6 +210,9 @@ export default function Dashboard({
   const pickView = useCallback((id: string) => {
     setView(id as View)
     setDrawerOpen(false)
+    /* An error belongs to the page it happened on. Carried over, a failed PNG
+       on the DP/CP list sat above the OTPU page as if OTPU had failed. */
+    setErr('')
     /* Back to the top: the two reports are different documents, and arriving at
        the second one scrolled halfway down because the first one was, is
        disorienting in the way that reads as a broken link. */
@@ -283,7 +283,6 @@ export default function Dashboard({
       setOtpuState(otpuTabs.length > 0 ? 'idle' : 'none')
       setFileName(name)
       setAgentKey('TOTAL')
-      setBarKey('')
       setDateIdx(Math.max(0, mdl.dates.length - 1))
       setErr('')
     } catch (ex) {
@@ -327,10 +326,24 @@ export default function Dashboard({
       let buf: ArrayBuffer
       try {
         const res = await fetch(`${REPORT_URL}?part=otpu`, { credentials: 'same-origin' })
+        /* The session ran out while the dashboard was open. Same answer as the
+           first request gives: back to the login screen, not "tab tidak
+           terbaca" about a file that is perfectly readable. */
+        if (res.status === 401) {
+          if (aliveRef.current) onSignedOut()
+          return
+        }
         if (!res.ok) throw new Error(String(res.status))
         buf = await res.arrayBuffer()
       } catch {
-        if (aliveRef.current) { setOtpu(null); setOtpuState('done') }
+        /* A dropped connection is not a broken file. The request is allowed to
+           run again, and the page offers to — it used to report the tabs as
+           unreadable and stay that way until a full reload. */
+        if (aliveRef.current) {
+          otpuStartedRef.current = false
+          setOtpu(null)
+          setOtpuState('failed')
+        }
         return
       }
       if (!aliveRef.current) return
@@ -349,7 +362,7 @@ export default function Dashboard({
         setOtpuState('done')
       }, 0)
     })()
-  }, [otpuPart])
+  }, [otpuPart, otpuTry, onSignedOut])
 
   const handleFile = useCallback((f: File | undefined | null) => {
     if (!f) return
@@ -446,26 +459,6 @@ export default function Dashboard({
   const kpis = useMemo(() => model?.kpis.filter((k) => k.enabled) ?? [], [model, tick])
 
   /**
-   * The three KPIs the bar chart can show. They are looked up by label rather
-   * than by index so a workbook that omits one of them simply offers fewer
-   * choices instead of pointing the chart at the wrong column.
-   */
-  const barChoices = useMemo<Kpi[]>(() => {
-    if (!model) return []
-    const out: Kpi[] = []
-    for (const label of BAR_CHOICES) {
-      const hit = model.kpis.find((k) => k.label === label && k.enabled)
-      if (hit) out.push(hit)
-    }
-    // an unfamiliar workbook may carry none of the three — show what it does have
-    return out.length ? out : kpis.slice(0, 3)
-  }, [model, kpis])
-
-  // resolved, not stored: a newly loaded file falls back to the first choice
-  // on its own instead of pointing at a KPI that no longer exists
-  const barK: Kpi | null = barChoices.find((k) => k.key === barKey) ?? barChoices[0] ?? null
-
-  /**
    * The toolbar's picture, of whichever report the rail is pointing at.
    *
    * One button, two scopes — and the scope is the whole fix. It used to pass
@@ -481,7 +474,7 @@ export default function Dashboard({
    * hundreds of rows, and one image holding both is unreadable at any scale.
    */
   const savePng = async () => {
-    if (!wrapRef.current) return
+    if (!wrapRef.current || pngBusy) return
     const d = model?.dates[dateIdx]
     const stamp = d?.date ? isoDay(d.date) : 'export'
     /*
@@ -502,10 +495,14 @@ export default function Dashboard({
       [VIEW_OTPU_SELLER]: { stem: 'jnt-otpu-seller', cls: 'shoot-otpu' },
     }
     const pick = shot[view]
+    setPngBusy(true)
+    setErr('')
     try {
       await exportPng(wrapRef.current, `${pick.stem}.png`, pick.cls)
     } catch (ex) {
       setErr((ex as Error).message)
+    } finally {
+      setPngBusy(false)
     }
   }
 
@@ -576,78 +573,6 @@ export default function Dashboard({
 
   const trendKpis = kpis.filter((k) => k.inTrend)
 
-  /* The two indicator tables as documents, for Ekspor PDF / Ekspor Excel. The
-     status is written as words and shaded, because a ✓ or × does not survive
-     into a printed page or a spreadsheet filter. */
-  const statusCell = (st: Status): ExportValue =>
-    st === 'ok' ? { v: 'Sesuai target', tone: 'ok' }
-      : st === 'bad' ? { v: 'Di bawah target', tone: 'bad' }
-      : st === 'warn' ? { v: 'Perhatian', tone: 'warn' }
-      : null
-  const exportStem = (name: string) =>
-    `${name} ${current.label} ${dToday.date ? isoDay(dToday.date) : `hari-${di + 1}`}`
-
-  const buildSummaryExport = (): ExportTable => ({
-    title: 'Ringkasan Pencapaian',
-    meta: [`Agen: ${current.label} · ${todayLabel}`, `${kpis.length} indikator`],
-    stem: exportStem('Ringkasan Pencapaian'),
-    cols: [
-      { head: 'Indikator', width: 30 },
-      { head: 'Nilai', kind: 'pct', width: 12 },
-      { head: 'Target', kind: 'pct', width: 13 },
-      { head: 'Status', width: 16 },
-    ],
-    rows: kpis.map((k) => {
-      const v = kpiSeries(k, current.rec, dates)[di]
-      const tgt = targetFor(k, current.rec)
-      const st = statusOf(k, v, tgt)
-      return [
-        k.label,
-        v == null ? null : { v, tone: st === 'ok' ? 'ok' : st === 'bad' ? 'bad' : '' },
-        { v: tgt, prefix: k.lowerBetter ? '≤ ' : '≥ ' },
-        statusCell(st),
-      ]
-    }),
-  })
-
-  const buildDetailExport = (): ExportTable => {
-    const todayHead = `Hari Ini (${dToday.date ? fmtDate(dToday.date) : `H${di + 1}`})`
-    const prevHead = dPrev ? `Sebelumnya (${dPrev.date ? fmtDate(dPrev.date) : `H${di}`})` : 'Sebelumnya'
-    return {
-      title: 'Detail Pencapaian',
-      meta: [`Agen: ${current.label} · ${todayLabel}`, 'Hari ini dibanding hari sebelumnya, dengan pencapaian bulanan'],
-      stem: exportStem('Detail Pencapaian'),
-      cols: [
-        { head: 'Indikator', width: 30 },
-        { head: todayHead, kind: 'pct', width: 16 },
-        { head: prevHead, kind: 'pct', width: 18 },
-        { head: 'Selisih', kind: 'delta', width: 12 },
-        { head: 'Bulanan', kind: 'pct', width: 12 },
-        { head: 'Target', kind: 'pct', width: 13 },
-        { head: 'Status', width: 16 },
-      ],
-      rows: kpis.map((k) => {
-        const s = kpiSeries(k, current.rec, dates)
-        const v = s[di]
-        const p = dPrev ? s[di - 1] : null
-        const mtd = k.monthlyCol ? current.rec.vals[k.monthlyCol] ?? null : null
-        const tgt = targetFor(k, current.rec)
-        const st = statusOf(k, v, tgt)
-        const diff = v != null && p != null ? v - p : null
-        const better = diff == null || Math.abs(diff) < 0.005 ? '' : (k.lowerBetter ? diff < 0 : diff > 0) ? 'ok' : 'bad'
-        return [
-          k.label,
-          v == null ? null : { v, tone: st === 'ok' ? 'ok' : st === 'bad' ? 'bad' : '' },
-          p,
-          diff == null ? null : { v: diff, tone: better },
-          mtd,
-          { v: tgt, prefix: k.lowerBetter ? '≤ ' : '≥ ' },
-          statusCell(st),
-        ]
-      }),
-      note: 'Selisih hijau berarti membaik dibanding hari sebelumnya, merah berarti memburuk (untuk indikator yang lebih kecil lebih baik, turun dihitung membaik).',
-    }
-  }
 
   /* The DP tabs carry fewer days than the agent tabs, so the section shows the
      closest day it actually has rather than going blank — see `resolveDpDate`. */
@@ -719,12 +644,12 @@ export default function Dashboard({
         {
           id: VIEW_OTPU_AGENT, label: 'OTPU Agent', zh: '揽收代理', icon: 'users', sub: true,
           hint: a ? `${a.rows.length} agen · ${a.weeks.length} minggu`
-            : otpuState === 'done' ? 'tab tidak terbaca' : 'per agen · mingguan',
+            : otpuState === 'done' ? 'tab tidak terbaca' : otpuState === 'failed' ? 'gagal dimuat' : 'per agen · mingguan',
         },
         {
           id: VIEW_OTPU_SELLER, label: 'OTPU Seller', zh: '商家', icon: 'bars', sub: true,
           hint: s ? `${nfmt(s.rows.length)} baris seller`
-            : otpuState === 'done' ? 'tab tidak terbaca' : 'per seller · harian',
+            : otpuState === 'done' ? 'tab tidak terbaca' : otpuState === 'failed' ? 'gagal dimuat' : 'per seller · harian',
         },
       ],
     })
@@ -823,7 +748,7 @@ export default function Dashboard({
         <div className="toolbar-end">
           <span className="filechip">
             {otpuPart && !otpu
-              ? <>On Time Pick Up · {otpuState === 'done' ? 'tab tidak terbaca' : 'memuat…'}</>
+              ? <>On Time Pick Up · {otpuState === 'done' ? 'tab tidak terbaca' : otpuState === 'failed' ? 'gagal dimuat' : 'memuat…'}</>
               : otpuPart && otpu
               ? <>
                   On Time Pick Up · {otpu.agent ? `${otpu.agent.rows.length} agen · ${otpu.agent.weeks.length} minggu` : 'tab agen tidak terbaca'}
@@ -837,8 +762,18 @@ export default function Dashboard({
           {/* Named for what it will contain. Two buttons on the DP/CP page read
               "Simpan PNG" and take different pictures, so each has to say which
               — and the OTPU pages have between one and three of their own. */}
-          <button className="btn save" onClick={savePng}>
-            {view === VIEW_DP || otpuPart ? 'Simpan PNG · Ringkasan' : 'Simpan PNG'}
+          {/* Locked while OTPU is still loading: the picture would be of the
+              "Memuat…" screen, not of the report. */}
+          <button
+            className={`btn act act-png${pngBusy ? ' is-busy' : ''}`}
+            onClick={savePng}
+            disabled={pngBusy || (!!otpuPart && !otpu)}
+            title={otpuPart && !otpu ? 'Tunggu sampai data OTPU selesai dimuat' : 'Simpan halaman ini sebagai gambar PNG'}
+          >
+            <BtnIcon name={pngBusy ? 'spin' : 'image'} />
+            <span>
+              {pngBusy ? 'Menyimpan…' : view === VIEW_DP || otpuPart ? 'Simpan PNG · Ringkasan' : 'Simpan PNG'}
+            </span>
           </button>
           {/* "Cetak / PDF" used to sit here. The print stylesheet it drove is
               still in dashboard.css and still correct — the browser's own
@@ -851,7 +786,16 @@ export default function Dashboard({
             that export too, and it is where the account it ends is named. */}
       </div>
 
-      {err && <div className="err">{err}</div>}
+      {/* Dismissable, and cleared by the next export or page change — it used to
+          stay up for the rest of the session once anything had failed. */}
+      {err && (
+        <div className="err errbar" role="alert">
+          <span className="errmsg">{err}</span>
+          <button className="errclose" onClick={() => setErr('')} aria-label="Tutup pesan" title="Tutup pesan">
+            <BtnIcon name="close" />
+          </button>
+        </div>
+      )}
 
       {badSheets.length > 0 && (
         <div className="warnbox">
@@ -970,129 +914,6 @@ export default function Dashboard({
         </Panel>
       </div>
 
-      {/* -------- middle row -------- */}
-      <div className="row-mid">
-        {/* The date itself, not "Hari Terpilih". The panel is read alongside the
-            date picker and inside exported PNGs, where "the selected day" is a
-            question rather than an answer.
-
-            达成 is the workbook's own word for "Pencapaian" — it is what the
-            sheets write in 月度达成 / 一派质量达成 — so the gloss stays in step with
-            the Indonesian *and* with the source file. */}
-        <Panel
-          title={<>Ringkasan Pencapaian ({todayLabel}) <Zh>达成汇总</Zh></>} red flush
-          right={<ExportButtons build={buildSummaryExport} onError={setErr} />}
-        >
-          <table>
-            <thead>
-              <tr>
-                <th>Indikator<Zh>指标</Zh></th>
-                <th className="num">Nilai<Zh>数值</Zh></th>
-                <th className="num">Target<Zh>目标</Zh></th>
-                <th className="ctr">Status<Zh>状态</Zh></th>
-              </tr>
-            </thead>
-            <tbody>
-              {kpis.map((k) => {
-                const s = kpiSeries(k, current.rec, dates)
-                const v = s[di]
-                const tgt = targetFor(k, current.rec)
-                const st = statusOf(k, v, tgt)
-                return (
-                  <tr key={k.key} className={`st-${st}`}>
-                    <td className="kpiname">{k.label}</td>
-                    <td className="num">{pct(v)}</td>
-                    <td className="num muted">{k.lowerBetter ? '≤ ' : '≥ '}{pct(tgt)}</td>
-                    <td className="ctr">
-                      <span className="tip">
-                        <Badge st={st} />
-                        <TipBox ex={explain(k, v, dPrev ? s[di - 1] : null, tgt, prevAxisLabel)} placement="left" />
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </Panel>
-
-        <Panel
-          title={<>Perbandingan Harian ({dates.length} hari) <Zh>每日对比</Zh></>}
-          right={barChoices.length > 1 && (
-            <select
-              className="hsel" value={barK ? barK.key : ''} aria-label="Indikator yang ditampilkan pada grafik batang"
-              onChange={(e) => setBarKey(e.target.value)}
-            >
-              {barChoices.map((k) => <option key={k.key} value={k.key}>{k.label}</option>)}
-            </select>
-          )}
-        >
-          {barK
-            ? <BarChart
-                values={kpiSeries(barK, current.rec, dates)}
-                labels={axisLabels}
-                targetLine={targetFor(barK, current.rec)}
-                lowerBetter={barK.lowerBetter}
-              />
-            : <div className="empty-mini">Tidak ada Indikator yang tersedia</div>}
-        </Panel>
-      </div>
-
-      {/* -------- bottom row -------- */}
-      <div className="row-bot">
-        <Panel
-          title={<>Detail Pencapaian (Hari Ini vs Hari Sebelumnya) <Zh>达成明细</Zh></>} flush
-          right={<ExportButtons build={buildDetailExport} onError={setErr} />}
-        >
-          <table>
-            <thead>
-              <tr>
-                <th>Indikator<Zh>指标</Zh></th>
-                <th className="num">
-                  Hari Ini ({dToday.date ? fmtDate(dToday.date) : `H${di + 1}`})<Zh>今日</Zh>
-                </th>
-                <th className="num">
-                  {dPrev ? `Sebelumnya (${dPrev.date ? fmtDate(dPrev.date) : `H${di}`})` : 'Sebelumnya'}
-                  <Zh>前一日</Zh>
-                </th>
-                <th className="num">Selisih<Zh>差异</Zh></th>
-                <th className="num">Bulanan<Zh>月度达成</Zh></th>
-                <th className="ctr">Status<Zh>状态</Zh></th>
-              </tr>
-            </thead>
-            <tbody>
-              {kpis.map((k) => {
-                const s = kpiSeries(k, current.rec, dates)
-                const v = s[di]
-                const p = dPrev ? s[di - 1] : null
-                const mtd = k.monthlyCol ? current.rec.vals[k.monthlyCol] ?? null : null
-                const tgt = targetFor(k, current.rec)
-                const st = statusOf(k, v, tgt)
-                return (
-                  <tr key={k.key} className={`st-${st}`}>
-                    <td className="kpiname">{k.label}</td>
-                    <td className="num">{pct(v)}</td>
-                    <td className="num muted">{pct(p)}</td>
-                    <td className="num"><Delta diff={v != null && p != null ? v - p : null} lowerBetter={k.lowerBetter} /></td>
-                    <td className="num muted">{pct(mtd)}</td>
-                    <td className="ctr">
-                      <span className="tip">
-                        <Badge st={st} />
-                        <TipBox ex={explain(k, v, p, tgt, prevAxisLabel)} placement="left" />
-                      </span>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </Panel>
-
-        <Panel title={<>Ringkasan Hari Ini <Zh>今日总结</Zh></>}>
-          <SummaryPanel kpis={kpis} rec={current.rec} dates={dates} di={di}
-                        sub={current.sub} count={current.count} />
-        </Panel>
-      </div>
       </>)}
 
       {/* Part B. It carries its own band and its own export buttons — see
@@ -1113,14 +934,26 @@ export default function Dashboard({
       {/* Part C, in three. Same arrangement as Part B: its own band, its own
           per-table export buttons, nothing to wrap it in here. */}
       {otpuPart && otpu && (
-        <OtpuSection report={otpu} part={otpuPart} cityOf={cityOf} />
+        <OtpuSection report={otpu} part={otpuPart} cityOf={cityOf} onError={setErr} />
       )}
 
       {/* The OTPU tabs are the biggest thing in the workbook and they are read on
           arrival rather than on startup, so arriving is a wait. It is named, and
           it says why — a screen that only spins reads as a fault, and this one is
           the price of the dashboard having opened quickly in the first place. */}
-      {otpuPart && !otpu && otpuState !== 'done' && (
+      {otpuPart && !otpu && otpuState === 'failed' && (
+        <div className="dropzone">
+          <h2>Data OTPU gagal diambil <Zh>加载失败</Zh></h2>
+          <p>Permintaan ke server tidak selesai — biasanya koneksi terputus sebentar.
+            Datanya sendiri tidak bermasalah.</p>
+          <button className="btn act act-retry" onClick={() => setOtpuTry((n) => n + 1)}>
+            <BtnIcon name="retry" />
+            <span>Coba lagi</span>
+          </button>
+        </div>
+      )}
+
+      {otpuPart && !otpu && otpuState !== 'done' && otpuState !== 'failed' && (
         <div className="dropzone">
           <h2>Memuat On Time Pick Up… <Zh>正在加载</Zh></h2>
           <p>Tab OTPU adalah bagian terbesar dari workbook dan dibaca saat dibuka,
@@ -1230,75 +1063,4 @@ function Panel({
       <div className="body" style={flush ? { padding: 0 } : undefined}>{children}</div>
     </div>
   )
-}
-
-function SummaryPanel({
-  kpis, rec, dates, di, sub, count,
-}: {
-  kpis: Kpi[]; rec: AgentRow; dates: DateSlot[]; di: number; sub: string; count: number
-}) {
-  const on: Kpi[] = [], off: Kpi[] = []
-  let best: { k: Kpi; v: number; t: number } | null = null
-  let bestScore = -Infinity
-
-  for (const k of kpis) {
-    const v = kpiSeries(k, rec, dates)[di]
-    if (v == null) continue
-    const t = targetFor(k, rec)
-    const score = k.lowerBetter ? (t - v) / Math.max(0.01, t) : (v - t) / Math.max(0.01, t)
-    if (statusOf(k, v, t) === 'ok') on.push(k); else off.push(k)
-    if (score > bestScore) { bestScore = score; best = { k, v, t } }
-  }
-
-  const total = on.length + off.length
-  const ratio = total ? on.length / total : 0
-  const [verdict, tone] =
-    ratio >= 0.85 ? ['Sangat Baik', 'good'] :
-    ratio >= 0.6 ? ['Baik', 'good'] :
-    ratio >= 0.4 ? ['Cukup', 'fair'] : ['Perlu Perhatian', 'poor']
-
-  return (
-    <div className="sumlist">
-      <Item ico="📊" lab="Performa Keseluruhan" zh="整体表现" strong={verdict} tone={tone}
-            detail={`${on.length} Indikator sesuai target / ${off.length} di bawah target${count > 1 ? ` • ${sub}` : ''}`} />
-      <Item ico="⭐" lab="Indikator Terbaik" zh="最佳指标" strong={best ? best.k.label : '—'} tone="good"
-            detail={best ? `${pct(best.v)} terhadap target ${pct(best.t)}` : ''} />
-      <Item ico="⚠️" lab="Perlu Perhatian" zh="需关注" tone={off.length ? 'poor' : 'good'}
-            strong={off.length ? `${off.length} Indikator di bawah target` : 'Tidak ada'}
-            detail={off.length ? off.map((k) => k.label).join(', ') : 'Semua Indikator sesuai target'} />
-      <Item ico="👥" lab="Tindak Lanjut" zh="后续行动" strong="Prioritas" tone=""
-            detail={off.length ? nextAction(off) : 'Pertahankan performa saat ini dan jaga disiplin briefing harian.'} />
-    </div>
-  )
-}
-
-function Item({ ico, lab, zh, strong, detail, tone }: {
-  ico: string; lab: string; zh: string; strong: string; detail: string; tone: string
-}) {
-  return (
-    <div className="sumitem">
-      <div className="ico">{ico}</div>
-      <div className="lab">{lab}<Zh>{zh}</Zh></div>
-      <div className={`val ${tone}`}><span className="strong">{strong}</span>{detail}</div>
-    </div>
-  )
-}
-
-/* ----------------------------------------------------------- small utils */
-
-function nextAction(off: Kpi[]): string {
-  const tips = off.map((k) => {
-    const l = k.label
-    if (/absensi|kehadiran/i.test(l)) return 'perketat kehadiran sprinter sebelum 06:30'
-    if (/gudang/i.test(l)) return 'percepat sortir agar armada keluar gudang sebelum 07:30'
-    if (/12:00|1200/i.test(l)) return 'dorong pengiriman ritase pertama agar TTD sebelum jam 12:00'
-    if (/ritase 2/i.test(l)) return 'perkuat dispatch dan tindak lanjut ritase kedua'
-    if (/tptw|on time/i.test(l)) return 'tinjau ketepatan waktu serah terima di drop point'
-    if (/retur|return/i.test(l)) return 'tekan retur COD dengan konfirmasi telepon sebelum pengantaran'
-    if (/pickup|otpu/i.test(l)) return 'perbaiki rute penjemputan tepat waktu untuk shipper non-ecommerce'
-    if (/full day|persentase ttd/i.test(l)) return 'tingkatkan capaian TTD seharian di kedua ritase'
-    return `tinjau ${l.toLowerCase()}`
-  })
-  const s = [...new Set(tips)].slice(0, 3).join('; ') + '.'
-  return s.charAt(0).toUpperCase() + s.slice(1)
 }

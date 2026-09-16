@@ -650,17 +650,6 @@ export const TREND_DEFAULT = [
 ]
 
 /**
- * The three categories the comparison bar chart can switch between. They share
- * the same 90% target, so a single chart with one target line is meaningful for
- * all three — which is not true of, say, RETUR (a low-is-good limit).
- */
-export const BAR_CHOICES = [
-  '06:30 ABSENSI',
-  '07:30 KELUAR GUDANG',
-  'TTD PAKET JAM 12:00',
-]
-
-/**
  * Direction is not guessable for these — it is known. Everything on this list is
  * a completion rate (higher is better); RETUR is the one limit where lower wins.
  *
@@ -2397,6 +2386,9 @@ function fittingScale(width: number, height: number, want: number): number | nul
  *   4. `windowWidth`/`windowHeight` match, so media queries inside the clone
  *      evaluate against the full canvas rather than the real window.
  */
+/** The largest box, in CSS pixels, html2canvas-pro will agree to capture. */
+const MAX_CAPTURE_PX = 32_767
+
 export async function exportPng(
   el: HTMLElement,
   filename: string,
@@ -2464,6 +2456,22 @@ export async function exportPng(
       throw new Error(
         'Tidak ada yang bisa difoto pada bagian ini — kemungkinan semua isinya sedang ' +
         'disembunyikan oleh filter. Longgarkan filternya lalu coba lagi.',
+      )
+    }
+
+    /*
+     * The renderer refuses any capture whose box is over 32,767 CSS pixels on
+     * either side, whatever the scale — and says so in an English validation
+     * string ("Dimensions exceed maximum allowed") that means nothing to the
+     * person who pressed the button. A full DP/CP list or seller list after
+     * "Tampilkan semua" is far taller than that, so it is caught here with a
+     * message that names the way out.
+     */
+    if (width > MAX_CAPTURE_PX || height > MAX_CAPTURE_PX) {
+      throw new Error(
+        'Bagian ini terlalu panjang untuk dijadikan satu gambar PNG. Tekan "Tampilkan 40 pertama" '
+        + 'atau persempit filter, lalu coba lagi — atau gunakan Ekspor PDF / Ekspor Excel untuk '
+        + 'menyimpan semua baris.',
       )
     }
 

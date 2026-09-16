@@ -421,7 +421,7 @@ body{
 }
 .panel.red > h3 .zh,.panel > h3 .zh,thead th .zh,.topbar .zh,.sechead .zh{opacity:.88}
 
-th .zh,.kname .zh,.dpstat .l .zh,.sumitem .lab .zh{
+th .zh,.kname .zh,.dpstat .l .zh{
   display:block;margin-left:0;margin-top:2px;font-size:.95em;white-space:normal;
 }
 .kname .zh{font-size:12px;opacity:.85}
@@ -728,10 +728,6 @@ tbody td .zh{opacity:.9}
 /* the trend chart gets the full width — it is the one panel where cramped
    width made the plotted numbers unreadable */
 .row-trend{margin-bottom:10px}
-.row-mid{display:grid;grid-template-columns:.9fr 1fr;gap:10px;margin-bottom:10px}
-.row-bot{display:grid;grid-template-columns:1.3fr 1fr;gap:10px}
-@media (max-width:1180px){ .row-bot{grid-template-columns:1fr} }
-@media (max-width:760px){ .row-mid{grid-template-columns:1fr} }
 
 /* ---------- Tables ---------- */
 table{width:100%;border-collapse:collapse;font-size:13.5px;font-weight:600}
@@ -744,37 +740,25 @@ tbody tr:last-child td{border-bottom:none}
 tbody tr:nth-child(even){background:#242424}
 td.num,th.num{text-align:right;font-variant-numeric:tabular-nums}
 td.ctr,th.ctr{text-align:center}
-.kpiname{font-weight:500}
-.badge{
-  display:inline-flex;align-items:center;justify-content:center;
-  width:18px;height:18px;border-radius:50%;font-size:10.5px;font-weight:600;color:#fff;
-}
-.badge.ok{background:var(--green)}
-.badge.warn{background:var(--amber)}
-.badge.bad{background:var(--jt-red)}
 
 /* ---------- Legend ---------- */
 .legend{display:flex;flex-wrap:wrap;gap:8px 18px;margin-bottom:10px}
 .legend button{
-  display:flex;align-items:center;gap:6px;background:none;border:none;cursor:pointer;
-  font-size:12px;color:var(--ink-2);padding:3px 8px;border-radius:6px;font-family:inherit;
-  transition:background .12s ease,color .12s ease,opacity .12s ease;
+  display:flex;align-items:center;gap:6px;background:none;border:1px solid transparent;cursor:pointer;
+  font-size:12px;color:var(--ink-2);padding:3px 9px;border-radius:999px;font-family:inherit;
+  transition:background .14s ease,color .14s ease,opacity .14s ease,border-color .14s ease,transform .14s ease;
 }
 /* These toggle series on the trend chart and looked like static key entries —
    a hover state is the whole difference between a legend and a control. */
-.legend button:hover{background:var(--card-3);color:var(--ink)}
+.legend button:hover{background:var(--card-3);color:var(--ink);border-color:#444}
+.legend button:active{transform:scale(.96)}
 .legend button.off{opacity:.35;text-decoration:line-through}
-.legend button.off:hover{opacity:.7}
-.legend .sw{width:16px;height:3px;border-radius:2px}
+.legend button.off:hover{opacity:.75}
+/* the swatch thickens on hover, so the line it switches is picked out before the click */
+.legend .sw{width:16px;height:3px;border-radius:2px;transition:height .14s ease,width .14s ease}
+.legend button:hover .sw{height:5px;width:18px}
 
 /* ---------- Summary list ---------- */
-.sumlist{display:flex;flex-direction:column}
-.sumitem{display:flex;gap:12px;align-items:flex-start;padding:9px 0;border-bottom:1px solid var(--line)}
-.sumitem:last-child{border-bottom:none}
-.sumitem .ico{font-size:19px;width:26px;text-align:center;flex:none;line-height:1.2}
-.sumitem .lab{width:150px;flex:none;font-weight:600;font-size:12px}
-.sumitem .val{flex:1;font-size:12px;color:var(--ink-2);line-height:1.5}
-.sumitem .val .strong{font-weight:600;display:block;margin-bottom:1px}
 .val.good .strong{color:var(--green)}
 .val.fair .strong{color:var(--amber)}
 .val.poor .strong{color:var(--jt-red)}
@@ -808,9 +792,6 @@ span.tip{display:inline-block}
 .cards .kcard:nth-last-child(-n+2) .tipbox.tip-below{left:auto;right:0;transform-origin:top right}
 .cards .kcard:nth-last-child(-n+2) .tipbox.tip-below::after{left:auto;right:16px}
 
-.tipbox.tip-left{right:calc(100% + 11px);top:50%;transform:translateY(-50%) translateX(7px) scale(.96);transform-origin:right center}
-.tipbox.tip-left::after{right:-4px;top:calc(50% - 4px)}
-.tip:hover > .tipbox.tip-left{opacity:1;transform:translateY(-50%) translateX(0) scale(1)}
 
 .tiptitle{display:block;font-weight:600;margin-bottom:4px;font-size:11.5px}
 .tiptitle.ok{color:#4ADE80}
@@ -821,7 +802,6 @@ span.tip{display:inline-block}
 
 /* below-target rows */
 tbody tr.st-bad td{background:#2A1614}
-tbody tr.st-bad .kpiname{color:var(--jt-red)}
 
 .muted{color:var(--ink-3)}
 .note{font-size:12.5px;font-weight:500;color:var(--ink-2);margin-top:10px;line-height:1.55}
@@ -930,15 +910,145 @@ body.shooting .chartscroll{overflow:visible !important}
 }
 .btn.tiny:hover{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.45)}
 
-/* Simpan PNG, both scopes. Filled in the brand red so it stands out from the
-   grey buttons around it and matches the rest of the dashboard. Declared after
-   .btn.tiny so it wins inside the black panel header too. */
-.btn.save,.btn.tiny.save{background:var(--jt-red);border-color:var(--jt-red);color:#fff}
-.btn.save:hover,.btn.tiny.save:hover{background:var(--jt-red-dark);border-color:var(--jt-red-dark)}
-.btn.save:disabled{opacity:.7;cursor:progress}
+/* ============================================================================
+   Action buttons
+   ============================================================================
+
+   Every button that *does* something to the report — takes a picture, writes a
+   file, changes which rows are listed — shares one shape and one motion, and
+   each kind gets its own colour so a row of them can be told apart before the
+   labels are read:
+
+     Simpan PNG        solid J&T red     the page's own look, the main action
+     Ekspor PDF        white "paper"     a printed document
+     Ekspor Excel      green             the spreadsheet colour everyone knows
+     Tampilkan dipilih amber             a mode you switch into and back out of
+     Kosongkan         ghost → red       throws something away
+     Tampilkan semua   neutral pill      only changes how much is listed
+     Coba lagi         red, icon turns   retry
+
+   Motion is feedback, not decoration: a 1px lift and a matching glow on hover,
+   a small press on click, and a spinner in place of the icon while a file is
+   being made. All of it switches off under prefers-reduced-motion. */
+.btn.act{
+  --act-glow:rgba(255,255,255,.12);
+  display:inline-flex;align-items:center;justify-content:center;gap:7px;
+  position:relative;overflow:hidden;isolation:isolate;white-space:nowrap;
+  border-radius:9px;letter-spacing:.1px;
+  transition:background-color .18s var(--ease-out-quint),border-color .18s var(--ease-out-quint),
+    color .18s var(--ease-out-quint),box-shadow .22s var(--ease-out-quint),transform .18s var(--ease-out-quint);
+}
+.btn.act:hover:not(:disabled){transform:translateY(-1px);box-shadow:0 6px 18px -6px var(--act-glow)}
+.btn.act:active:not(:disabled){transform:translateY(0) scale(.97);box-shadow:none;transition-duration:.06s}
+.btn.act:focus-visible{outline:2px solid var(--act-ring,#fff);outline-offset:2px}
+.btn.act:disabled{cursor:progress;opacity:.72}
+.btn.act > span{position:relative;z-index:1}
+
+.bico{width:15px;height:15px;flex:none;position:relative;z-index:1;transition:transform .22s var(--ease-out-quint)}
+.btn.tiny .bico{width:13.5px;height:13.5px}
+.bico-spin{animation:bico-spin .75s linear infinite}
+@keyframes bico-spin{to{transform:rotate(360deg)}}
+
+/* Simpan PNG — the brand red, with a light sweep across it on hover */
+.btn.act-png,.btn.tiny.act-png{
+  --act-glow:rgba(255,68,56,.75);--act-ring:#FF7A70;
+  background:linear-gradient(180deg,#F0352B 0%,var(--jt-red) 100%);
+  border-color:var(--jt-red);color:#fff;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18);
+}
+.btn.act-png::after{
+  content:"";position:absolute;inset:0;z-index:0;pointer-events:none;
+  background:linear-gradient(105deg,transparent 30%,rgba(255,255,255,.28) 50%,transparent 70%);
+  transform:translateX(-120%);transition:transform .6s var(--ease-out-quint);
+}
+.btn.act-png:hover:not(:disabled),.btn.tiny.act-png:hover:not(:disabled){
+  background:linear-gradient(180deg,#FF4438 0%,#E8271D 100%);border-color:#FF4438;
+}
+.btn.act-png:hover:not(:disabled)::after{transform:translateX(120%)}
+.btn.act-png:hover:not(:disabled) .bico{transform:scale(1.14) rotate(-8deg)}
+
+/* Ekspor PDF — a white sheet with the red document mark */
+.btn.act-pdf,.btn.tiny.act-pdf{
+  --act-glow:rgba(255,255,255,.4);--act-ring:#fff;
+  background:#F2F2F2;border-color:#F2F2F2;color:#161616;
+}
+.btn.act-pdf .bico{color:var(--jt-red)}
+.btn.act-pdf:hover:not(:disabled),.btn.tiny.act-pdf:hover:not(:disabled){
+  background:#fff;border-color:#fff;color:var(--jt-red-dark);
+}
+.btn.act-pdf:hover:not(:disabled) .bico{transform:translateY(-2px)}
+
+/* Ekspor Excel — green, filling in on hover */
+.btn.act-xls,.btn.tiny.act-xls{
+  --act-glow:rgba(46,213,115,.6);--act-ring:#5BE79A;
+  background:rgba(46,213,115,.12);border-color:rgba(46,213,115,.6);color:#5BE79A;
+}
+.btn.act-xls:hover:not(:disabled),.btn.tiny.act-xls:hover:not(:disabled){
+  background:var(--green);border-color:var(--green);color:#052813;
+}
+.btn.act-xls:hover:not(:disabled) .bico{transform:scale(1.12)}
+
+/* Tampilkan yang dipilih — amber, and solid while the selection is showing */
+.btn.act-pick,.btn.tiny.act-pick{
+  --act-glow:rgba(255,176,32,.6);--act-ring:#FFC857;
+  background:rgba(255,176,32,.13);border-color:rgba(255,176,32,.6);color:#FFC857;
+}
+.btn.act-pick:hover:not(:disabled),.btn.tiny.act-pick:hover:not(:disabled),
+.btn.act-pick.on,.btn.tiny.act-pick.on{
+  background:var(--amber);border-color:var(--amber);color:#2A1B00;
+}
+.btn.act-pick.on:hover:not(:disabled){background:#FFC04D;border-color:#FFC04D}
+
+/* Kosongkan — quiet until pointed at, then plainly destructive */
+.btn.act-clear,.btn.tiny.act-clear{
+  --act-glow:rgba(226,35,26,.5);--act-ring:#FF7A70;
+  background:transparent;border-color:rgba(255,255,255,.24);color:var(--ink-2);
+}
+.btn.act-clear:hover:not(:disabled),.btn.tiny.act-clear:hover:not(:disabled){
+  background:rgba(226,35,26,.14);border-color:#FF4438;color:#FF7A70;
+}
+.btn.act-clear:hover:not(:disabled) .bico{transform:rotate(90deg)}
+
+/* Tampilkan semua / 40 pertama — a neutral pill, the arrow nudging the way it will go */
+.btn.act-more{
+  --act-glow:rgba(0,0,0,.6);--act-ring:#bbb;
+  border-radius:999px;padding:8px 18px;min-width:220px;
+  background:var(--card-2);border-color:var(--line);color:var(--ink);
+}
+.btn.act-more:hover:not(:disabled){background:var(--card-3);border-color:#5A5A5A}
+.btn.act-more[aria-expanded="false"]:hover .bico{transform:translateY(2px)}
+.btn.act-more[aria-expanded="true"]:hover .bico{transform:translateY(-2px)}
+
+/* Coba lagi — on the failed-to-load screen */
+.btn.act-retry{
+  --act-glow:rgba(255,68,56,.7);--act-ring:#FF7A70;
+  margin-top:6px;background:var(--jt-red);border-color:var(--jt-red);color:#fff;
+}
+.btn.act-retry:hover:not(:disabled){background:#FF4438;border-color:#FF4438}
+.btn.act-retry:hover:not(:disabled) .bico{transform:rotate(-200deg)}
 
 /* Ekspor PDF / Ekspor Excel, side by side at the right of a panel header */
 .exportbtns{display:inline-flex;gap:6px;flex:none;flex-wrap:wrap}
+
+/* The shared error banner, now with a way to put it away */
+.err.errbar{display:flex;align-items:flex-start;gap:10px}
+.errbar .errmsg{flex:1;min-width:0}
+.errclose{
+  flex:none;display:inline-flex;align-items:center;justify-content:center;
+  width:24px;height:24px;margin:-3px -6px -3px 0;border-radius:6px;cursor:pointer;
+  background:transparent;border:1px solid transparent;color:#FF8C82;
+  transition:background-color .15s ease,border-color .15s ease,color .15s ease;
+}
+.errclose:hover{background:rgba(255,140,130,.14);border-color:rgba(255,140,130,.35);color:#fff}
+.errclose:focus-visible{outline:2px solid #FF8C82;outline-offset:1px}
+.errclose .bico{width:14px;height:14px}
+
+@media (prefers-reduced-motion:reduce){
+  .btn.act,.bico,.btn.act-png::after,.errclose{transition:none}
+  .btn.act:hover:not(:disabled),.btn.act:active:not(:disabled){transform:none}
+  .btn.act:hover .bico{transform:none !important}
+  .bico-spin{animation-duration:1.6s}
+}
 
 /* ---------- DP / CP table ---------- */
 .dptable{margin-top:10px}
@@ -972,7 +1082,11 @@ body.shooting .chartscroll{overflow:visible !important}
   transition:background .13s ease,color .13s ease;
 }
 .dpfilters .seg button:hover:not(.on){background:var(--card-3);color:var(--ink)}
-.dpfilters .seg button.on{background:var(--jt-red);color:#fff;font-weight:800}
+.dpfilters .seg button:active:not(.on){background:#3A3A3A}
+.dpfilters .seg button.on{
+  background:linear-gradient(180deg,#F0352B 0%,var(--jt-red) 100%);color:#fff;font-weight:800;
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.18);cursor:default;
+}
 /* inset, because the segment clips to its own rounded corners — an offset ring
    would be sliced off by the border it sits inside */
 .dpfilters .seg button:focus-visible{outline-offset:-3px}
@@ -1554,8 +1668,8 @@ table.dpgrid tbody tr.picked td.hm.bad{background:#4A1512}
    picker, hover tooltips) — those carry no data.
 
    The width is pinned so the capture never depends on how wide the window
-   happened to be: a narrow window would otherwise collapse .row-mid/.row-bot to
-   one column and squeeze the tables, and html2canvas would bake that in. */
+   happened to be: a narrow window would otherwise collapse .row-dp to
+   one column and squeeze the charts, and html2canvas would bake that in. */
 body.shooting{background:var(--bg) !important}
 body.shooting .wrap{width:1480px;max-width:none;padding:14px 16px}
 
@@ -1580,8 +1694,6 @@ body.shooting .wrap{width:1480px;max-width:none;padding:14px 16px}
    the computed style of each live element, so whatever matched on the real
    viewport is already baked in by the time the clone exists. The layout has to
    be correct in the live document, which is what these do. */
-body.shooting .row-mid{grid-template-columns:.9fr 1fr !important}
-body.shooting .row-bot{grid-template-columns:1.3fr 1fr !important}
 body.shooting .row-dp{grid-template-columns:1fr 1fr !important}
 body.shooting .dpstats{grid-template-columns:repeat(auto-fit,minmax(150px,1fr)) !important}
 /* A panel body that scrolls sideways photographs as its visible slice, and at a
@@ -2335,7 +2447,7 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
   .sechead .seccount{font-size:11px;padding:2px 8px}
   .cards{grid-template-columns:1fr;gap:9px}
 
-  .row-mid,.row-bot,.row-dp{grid-template-columns:1fr}
+  .row-dp{grid-template-columns:1fr}
   .panel > h3{padding:9px 11px;gap:8px;font-size:14px;min-height:0;flex-wrap:wrap}
   .panel > h3 .ptitle{flex:1 1 100%}
   .panel > h3 .hsel{flex:1 1 100%;max-width:none}
@@ -2452,7 +2564,6 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
   table.dpgrid td.sticky{max-width:172px}
   .dpname .dptext{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 
-  .sumitem .lab{width:auto;min-width:104px;flex:0 1 auto}
   .dropzone{padding:32px 16px}
   .dropzone h2{font-size:16.5px}
   .dropzone p{font-size:13.5px}
@@ -2563,8 +2674,8 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
 
   /* THE page-break fix: a panel that straddled a break printed its header on one
      page and its chart on the next, which is why charts looked missing */
-  .panel,.kcard,.sumitem,tr,svg,
-  .row-trend,.row-mid,.row-bot,.row-dp,.dpstat{break-inside:avoid !important; page-break-inside:avoid !important}
+  .panel,.kcard,tr,svg,
+  .row-trend,.row-dp,.dpstat{break-inside:avoid !important; page-break-inside:avoid !important}
   /* a section band stranded at the foot of a page labels nothing */
   .sechead{break-after:avoid !important; page-break-after:avoid !important}
   /* the DP list is the one table allowed to run across pages — it can be
@@ -2581,7 +2692,6 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
   .kcard .ktgt,.kcard .kmtd{font-size:9px}
   .kcard .spark{height:22px}
   .panel .body{padding:8px 10px}
-  .row-bot{grid-template-columns:1.35fr 1fr}
 }
 /* ============================================================================
    On Time Pick Up — the finish pass
@@ -2858,7 +2968,7 @@ body.shooting .otpusection .panel{
    Pinning the rest of the layout for a capture
    ============================================================================
 
-   The block up at `body.shooting .row-mid` explains the rule this file has to
+   The block up at `body.shooting .row-dp` explains the rule this file has to
    follow and why: html2canvas copies the *computed style of each live element*,
    so `windowWidth` does not re-evaluate media queries in the clone. Whatever the
    real viewport matched is already baked in. Every phone rule therefore has to

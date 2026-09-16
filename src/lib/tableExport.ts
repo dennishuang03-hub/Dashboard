@@ -237,10 +237,18 @@ export async function exportTablePdf(t: ExportTable): Promise<void> {
     },
   })
 
+  if (!t.rows.length && !t.total) {
+    const after = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y
+    doc.setFontSize(9)
+    doc.setTextColor(...rgb(INK_2))
+    doc.text('Tidak ada baris yang cocok dengan filter.', margin, after + 6)
+    y = after + 6
+  }
+
   if (t.note) {
     const after = (doc as unknown as { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? y
     const lines = doc.splitTextToSize(pdfSafe(t.note), pageW - margin * 2) as string[]
-    let ny = after + 6
+    let ny = Math.max(after, y) + 6
     if (ny + lines.length * 3.6 > doc.internal.pageSize.getHeight() - 14) {
       doc.addPage()
       ny = 16

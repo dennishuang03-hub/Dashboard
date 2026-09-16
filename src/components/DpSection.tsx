@@ -31,6 +31,7 @@ import {
 import type { BizModel, DateSlot, DpKind, DpRow, DpStatus, Kpi, Model } from '../lib/jnt'
 import { BarChart, HBarChart } from './Charts'
 import type { HBar } from './Charts'
+import BtnIcon from './BtnIcon'
 import ExportButtons from './ExportButtons'
 import MultiSelect from './MultiSelect'
 import Zh from './Zh'
@@ -800,13 +801,29 @@ export default function DpSection({
    * width the dashboard shot uses. Rows hidden behind "Tampilkan 40 pertama"
    * stay hidden — the image matches the screen.
    */
+  /* Locked while a picture is being taken. Two presses used to start two
+     captures of the same table and save the file twice. */
+  const [pngBusy, setPngBusy] = useState(false)
   const savePng = async () => {
-    if (!tableRef.current) return
+    if (!tableRef.current || pngBusy) return
+    setPngBusy(true)
+    onError('')
     try {
       await exportPng(tableRef.current, `${fileStem()}.png`, 'shoot-table')
     } catch (ex) {
       onError((ex as Error).message)
+    } finally {
+      setPngBusy(false)
     }
+  }
+
+  /* Collapsing a long list from the bottom of it would leave the reader
+     staring at empty page where the rows used to be, so the table's own
+     heading is brought back into view. */
+  const toggleShowAll = () => {
+    const collapsing = showAll
+    setShowAll(!showAll)
+    if (collapsing) tableRef.current?.scrollIntoView({ block: 'start' })
   }
 
   /*
@@ -1055,7 +1072,14 @@ export default function DpSection({
           {/* "Tabel", because the toolbar above has a Simpan PNG of its own that
               takes the counters and the charts. Two unlabelled ones would be a
               coin toss. */}
-          <button className="btn tiny save" onClick={savePng}>Simpan PNG · Tabel</button>
+          <button
+            className={`btn tiny act act-png${pngBusy ? ' is-busy' : ''}`}
+            onClick={savePng} disabled={pngBusy}
+            title="Simpan tabel ini sebagai gambar PNG, persis seperti di layar"
+          >
+            <BtnIcon name={pngBusy ? 'spin' : 'image'} />
+            <span>{pngBusy ? 'Menyimpan…' : 'Simpan PNG · Tabel'}</span>
+          </button>
           <ExportButtons build={buildExport} onError={onError} />
         </h3>
 
@@ -1230,14 +1254,19 @@ export default function DpSection({
           <div className="dppicked" role="status" aria-live="polite">
             <span className="dppicked-n"><b>{pickedCount}</b> dipilih</span>
             <span className="dppicked-act">
-              <button className="btn tiny primary" onClick={() => setOnlyPicked(!basketOn)}>
-                {basketOn ? 'Tampilkan semua' : 'Tampilkan yang dipilih'}
+              <button
+                className={`btn tiny act act-pick${basketOn ? ' on' : ''}`}
+                onClick={() => setOnlyPicked(!basketOn)} aria-pressed={basketOn}
+              >
+                <BtnIcon name={basketOn ? 'list' : 'check'} />
+                <span>{basketOn ? 'Tampilkan semua' : 'Tampilkan yang dipilih'}</span>
               </button>
               <button
-                className="btn tiny"
+                className="btn tiny act act-clear"
                 onClick={() => { setPicked(new Set<string>()); setOnlyPicked(false) }}
               >
-                Kosongkan
+                <BtnIcon name="clear" />
+                <span>Kosongkan</span>
               </button>
             </span>
           </div>
@@ -1472,8 +1501,9 @@ export default function DpSection({
           {/* nothing to expand while the basket is showing — it is already whole */}
           {!basketOn && filtered.length > 40 && (
             <div className="dpmore">
-              <button className="btn" onClick={() => setShowAll(!showAll)}>
-                {showAll ? 'Tampilkan 40 pertama' : `Tampilkan semua ${filtered.length}`}
+              <button className="btn act act-more" onClick={toggleShowAll} aria-expanded={showAll}>
+                <span>{showAll ? 'Tampilkan 40 pertama' : `Tampilkan semua ${filtered.length}`}</span>
+                <BtnIcon name={showAll ? 'collapse' : 'list'} />
               </button>
             </div>
           )}

@@ -37,6 +37,7 @@ import type {
   OtpuAgentReport, OtpuAgentRow, OtpuPeriod, OtpuReport, OtpuSellerReport, OtpuSellerRow,
 } from '../lib/otpu'
 import { HBarChart } from './Charts'
+import BtnIcon from './BtnIcon'
 import ExportButtons from './ExportButtons'
 import MultiSelect from './MultiSelect'
 import OrderFilter from './OrderFilter'
@@ -300,13 +301,14 @@ function bandRuns(cols: ACol[]): { band: ACol['band']; n: number }[] {
  * the table and nothing else.
  */
 function AgentTable({
-  agent, cityOf, title, period,
+  agent, cityOf, title, period, onError,
 }: {
   agent: OtpuAgentReport
   cityOf: (code: string) => string
   title: ReactNode
   /** the weeks covered, written into the exported file */
   period: string
+  onError?: (msg: string) => void
 }) {
   const cols = useMemo(() => agentCols(agent), [agent])
 
@@ -361,7 +363,11 @@ function AgentTable({
     if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
     else { setSortKey(key); setSortDir(key === 'code' ? 'asc' : 'desc') }
   }
-  const arrow = (key: string) => (sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '')
+  /* A sort on a column that has since been switched off would keep ordering
+     the rows by numbers nobody can see, with no arrow left to say so. It falls
+     back to the file's own order until the column comes back. */
+  const liveSort = sortKey === 'code' || visible.some((c) => c.id === sortKey) ? sortKey : ''
+  const arrow = (key: string) => (liveSort === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '')
 
   const agentOpts = useMemo<MsOption[]>(
     () => agent.rows.map((r) => {
@@ -373,18 +379,18 @@ function AgentTable({
 
   const rows = useMemo(() => {
     const list = agent.rows.filter((r) => !agentOff.has(r.code))
-    if (!sortKey) return list
+    if (!liveSort) return list
     const dir = sortDir
-    const col = cols.find((c) => c.id === sortKey)
+    const col = cols.find((c) => c.id === liveSort)
     list.sort((a, b) => {
-      if (sortKey === 'code') {
+      if (liveSort === 'code') {
         const r = cmpText(a.code, b.code)
         return dir === 'asc' ? r : -r
       }
       return col ? cmpNum(col.sort(a), col.sort(b), dir) : 0
     })
     return list
-  }, [agent.rows, agentOff, cols, sortKey, sortDir])
+  }, [agent.rows, agentOff, cols, liveSort, sortDir])
 
   /*
    * The TOTAL row is the file's own, and it stays that way while the filter is
@@ -458,7 +464,7 @@ function AgentTable({
           <span className="otleg up">● Naik vs minggu lalu</span>
           <span className="otleg down">● Turun vs minggu lalu</span>
         </span>
-        <ExportButtons build={buildExport} />
+        <ExportButtons build={buildExport} onError={onError} />
       </h3>
 
       <div className="dpfilters">
@@ -791,10 +797,11 @@ function poolBy(
 /* ------------------------------------------------------- the seller table */
 
 function SellerTable({
-  seller, agentOf,
+  seller, agentOf, onError,
 }: {
   seller: OtpuSellerReport
   agentOf: (code: string) => string
+  onError?: (msg: string) => void
 }) {
   const [q, setQ] = useState('')
   const [agentOff, setAgentOff] = useState<ReadonlySet<string>>(() => new Set<string>())
@@ -968,6 +975,20 @@ function SellerTable({
     return () => ro.disconnect()
   }, [dailyBands])
 
+  /* A daily or weekly column can be switched off while the table is sorted on
+     it. The rows then fall back to the opening order — biggest Total Order
+     first — rather than staying sorted by a column that is no longer there. */
+  const sortHidden = (() => {
+    const m = DAILY_SORT_RE.exec(sortKey)
+    if (m) return !dailyBands.some((b) => b.m.id === m[1] && b.days.some(({ i }) => i === Number(m[2])))
+    if (sortKey === 'picked') return !weekShown.some((c) => c.id === 'picked')
+    return false
+  })()
+  const liveSort = sortHidden ? 'orders' : sortKey
+  const liveDir: SortDir = sortHidden ? 'desc' : sortDir
+
+  const tableRef = useRef<HTMLDivElement>(null)
+
   const filtered = useMemo(() => {
     const needle = q.trim().toLowerCase()
     const out = seller.rows.filter((r) => {
@@ -983,9 +1004,9 @@ function SellerTable({
       return true
     })
 
-    const dir = sortDir
+    const dir = liveDir
     out.sort((a, b) => {
-      switch (sortKey) {
+      switch (liveSort) {
         case 'seller': { const r = cmpText(a.seller, b.seller); return dir === 'asc' ? r : -r }
         case 'hub': { const r = cmpText(a.hub, b.hub); return dir === 'asc' ? r : -r }
         case 'dp': { const r = cmpText(a.dp, b.dp); return dir === 'asc' ? r : -r }
@@ -996,7 +1017,7 @@ function SellerTable({
         case 'vsgtl': return cmpNum(a.vsGtl, b.vsGtl, dir)
         case 'vsdaily': return cmpNum(a.vsDaily, b.vsDaily, dir)
         default: {
-          const m = DAILY_SORT_RE.exec(sortKey)
+          const m = DAILY_SORT_RE.exec(liveSort)
           if (m) {
             const field = m[1] === 'orders' ? 'dailyOrders' : m[1] === 'picked' ? 'dailyPicked' : 'dailyPct'
             const i = Number(m[2])
@@ -1007,7 +1028,7 @@ function SellerTable({
       }
     })
     return out
-  }, [seller.rows, seller.days, q, agentOff, dayBandOff, weekBandOff, order, showZero, sortKey, sortDir])
+  }, [seller.rows, seller.days, q, agentOff, dayBandOff, weekBandOff, order, showZero, liveSort, liveDir])
 
   const shown = showAll ? filtered : filtered.slice(0, PAGE)
   const pool = useMemo(() => poolPct(filtered), [filtered])
@@ -1016,7 +1037,15 @@ function SellerTable({
     if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
     else { setSortKey(key); setSortDir(key === 'seller' || key === 'hub' || key === 'dp' || key === 'agent' ? 'asc' : 'desc') }
   }
-  const arrow = (key: string) => (sortKey === key ? (sortDir === 'asc' ? ' ▲' : ' ▼') : '')
+  const arrow = (key: string) => (liveSort === key ? (liveDir === 'asc' ? ' ▲' : ' ▼') : '')
+
+  /* Same as the DP/CP list: collapsing from the bottom of a long list brings
+     the table's heading back into view instead of leaving empty page. */
+  const toggleShowAll = () => {
+    const collapsing = showAll
+    setShowAll(!showAll)
+    if (collapsing) tableRef.current?.scrollIntoView({ block: 'start' })
+  }
 
   /*
    * There is no "Simpan PNG · Tabel" here any more.
@@ -1099,13 +1128,13 @@ function SellerTable({
   }
 
   return (
-    <div className="panel dptable">
+    <div className="panel dptable" ref={tableRef}>
       <h3>
         <span className="ptitle">
           Daftar Seller <Zh>商家清单</Zh> — {nfmt(filtered.length)} dari {nfmt(seller.rows.length)}
           {' · '}%OTPU {pfmt(pool.pct)}
         </span>
-        <ExportButtons build={buildExport} />
+        <ExportButtons build={buildExport} onError={onError} />
       </h3>
 
       <div className="dpfilters">
@@ -1308,8 +1337,9 @@ function SellerTable({
 
         {filtered.length > PAGE && (
           <div className="dpmore">
-            <button className="btn" onClick={() => setShowAll(!showAll)}>
-              {showAll ? `Tampilkan ${PAGE} pertama` : `Tampilkan semua ${nfmt(filtered.length)}`}
+            <button className="btn act act-more" onClick={toggleShowAll} aria-expanded={showAll}>
+              <span>{showAll ? `Tampilkan ${PAGE} pertama` : `Tampilkan semua ${nfmt(filtered.length)}`}</span>
+              <BtnIcon name={showAll ? 'collapse' : 'list'} />
             </button>
           </div>
         )}
@@ -1330,12 +1360,14 @@ function SellerTable({
  * `null`, and `null` is a page that says so rather than an error.
  */
 export default function OtpuSection({
-  report, part, cityOf,
+  report, part, cityOf, onError,
 }: {
   report: OtpuReport
   part: OtpuPart
   /** `AGENT12` → `TANGERANG`, resolved against the daily report's agent rows */
   cityOf: (code: string) => string
+  /** the dashboard's shared error banner, so export failures land where every other one does */
+  onError?: (msg: string) => void
 }) {
   const { agent, seller } = report
 
@@ -1416,6 +1448,7 @@ export default function OtpuSection({
             agent={agent}
             cityOf={cityOf}
             period={period}
+            onError={onError}
             title={
               <>
                 Rincian per Agent PU <Zh>揽收代理</Zh>
@@ -1517,6 +1550,7 @@ export default function OtpuSection({
             <SellerTable
               seller={seller}
               agentOf={cityOf}
+              onError={onError}
             />
           )}
         </>
