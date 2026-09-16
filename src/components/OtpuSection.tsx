@@ -37,11 +37,13 @@ import type {
   OtpuAgentReport, OtpuAgentRow, OtpuPeriod, OtpuReport, OtpuSellerReport, OtpuSellerRow,
 } from '../lib/otpu'
 import { HBarChart } from './Charts'
+import ExportButtons from './ExportButtons'
 import MultiSelect from './MultiSelect'
 import OrderFilter from './OrderFilter'
 import type { OrderFilterValue } from './OrderFilter'
 import type { MsOption } from './MultiSelect'
 import Zh from './Zh'
+import type { ExportCol, ExportKind, ExportTable, ExportTone, ExportValue } from '../lib/tableExport'
 
 export type OtpuPart = 'all' | 'agent' | 'seller'
 
@@ -298,11 +300,13 @@ function bandRuns(cols: ACol[]): { band: ACol['band']; n: number }[] {
  * the table and nothing else.
  */
 function AgentTable({
-  agent, cityOf, title,
+  agent, cityOf, title, period,
 }: {
   agent: OtpuAgentReport
   cityOf: (code: string) => string
   title: ReactNode
+  /** the weeks covered, written into the exported file */
+  period: string
 }) {
   const cols = useMemo(() => agentCols(agent), [agent])
 
@@ -408,6 +412,44 @@ function AgentTable({
       </td>
     ))
 
+  /** The table as a document — the agents the filter keeps, the columns switched on. */
+  const buildExport = (): ExportTable => {
+    const kindOf = (c: ACol): ExportKind =>
+      c.band === 'order' || c.band === 'picked' ? 'int' : c.id === 'vsgtl' ? 'delta' : 'pct'
+    const cols: ExportCol[] = [
+      { head: 'Agent PU', width: 12 },
+      { head: 'Kota', width: 18 },
+      ...visible.map((c): ExportCol => ({
+        head: c.sub ? `${c.label} (${c.sub})` : c.label,
+        group: BAND_HEAD[c.band].label,
+        kind: kindOf(c),
+        width: 14,
+      })),
+    ]
+    const line = (r: OtpuAgentRow, isTotal: boolean): ExportValue[] => visible.map((c) => {
+      if (c.id === 'gtl' && !isTotal) return null
+      const v = c.sort(r)
+      if (c.id === 'vsgtl' && v != null) {
+        const tone: ExportTone = v > 0 ? 'ok' : v < 0 ? 'bad' : ''
+        return { v, tone }
+      }
+      return v
+    })
+    return {
+      title: 'OTPU Agent',
+      meta: [
+        `Rincian per Agent PU${period ? ` · ${period}` : ''}`,
+        `${rows.length} dari ${agent.rows.length} agen · pembanding ${agent.gtlLabel}`,
+      ],
+      stem: `OTPU Agent${period ? ` ${period}` : ''}`,
+      cols,
+      total: agent.total ? ['TOTAL', null, ...line(agent.total, true)] : undefined,
+      rows: rows.map((r) => [r.code, cityOf(r.code) || null, ...line(r, false)]),
+      note: `Banding GTL positif (hijau) berarti %OTPU kumulatif di atas ${agent.gtlLabel}, negatif (merah) berarti di bawahnya. `
+        + `Baris TOTAL adalah total wilayah. Data internal J&T — dilarang dibagikan ke luar.`,
+    }
+  }
+
   return (
     <>
       <h3>
@@ -416,6 +458,7 @@ function AgentTable({
           <span className="otleg up">● Naik vs minggu lalu</span>
           <span className="otleg down">● Turun vs minggu lalu</span>
         </span>
+        <ExportButtons build={buildExport} />
       </h3>
 
       <div className="dpfilters">
@@ -995,6 +1038,66 @@ function SellerTable({
      then %OTPU, GTL and the two selisih columns */
   const colCount = 4 + dailyWidth + weekShown.length + 4
 
+  /**
+   * The table as a document: every seller the filters keep, not only the first
+   * page, with the daily and weekly columns exactly as switched on.
+   */
+  const buildExport = (): ExportTable => {
+    const dayName = (d: OtpuPeriod) => (d.from ? shortDate(d.from) : d.label)
+    const cols: ExportCol[] = [
+      { head: 'Nama Seller', group: 'Seller', width: 34 },
+      { head: 'GTL Hub', group: 'Lokasi & Agen', width: 18 },
+      { head: 'DP Pickup', group: 'Lokasi & Agen', width: 18 },
+      { head: 'Agent', group: 'Lokasi & Agen', width: 12 },
+    ]
+    for (const { m, days } of dailyBands) {
+      for (const { d } of days) {
+        cols.push({ head: dayName(d), group: `${m.label} Harian`, kind: m.id === 'pct' ? 'pct' : 'int', width: 11 })
+      }
+    }
+    for (const c of weekShown) cols.push({ head: c.label, group: 'Mingguan', kind: 'int', width: 13 })
+    cols.push({ head: '%OTPU', group: 'Mingguan', kind: 'pct', width: 11 })
+    cols.push({ head: seller.gtlLabel, group: 'Banding GTL', kind: 'pct', width: 13 })
+    cols.push({ head: 'Selisih Harian', group: 'Banding GTL', kind: 'delta', width: 13 })
+    cols.push({ head: 'Selisih Mingguan', group: 'Banding GTL', kind: 'delta', width: 13 })
+
+    const signed = (v: number | null): ExportValue =>
+      v == null || !Number.isFinite(v) ? null : { v, tone: v > 0 ? 'ok' : v < 0 ? 'bad' : '' }
+
+    const rows = filtered.map((r): ExportValue[] => {
+      const row: ExportValue[] = [r.seller, r.hub || null, r.dp || null, r.agent || null]
+      for (const { m, days } of dailyBands) {
+        for (const { i } of days) {
+          if (m.id !== 'pct') { row.push(r[m.field][i] ?? null); continue }
+          const v = r.dailyPct[i] ?? null
+          const tone: ExportTone = r.gtl != null && v != null ? (v < r.gtl ? 'bad' : 'ok') : ''
+          row.push(v == null ? null : { v, tone })
+        }
+      }
+      for (const c of weekShown) row.push(c.id === 'orders' ? r.orders : r.picked)
+      row.push(r.pct, r.gtl, signed(r.vsDaily), signed(r.vsGtl))
+      return row
+    })
+
+    const needle = q.trim()
+    const first = seller.days[0], last = seller.days[seller.days.length - 1]
+    const span = first?.from && last?.to ? `${shortDate(first.from)} – ${longDate(last.to)}` : ''
+    return {
+      title: 'OTPU Seller',
+      meta: [
+        `Daftar seller × DP${span ? ` · ${span}` : ''}`,
+        `${nfmt(filtered.length)} dari ${nfmt(seller.rows.length)} baris · %OTPU gabungan ${pfmt(pool.pct)}`
+          + (needle ? ` · pencarian "${needle}"` : '')
+          + (order.min != null ? ` · order harian ≥ ${order.min}` : ''),
+      ],
+      stem: `OTPU Seller${span ? ` ${span}` : ''}`,
+      cols,
+      rows,
+      note: `%OTPU harian merah berarti di bawah ${seller.gtlLabel} seller tersebut. Selisih positif (hijau) berarti di atas ${seller.gtlLabel}, `
+        + `negatif (merah) di bawahnya. Data internal J&T — nama seller dan volumenya dilarang dibagikan ke luar.`,
+    }
+  }
+
   return (
     <div className="panel dptable">
       <h3>
@@ -1002,6 +1105,7 @@ function SellerTable({
           Daftar Seller <Zh>商家清单</Zh> — {nfmt(filtered.length)} dari {nfmt(seller.rows.length)}
           {' · '}%OTPU {pfmt(pool.pct)}
         </span>
+        <ExportButtons build={buildExport} />
       </h3>
 
       <div className="dpfilters">
@@ -1311,6 +1415,7 @@ export default function OtpuSection({
           <AgentTable
             agent={agent}
             cityOf={cityOf}
+            period={period}
             title={
               <>
                 Rincian per Agent PU <Zh>揽收代理</Zh>

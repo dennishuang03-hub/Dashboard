@@ -930,6 +930,16 @@ body.shooting .chartscroll{overflow:visible !important}
 }
 .btn.tiny:hover{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.45)}
 
+/* Simpan PNG, both scopes. Filled in the brand red so it stands out from the
+   grey buttons around it and matches the rest of the dashboard. Declared after
+   .btn.tiny so it wins inside the black panel header too. */
+.btn.save,.btn.tiny.save{background:var(--jt-red);border-color:var(--jt-red);color:#fff}
+.btn.save:hover,.btn.tiny.save:hover{background:var(--jt-red-dark);border-color:var(--jt-red-dark)}
+.btn.save:disabled{opacity:.7;cursor:progress}
+
+/* Ekspor PDF / Ekspor Excel, side by side at the right of a panel header */
+.exportbtns{display:inline-flex;gap:6px;flex:none;flex-wrap:wrap}
+
 /* ---------- DP / CP table ---------- */
 .dptable{margin-top:10px}
 .dpfilters{

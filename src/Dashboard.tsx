@@ -9,6 +9,7 @@ import type { AgentRow, DateSlot, Explanation, Kpi, Model, Status } from './lib/
 import { BarChart, LineChart, Sparkline } from './components/Charts'
 import type { AxisLabel } from './components/Charts'
 import DpSection from './components/DpSection'
+import ExportButtons from './components/ExportButtons'
 import JntLogo from './components/JntLogo'
 import OtpuSection from './components/OtpuSection'
 import type { OtpuPart } from './components/OtpuSection'
@@ -18,6 +19,7 @@ import Zh from './components/Zh'
 import { nfmt, parseOtpu } from './lib/otpu'
 import type { OtpuReport } from './lib/otpu'
 import type { Identity } from './lib/session'
+import type { ExportTable, ExportValue } from './lib/tableExport'
 import './dashboard.css'
 
 /* ------------------------------------------------------------- navigation */
@@ -574,6 +576,79 @@ export default function Dashboard({
 
   const trendKpis = kpis.filter((k) => k.inTrend)
 
+  /* The two indicator tables as documents, for Ekspor PDF / Ekspor Excel. The
+     status is written as words and shaded, because a ✓ or × does not survive
+     into a printed page or a spreadsheet filter. */
+  const statusCell = (st: Status): ExportValue =>
+    st === 'ok' ? { v: 'Sesuai target', tone: 'ok' }
+      : st === 'bad' ? { v: 'Di bawah target', tone: 'bad' }
+      : st === 'warn' ? { v: 'Perhatian', tone: 'warn' }
+      : null
+  const exportStem = (name: string) =>
+    `${name} ${current.label} ${dToday.date ? isoDay(dToday.date) : `hari-${di + 1}`}`
+
+  const buildSummaryExport = (): ExportTable => ({
+    title: 'Ringkasan Pencapaian',
+    meta: [`Agen: ${current.label} · ${todayLabel}`, `${kpis.length} indikator`],
+    stem: exportStem('Ringkasan Pencapaian'),
+    cols: [
+      { head: 'Indikator', width: 30 },
+      { head: 'Nilai', kind: 'pct', width: 12 },
+      { head: 'Target', kind: 'pct', width: 13 },
+      { head: 'Status', width: 16 },
+    ],
+    rows: kpis.map((k) => {
+      const v = kpiSeries(k, current.rec, dates)[di]
+      const tgt = targetFor(k, current.rec)
+      const st = statusOf(k, v, tgt)
+      return [
+        k.label,
+        v == null ? null : { v, tone: st === 'ok' ? 'ok' : st === 'bad' ? 'bad' : '' },
+        { v: tgt, prefix: k.lowerBetter ? '≤ ' : '≥ ' },
+        statusCell(st),
+      ]
+    }),
+  })
+
+  const buildDetailExport = (): ExportTable => {
+    const todayHead = `Hari Ini (${dToday.date ? fmtDate(dToday.date) : `H${di + 1}`})`
+    const prevHead = dPrev ? `Sebelumnya (${dPrev.date ? fmtDate(dPrev.date) : `H${di}`})` : 'Sebelumnya'
+    return {
+      title: 'Detail Pencapaian',
+      meta: [`Agen: ${current.label} · ${todayLabel}`, 'Hari ini dibanding hari sebelumnya, dengan pencapaian bulanan'],
+      stem: exportStem('Detail Pencapaian'),
+      cols: [
+        { head: 'Indikator', width: 30 },
+        { head: todayHead, kind: 'pct', width: 16 },
+        { head: prevHead, kind: 'pct', width: 18 },
+        { head: 'Selisih', kind: 'delta', width: 12 },
+        { head: 'Bulanan', kind: 'pct', width: 12 },
+        { head: 'Target', kind: 'pct', width: 13 },
+        { head: 'Status', width: 16 },
+      ],
+      rows: kpis.map((k) => {
+        const s = kpiSeries(k, current.rec, dates)
+        const v = s[di]
+        const p = dPrev ? s[di - 1] : null
+        const mtd = k.monthlyCol ? current.rec.vals[k.monthlyCol] ?? null : null
+        const tgt = targetFor(k, current.rec)
+        const st = statusOf(k, v, tgt)
+        const diff = v != null && p != null ? v - p : null
+        const better = diff == null || Math.abs(diff) < 0.005 ? '' : (k.lowerBetter ? diff < 0 : diff > 0) ? 'ok' : 'bad'
+        return [
+          k.label,
+          v == null ? null : { v, tone: st === 'ok' ? 'ok' : st === 'bad' ? 'bad' : '' },
+          p,
+          diff == null ? null : { v: diff, tone: better },
+          mtd,
+          { v: tgt, prefix: k.lowerBetter ? '≤ ' : '≥ ' },
+          statusCell(st),
+        ]
+      }),
+      note: 'Selisih hijau berarti membaik dibanding hari sebelumnya, merah berarti memburuk (untuk indikator yang lebih kecil lebih baik, turun dihitung membaik).',
+    }
+  }
+
   /* The DP tabs carry fewer days than the agent tabs, so the section shows the
      closest day it actually has rather than going blank — see `resolveDpDate`. */
   const dpDay = resolveDpDate(model.dpDates, dToday)
@@ -762,7 +837,7 @@ export default function Dashboard({
           {/* Named for what it will contain. Two buttons on the DP/CP page read
               "Simpan PNG" and take different pictures, so each has to say which
               — and the OTPU pages have between one and three of their own. */}
-          <button className="btn" onClick={savePng}>
+          <button className="btn save" onClick={savePng}>
             {view === VIEW_DP || otpuPart ? 'Simpan PNG · Ringkasan' : 'Simpan PNG'}
           </button>
           {/* "Cetak / PDF" used to sit here. The print stylesheet it drove is
@@ -904,7 +979,10 @@ export default function Dashboard({
             达成 is the workbook's own word for "Pencapaian" — it is what the
             sheets write in 月度达成 / 一派质量达成 — so the gloss stays in step with
             the Indonesian *and* with the source file. */}
-        <Panel title={<>Ringkasan Pencapaian ({todayLabel}) <Zh>达成汇总</Zh></>} red flush>
+        <Panel
+          title={<>Ringkasan Pencapaian ({todayLabel}) <Zh>达成汇总</Zh></>} red flush
+          right={<ExportButtons build={buildSummaryExport} onError={setErr} />}
+        >
           <table>
             <thead>
               <tr>
@@ -962,7 +1040,10 @@ export default function Dashboard({
 
       {/* -------- bottom row -------- */}
       <div className="row-bot">
-        <Panel title={<>Detail Pencapaian (Hari Ini vs Hari Sebelumnya) <Zh>达成明细</Zh></>} flush>
+        <Panel
+          title={<>Detail Pencapaian (Hari Ini vs Hari Sebelumnya) <Zh>达成明细</Zh></>} flush
+          right={<ExportButtons build={buildDetailExport} onError={setErr} />}
+        >
           <table>
             <thead>
               <tr>

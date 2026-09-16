@@ -31,8 +31,10 @@ import {
 import type { BizModel, DateSlot, DpKind, DpRow, DpStatus, Kpi, Model } from '../lib/jnt'
 import { BarChart, HBarChart } from './Charts'
 import type { HBar } from './Charts'
+import ExportButtons from './ExportButtons'
 import MultiSelect from './MultiSelect'
 import Zh from './Zh'
+import type { ExportCol, ExportTable, ExportTone, ExportValue } from '../lib/tableExport'
 
 const TOP_N = 5
 
@@ -821,6 +823,71 @@ export default function DpSection({
    * this back is a matter of restoring the function, not of adding a dependency.
    */
 
+  /**
+   * The table as a document, for Ekspor PDF / Ekspor Excel.
+   *
+   * Every row the filters keep — not only the forty on screen — and only the
+   * columns the switch left standing. The site code and business model, which
+   * on screen ride inside the name cell, get columns of their own: in a file
+   * they are things people sort and filter by.
+   */
+  const buildExport = (): ExportTable => {
+    const cols: ExportCol[] = [
+      { head: 'DP / CP', width: 34 },
+      { head: 'Kode', width: 12 },
+      { head: 'Model Bisnis', width: 12 },
+    ]
+    if (showAgent) cols.push({ head: 'Agen', width: 22 })
+    if (showSpv) cols.push({ head: 'Supervisor', width: 22 })
+    if (showService) cols.push({ head: 'Jenis Layanan', width: 16 })
+    for (const run of catRuns) {
+      for (const k of run.kpis) {
+        cols.push({ head: `${k.label}${isScored(k.label) ? '' : '*'}`, group: run.label, kind: 'pct', width: 12 })
+      }
+    }
+    if (showOnTarget) cols.push({ head: 'Sesuai target', width: 12 })
+    if (showStatus) cols.push({ head: 'Status', width: 12 })
+
+    const statusTone: Record<DpStatus, ExportTone> = { urgent: 'bad', perhatian: 'warn', stable: 'ok', '': '' }
+
+    const rows = filtered.map((s): ExportValue[] => {
+      const row: ExportValue[] = [s.dp.label, s.dp.dpCode || null, BIZ_MODEL_LABEL[s.dp.bizModel]]
+      if (showAgent) row.push(s.dp.agentLabel)
+      if (showSpv) row.push(s.dp.supervisor || null)
+      if (showService) row.push(DP_KIND_LABEL[s.kind])
+      for (const run of catRuns) {
+        for (const k of run.kpis) {
+          const v = cell(s, k)
+          if (v == null) { row.push(null); continue }
+          const t = dpTargetFor(s.dp, k)
+          const ok = k.lowerBetter ? v <= t : v >= t
+          const structural = s.kind === 'delivery' && v === 0
+          const tone: ExportTone = isRankable(s.kind) && !structural ? (ok ? 'ok' : 'bad') : 'mute'
+          row.push({ v, tone })
+        }
+      }
+      if (showOnTarget) row.push(isRankable(s.kind) ? `${s.onTarget}/${s.scored}` : null)
+      if (showStatus) row.push(s.status ? { v: DP_STATUS_LABEL[s.status], tone: statusTone[s.status] } : null)
+      return row
+    })
+
+    const period = mode === 'mtd' ? 'Pencapaian bulan ini' : `Tanggal ${day.date ? fmtDateFull(day.date) : 'hari terakhir'}`
+    const needle = q.trim()
+    return {
+      title: basketOn ? 'Perbandingan DP / CP' : 'Daftar DP / CP',
+      meta: [
+        `Agen: ${allAgents ? 'Semua agen' : agentLabel} · ${period}`,
+        `${filtered.length} dari ${counts.total} DP / CP${needle ? ` · pencarian "${needle}"` : ''}${basketOn ? ' · hanya yang dipilih' : ''}`,
+      ],
+      stem: fileStem(),
+      cols,
+      rows,
+      note: `Hijau = sesuai target, merah = di bawah target, abu-abu = tidak dinilai (Pickup, Tutup, atau kategori yang tidak dijalankan). `
+        + `Kolom bertanda * tidak ikut dihitung dalam Sesuai target / Status. `
+        + `Status: Stable ${DP_STATUS_RANGE.stable}, Perhatian ${DP_STATUS_RANGE.perhatian}, Urgent ${DP_STATUS_RANGE.urgent}.`,
+    }
+  }
+
   /* --------------------------------------------------------------- render */
 
   if (!model.dps.length) return null
@@ -988,7 +1055,8 @@ export default function DpSection({
           {/* "Tabel", because the toolbar above has a Simpan PNG of its own that
               takes the counters and the charts. Two unlabelled ones would be a
               coin toss. */}
-          <button className="btn tiny" onClick={savePng}>Simpan PNG · Tabel</button>
+          <button className="btn tiny save" onClick={savePng}>Simpan PNG · Tabel</button>
+          <ExportButtons build={buildExport} onError={onError} />
         </h3>
 
         {/* While the basket is showing, the finders are disabled rather than left
