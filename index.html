@@ -5,6 +5,19 @@
     <link rel="icon" type="image/svg+xml" href="/JntLogo.jpg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>J&amp;T Express — Daily Agent Performance Dashboard</title>
+    <!--
+      The remembered theme, set before the first paint so a light-mode reader
+      never sees a black page flash first. Dark is the default and the fallback:
+      anything unreadable here (private mode, blocked storage) stays dark.
+      The key is `THEME_KEY` in src/lib/theme.ts — keep the two in step.
+    -->
+    <script>
+      try {
+        var t = localStorage.getItem('jnt-theme') === 'light' ? 'light' : 'dark'
+        document.documentElement.setAttribute('data-theme', t)
+        document.documentElement.style.colorScheme = t
+      } catch (e) { /* default dark */ }
+    </script>
   </head>
   <body>
     <div id="root"></div>

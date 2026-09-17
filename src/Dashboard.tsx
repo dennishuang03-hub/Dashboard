@@ -19,6 +19,7 @@ import Zh from './components/Zh'
 import { nfmt, parseOtpu } from './lib/otpu'
 import type { OtpuReport } from './lib/otpu'
 import type { Identity } from './lib/session'
+import type { Theme } from './lib/theme'
 import './dashboard.css'
 
 /* ------------------------------------------------------------- navigation */
@@ -120,12 +121,15 @@ function Delta({ diff, lowerBetter }: { diff: number | null; lowerBetter: boolea
 /* ------------------------------------------------------------- component */
 
 export default function Dashboard({
-  who, onSignedOut,
+  who, onSignedOut, theme, onToggleTheme,
 }: {
   /** who the server says is signed in — see App.tsx */
   who: Identity
   /** called when the session ends, by the button or by a 401 from the API */
   onSignedOut: () => void
+  /** the colour scheme, and the switch for it — see lib/theme.ts */
+  theme: Theme
+  onToggleTheme: () => void
 }) {
   const [model, setModel] = useState<Model | null>(null)
   /* Its own state rather than a field on `Model`: the OTPU tabs are a separate
@@ -1002,6 +1006,7 @@ export default function Dashboard({
         mini={mini} onToggleMini={() => setMini(!mini)}
         drawerOpen={drawerOpen} onCloseDrawer={closeDrawer}
         onSignOut={signOut} user={who.user}
+        theme={theme} onToggleTheme={onToggleTheme}
       />
       <div className="main">{report}</div>
     </div>

@@ -35,10 +35,11 @@ import { useEffect } from 'react'
 import type { MouseEvent } from 'react'
 import JntLogo from './JntLogo'
 import Zh from './Zh'
+import type { Theme } from '../lib/theme'
 
 export type IconName =
   | 'grid' | 'pin' | 'clock' | 'check' | 'trend' | 'bars' | 'users' | 'db' | 'gear'
-  | 'logout' | 'collapse' | 'expand' | 'close' | 'menu'
+  | 'logout' | 'collapse' | 'expand' | 'close' | 'menu' | 'sun' | 'moon'
 
 export interface NavItem {
   id: string
@@ -148,6 +149,17 @@ function Icon({ name }: { name: IconName }) {
         <g {...p}><path d="M5 6l6 6-6 6" /><path d="M12.5 6l6 6-6 6" /></g>
       )}
       {name === 'close' && <g {...p}><path d="M6 6l12 12M18 6L6 18" /></g>}
+      {/* The two theme glyphs: a sun for the light mode the button switches
+          *to*, a moon for the dark one. */}
+      {name === 'sun' && (
+        <g {...p}>
+          <circle cx="12" cy="12" r="4.1" />
+          <path d="M12 2.6v2.3M12 19.1v2.3M4.4 4.4l1.6 1.6M18 18l1.6 1.6M2.6 12h2.3M19.1 12h2.3M4.4 19.6L6 18M18 6l1.6-1.6" />
+        </g>
+      )}
+      {name === 'moon' && (
+        <g {...p}><path d="M20.5 14.2A8.6 8.6 0 0 1 9.8 3.5a8.6 8.6 0 1 0 10.7 10.7z" /></g>
+      )}
       {name === 'menu' && (
         <g {...p}><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></g>
       )}
@@ -188,6 +200,7 @@ function dropPointerFocus(e: MouseEvent<HTMLButtonElement>) {
 
 export default function Sidebar({
   groups, active, onSelect, mini, onToggleMini, drawerOpen, onCloseDrawer, onSignOut, user,
+  theme, onToggleTheme,
 }: {
   groups: NavGroup[]
   active: string
@@ -200,6 +213,9 @@ export default function Sidebar({
   onCloseDrawer: () => void
   onSignOut: () => void
   user: string
+  /** 'dark' (the default) or 'light' — colour only, nothing else changes */
+  theme: Theme
+  onToggleTheme: () => void
 }) {
   /**
    * While the drawer is over the page, Escape closes it and the page behind it
@@ -314,6 +330,26 @@ export default function Sidebar({
         </nav>
 
         <div className="sbfoot">
+          {/* Beside sign-out rather than in the toolbar: the toolbar is inside
+              every PNG export, and which colours the screen is read in is a
+              setting for this browser, not a fact about the report. The label
+              names the mode it switches *to*, so it reads as an instruction
+              rather than as a status nobody can act on. */}
+          <button
+            className="sbitem sbtheme"
+            onClick={(e) => { dropPointerFocus(e); onToggleTheme() }}
+            title={theme === 'dark' ? 'Ganti ke Mode Terang' : 'Ganti ke Mode Gelap'}
+            aria-pressed={theme === 'light'}
+          >
+            <Icon name={theme === 'dark' ? 'sun' : 'moon'} />
+            <span className="sbtext">
+              <span className="sbl">
+                {theme === 'dark' ? 'Mode Terang' : 'Mode Gelap'}
+                <Zh>{theme === 'dark' ? '浅色模式' : '深色模式'}</Zh>
+              </span>
+              <span className="sbh">Tampilan {theme === 'dark' ? 'gelap' : 'terang'} sekarang</span>
+            </span>
+          </button>
           <button
             className="sbitem danger"
             onClick={(e) => { dropPointerFocus(e); onSignOut() }}

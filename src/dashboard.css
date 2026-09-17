@@ -2602,6 +2602,460 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
   .loginfield input{font-size:16px}
 }
 
+/* ============================================================================
+   Light mode
+   ============================================================================
+
+   Same dashboard, same brand, read on white. Dark stays the default and stays
+   untouched: every rule here is behind `[data-theme="light"]`, which the switch
+   in the rail puts on `<html>` (see src/lib/theme.ts), so nothing below can
+   reach a reader who never asked for it.
+
+   Two halves, and the split matters.
+
+   The palette is the whole first half. Every component in this file draws from
+   the tokens, so re-pointing them — near-black to white, white ink to near-black
+   ink — converts most of the page on its own. The brand red does not move: it is
+   the one colour that has to be the same in both themes, and it reads on white
+   as well as it reads on black.
+
+   The second half is the exception list: the surfaces that were written as
+   literal dark values rather than tokens, because in a one-theme stylesheet
+   there was nothing to parameterise them for. Each one needs a light value
+   spelled out. The print stylesheet below already solved exactly this problem —
+   the same list appears there with `!important`, because a media block cannot
+   raise specificity — and this block is that answer made available on screen.
+
+   What deliberately stays dark: the top bar, the red section bands, the table
+   heads and the black column bands. They are the report's own furniture — the
+   thing a reader recognises from across a desk, and what makes the exported PNG
+   look like a J&T document rather than a spreadsheet. */
+
+:root[data-theme="light"]{
+  /* The brand is fixed. Only the red that was lifted *for black* comes back
+     down: #FF4438 on white is a highlighter, not a colour. */
+  --jt-red:#E2231A;
+  --jt-red-dark:#B81810;
+  --jt-red-lit:#C81C13;
+  /* Not black. The dark furniture that survives into light mode — the top bar,
+     the section bands, the column bands — is a deep navy instead, which is what
+     stops a page of white panels reading as a printout: a cool dark carries the
+     red rather than competing with it, and every grey below is mixed from the
+     same hue so the whole page belongs to one family. */
+  --jt-black:#16203A;
+  --jt-black-2:#24304D;
+  --green:#00913F;
+  --amber:#D2860B;
+  --red-soft:#FDECEA;
+  /* Ink with a trace of the same navy — pure #111 on white is the flat, hard
+     contrast that makes a light interface tiring to read for an hour. */
+  --ink:#16203A;
+  --ink-2:#4C5A75;
+  --ink-3:#7A87A0;
+  --line:#DCE3EE;
+  /* The page is a cool tinted grey; panels are the white that sits on it. Dark
+     mode runs the other way round (page darkest, panels lighter), and keeping
+     the *relationship* rather than the values is what makes the two themes read
+     as the same layout. Deliberately not #fff: a full-white page behind
+     full-white cards leaves nothing to see the cards against, which is the
+     "plain and too bright" that a light theme falls into. */
+  --bg:#EDF1F8;
+  --card:#FFFFFF;
+  --card-2:#F3F6FC;
+  --card-3:#E6ECF7;
+  /* Shadows carry the navy too, so a raised panel reads as lit rather than
+     dirty — grey-black shadow on a cool ground is the usual give-away. */
+  --shadow:0 1px 2px rgba(22,32,58,.07), 0 10px 26px -6px rgba(22,32,58,.13);
+
+  /* The accents the page borrows for things that are neither good nor bad:
+     the reference lines, the identifier chips, the section marks. */
+  --accent:#2563C4;
+  --accent-soft:#E8F0FD;
+  --accent-ink:#1A4C9E;
+  --teal:#0E7C86;
+  --teal-soft:#E2F4F5;
+  --violet:#6D46C8;
+  --violet-soft:#EFEAFB;
+
+  --c-grid:#E4EAF5;
+  --c-axis:#55637E;
+  --c-axis-2:#8794AC;
+  --c-halo:#fff;
+  --c-ok:#00A650;
+  --c-bad:#E2231A;
+  --c-ok-ink:#1E7A46;
+  --c-bad-ink:#B81810;
+  --gtl:#2563C4;
+}
+
+/* ---------- the page itself ----------
+   A very shallow wash rather than one flat fill: the page is lighter where the
+   report starts and settles into the tint further down, which is what gives a
+   long scroll any depth at all. `fixed` so it does not slide against the
+   content. */
+:root[data-theme="light"] body{
+  background:linear-gradient(180deg,#F6F9FD 0%,var(--bg) 46%,#E7EDF7 100%);
+  background-attachment:fixed;
+  color:var(--ink);
+}
+[data-theme="light"] .loginpage{
+  background:radial-gradient(120% 90% at 50% 0%, #FFFFFF 0%, var(--bg) 62%);
+}
+[data-theme="light"] .bootscreen{background:var(--bg);color:var(--ink)}
+
+/* The browser's own furniture. `color-scheme` (set alongside the attribute)
+   handles most of it; the thumb is drawn by this file and has to follow. */
+[data-theme="light"] *{scrollbar-color:#C2C8D4 transparent}
+[data-theme="light"] ::-webkit-scrollbar-thumb{background:#C2C8D4;background-clip:padding-box}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover{background:#A6AEBD;background-clip:padding-box}
+[data-theme="light"] *:hover{scrollbar-color:#A6AEBD transparent}
+
+/* An unticked box drawn with the dark theme's #5A5A5A is a heavy black outline
+   on white; the ticked state already follows --jt-red. */
+[data-theme="light"] input[type=checkbox],
+[data-theme="light"] input[type=radio]{border-color:#C6CCD8}
+
+/* ---------- the rail ---------- */
+[data-theme="light"] .sidebar{
+  background:linear-gradient(180deg,#FFFFFF 0%,#F7F9FC 100%);
+  border-right:1px solid var(--line);
+}
+[data-theme="light"] .sbitem{color:var(--ink-2)}
+[data-theme="light"] .sbitem:hover{background:var(--card-3);color:var(--ink)}
+/* the red plate under the current entry keeps its white type in both themes */
+[data-theme="light"] .sbitem.on,[data-theme="light"] .sbitem.on:hover,
+[data-theme="light"] .sbitem.sub.on{color:#fff}
+[data-theme="light"] .sbitem.danger{color:var(--jt-red)}
+[data-theme="light"] .sbitem.danger:hover{background:#FDECEA;color:var(--jt-red-dark)}
+[data-theme="light"] .sbtoggle{color:var(--ink-2);border-color:var(--line)}
+[data-theme="light"] .sbtoggle:hover{background:var(--jt-red);border-color:var(--jt-red);color:#fff}
+[data-theme="light"] .sbscrim{background:rgba(16,24,40,.38)}
+
+/* The theme switch itself, in both directions — a quiet row that picks up the
+   brand only on hover, like every other rail entry. */
+.sbitem.sbtheme .navico{color:var(--amber)}
+[data-theme="light"] .sbitem.sbtheme .navico{color:#1D5FBF}
+
+/* ---------- the furniture that stays dark ----------
+   The top bar and the section bands are the report's identity, so they keep
+   their weight — but as a navy gradient with the red rule under it rather than
+   a slab of black, which is the difference between a header and a hole in the
+   page. */
+[data-theme="light"] .topbar{
+  background:linear-gradient(100deg,#1C2946 0%,var(--jt-black) 55%,#101A31 100%);
+}
+[data-theme="light"] .sechead{
+  background:linear-gradient(100deg,#1C2946 0%,var(--jt-black) 100%);
+  box-shadow:0 1px 2px rgba(22,32,58,.10), 0 8px 20px -10px rgba(22,32,58,.35);
+}
+[data-theme="light"] .filechip{
+  background:var(--accent-soft);color:var(--accent-ink);
+  border:1px solid rgba(37,99,196,.22);
+}
+/* The two red bands — Part A/B/C and the DP head — get the same shallow
+   gradient the OTPU band already carries in both themes. */
+[data-theme="light"] .partband,
+[data-theme="light"] .dphead{
+  background:linear-gradient(100deg,#EC2A20 0%,var(--jt-red) 52%,#CF1E15 100%);
+}
+
+/* ---------- panels and their headers ----------
+   The header plate picks up a cool wash and a hairline, so a panel reads as a
+   card with a lid rather than as two flat rectangles. */
+[data-theme="light"] .panel{border:1px solid var(--line)}
+[data-theme="light"] .panel > h3{
+  color:var(--ink);
+  background:linear-gradient(180deg,#F8FAFE 0%,var(--card-2) 100%);
+  border-bottom:3px solid var(--jt-red);
+  box-shadow:inset 0 1px 0 #fff;
+}
+[data-theme="light"] .panel.red > h3{color:#fff}
+[data-theme="light"] .panel > h3 .hsel{
+  color:var(--ink);background:#fff;border-color:var(--line);
+}
+[data-theme="light"] .panel > h3 .hsel:hover{background:#fff;border-color:#B9C2D0}
+[data-theme="light"] .btn.tiny{
+  background:#fff;color:var(--ink);border-color:var(--line);
+}
+[data-theme="light"] .btn.tiny:hover{background:var(--card-3);border-color:#B9C2D0}
+/* A card says three things at once — its figure, its target, and whether the
+   two agree. On black the coloured value carried that on its own; on white a
+   wash of the same colour behind it is what stops a wall of cards reading as
+   one undifferentiated grid. Kept at the very edge of visible on purpose: it is
+   a background, and the moment it is strong enough to notice it competes with
+   the figure it is describing. */
+[data-theme="light"] .kcard{
+  border:1px solid var(--line);
+  background:linear-gradient(180deg,#FFFFFF 0%,#F7FAFE 100%);
+}
+[data-theme="light"] .kcard.st-ok{background:linear-gradient(180deg,#FFFFFF 0%,#F1FAF4 100%)}
+[data-theme="light"] .kcard.st-bad{background:linear-gradient(180deg,#FFFFFF 0%,#FDF2F1 100%)}
+[data-theme="light"] .kcard.st-warn{background:linear-gradient(180deg,#FFFFFF 0%,#FDF7EC 100%)}
+[data-theme="light"] .kcard:hover{box-shadow:0 2px 6px rgba(22,32,58,.10),0 16px 34px -10px rgba(22,32,58,.22)}
+/* the counters above the DP/CP list, same idea one step quieter */
+[data-theme="light"] .dpstat{border:1px solid var(--line);border-left-width:4px}
+[data-theme="light"] .dpstat.good{background:linear-gradient(180deg,#FFFFFF 0%,#F2FAF5 100%)}
+[data-theme="light"] .dpstat.warn{background:linear-gradient(180deg,#FFFFFF 0%,#FDF8EE 100%)}
+[data-theme="light"] .dpstat.bad{background:linear-gradient(180deg,#FFFFFF 0%,#FDF3F2 100%)}
+[data-theme="light"] .dpstat.mute{background:linear-gradient(180deg,#FFFFFF 0%,#F5F7FB 100%)}
+
+/* ---------- action buttons ----------
+   Two of the six were drawn for a dark surround and lose their edges on white:
+   the white "paper" PDF button disappears into the card, and the green, amber
+   and red labels were lifted to survive black. */
+[data-theme="light"] .btn.act-pdf,[data-theme="light"] .btn.tiny.act-pdf{
+  --act-glow:rgba(16,24,40,.35);--act-ring:#8A94A6;
+  background:#fff;border-color:#C9D0DB;color:#12151A;
+}
+[data-theme="light"] .btn.act-pdf:hover:not(:disabled),
+[data-theme="light"] .btn.tiny.act-pdf:hover:not(:disabled){
+  background:#fff;border-color:var(--jt-red);color:var(--jt-red-dark);
+}
+[data-theme="light"] .btn.act-xls,[data-theme="light"] .btn.tiny.act-xls{
+  --act-glow:rgba(0,145,63,.45);--act-ring:#00913F;
+  background:rgba(0,145,63,.10);border-color:rgba(0,145,63,.55);color:#0A6B34;
+}
+[data-theme="light"] .btn.act-xls:hover:not(:disabled),
+[data-theme="light"] .btn.tiny.act-xls:hover:not(:disabled){
+  background:var(--green);border-color:var(--green);color:#fff;
+}
+[data-theme="light"] .btn.act-pick,[data-theme="light"] .btn.tiny.act-pick{
+  --act-glow:rgba(217,138,0,.45);--act-ring:#B47607;
+  background:rgba(217,138,0,.12);border-color:rgba(217,138,0,.55);color:#8A5A00;
+}
+[data-theme="light"] .btn.act-pick:hover:not(:disabled),
+[data-theme="light"] .btn.tiny.act-pick:hover:not(:disabled),
+[data-theme="light"] .btn.act-pick.on,[data-theme="light"] .btn.tiny.act-pick.on{
+  background:var(--amber);border-color:var(--amber);color:#241A05;
+}
+[data-theme="light"] .btn.act-clear,[data-theme="light"] .btn.tiny.act-clear{
+  border-color:#C9D0DB;color:var(--ink-2);
+}
+[data-theme="light"] .btn.act-clear:hover:not(:disabled),
+[data-theme="light"] .btn.tiny.act-clear:hover:not(:disabled){
+  background:#FDECEA;border-color:var(--jt-red);color:var(--jt-red-dark);
+}
+[data-theme="light"] .btn.act-more{--act-glow:rgba(16,24,40,.22)}
+[data-theme="light"] .btn.act-more:hover:not(:disabled){border-color:#B9C2D0}
+[data-theme="light"] .btn:hover{background:var(--card-3)}
+[data-theme="light"] .field select:hover,
+[data-theme="light"] .field input[type=text]:hover{border-color:#B9C2D0}
+
+/* ---------- tables ---------- */
+[data-theme="light"] tbody tr:nth-child(even){background:#F7F9FC}
+[data-theme="light"] tbody tr.st-bad td{background:#FFF7F6}
+[data-theme="light"] table.dpgrid tbody td.sticky{background:#fff}
+[data-theme="light"] table.dpgrid tbody tr:nth-child(even) td.sticky{background:#F7F9FC}
+[data-theme="light"] table.dpgrid thead th.seam,
+[data-theme="light"] table.dpgrid tbody td.seam{border-left-color:#C9D0DB}
+/* The two halves of the scorecard get their own deep tone rather than one black
+   bar across the lot: punctuality reads navy, completion reads teal. Same
+   weight, same type, and the seam between them is legible without reading the
+   labels — which is the whole job of a band. */
+[data-theme="light"] table.dpgrid thead tr.secrow th{
+  background:linear-gradient(180deg,#1E2C4A 0%,var(--jt-black) 100%);
+}
+[data-theme="light"] table.dpgrid thead tr.secrow th.s-ketepatan{
+  background:linear-gradient(180deg,#22345A 0%,#1A2848 100%);
+}
+[data-theme="light"] table.dpgrid thead tr.secrow th.s-penyelesaian{
+  background:linear-gradient(180deg,#134A52 0%,#0E3A41 100%);
+  border-bottom-color:#7FA8AD;
+}
+[data-theme="light"] table.dpgrid thead tr.secrow th:hover{background:linear-gradient(180deg,#22345A 0%,#1A2848 100%)}
+[data-theme="light"] table.otgrid thead tr.secrow th,
+[data-theme="light"] .otpusection table.otgrid thead tr.secrow th{
+  background:linear-gradient(180deg,#1E2C4A 0%,var(--jt-black) 100%);
+}
+[data-theme="light"] .otpusection table.otgrid thead tr.secrow th:hover{
+  background:linear-gradient(180deg,#22345A 0%,#1A2848 100%);
+}
+/* The category row is the biggest single area of red on the page. As a flat
+   slab it reads as a warning strip; as a shallow gradient it reads as a
+   surface, which is the same treatment the OTPU tables already use. */
+[data-theme="light"] table.dpgrid thead tr.catrow th,
+[data-theme="light"] thead th{
+  background:linear-gradient(180deg,#EC2A20 0%,var(--jt-red) 55%,#CF1E15 100%);
+}
+[data-theme="light"] table.dpgrid thead th:not(.secband):hover{
+  background:linear-gradient(180deg,var(--jt-red) 0%,var(--jt-red-dark) 100%);
+}
+[data-theme="light"] table.dpgrid th.cat.unscored{color:#FFD9D6}
+[data-theme="light"] td.hm.bad{background:#F9D3CF;color:#8E1109}
+[data-theme="light"] td.hm.off{color:#AAB2C0}
+[data-theme="light"] tbody tr.k-closed td.sticky{color:#8A94A6}
+[data-theme="light"] table.dpgrid tbody tr.picked td{background:#FFF2F0}
+[data-theme="light"] table.dpgrid tbody tr.picked td.sticky{background:#FFE6E2}
+[data-theme="light"] table.dpgrid tbody tr.picked td.hm.bad{background:#F9D3CF}
+[data-theme="light"] .dppicked{background:#FFF2F0}
+@media (hover:hover){
+  [data-theme="light"] table.dpgrid tbody tr:hover td{background:#EEF2F8}
+  [data-theme="light"] table.dpgrid tbody tr:hover td.sticky{background:#E7EDF6}
+  [data-theme="light"] table.dpgrid tbody tr.picked:hover td{background:#FFE9E6}
+  [data-theme="light"] table.dpgrid tbody tr.picked:hover td.sticky{background:#FFDDD8}
+  [data-theme="light"] table.dpgrid tbody tr:hover td.hm.bad{background:#F5C7C2}
+}
+
+/* ---------- plates and pills ----------
+   All of these are a dark tint plus a lifted text colour. On white they invert:
+   a pale tint plus the ink version of the same hue. */
+[data-theme="light"] .sbadge.both{background:#EDF6F1;color:#1E7A46}
+[data-theme="light"] .sbadge.delivery{background:#EAF2FA;color:#1B5C99}
+[data-theme="light"] .sbadge.pickup{background:#FBF3E4;color:#8A5A08}
+[data-theme="light"] .sbadge.closed{background:#F1F3F7;color:#5D6675}
+[data-theme="light"] .sbadge.unknown{color:#8A93A2;border-color:#C6CCD8}
+[data-theme="light"] .stbadge.urgent{background:#F9D3CF;color:#8E1109}
+[data-theme="light"] .stbadge.perhatian{background:#FBF0D8;color:#8A5A08}
+[data-theme="light"] .stbadge.stable{background:#EDF6F1;color:#1E7A46}
+[data-theme="light"] .stbadge.none{color:#8A93A2;border-color:#C6CCD8}
+[data-theme="light"] .stleg-p.urgent{border-color:#F0C3BE}
+[data-theme="light"] .stleg-p.perhatian{border-color:#EBD8A8}
+[data-theme="light"] .stleg-p.stable{border-color:#BFE3CE}
+[data-theme="light"] .stleg-p.urgent .stleg-n{color:#B81810}
+[data-theme="light"] .stleg-p.perhatian .stleg-n{color:#8A5A08}
+[data-theme="light"] .stleg-p.stable .stleg-n{color:#0A6B34}
+[data-theme="light"] .ptag.unknown{background:#98A1B0}
+[data-theme="light"] .otpill.up{background:#EDF6F1;color:#0A6B34;border-color:#BFE3CE}
+[data-theme="light"] .otpill.down{background:#FDECEA;color:#B81810;border-color:#F0C3BE}
+[data-theme="light"] .otpill.flatp{background:#F1F3F7;color:#5D6675;border-color:#D9DFE8}
+[data-theme="light"] .otleg.up{color:#0A6B34}
+[data-theme="light"] .otleg.down{color:#B81810}
+[data-theme="light"] .dpstat{border-left-color:#C6CCD8}
+[data-theme="light"] .dpstat.warn{border-left-color:#B47607}
+[data-theme="light"] .dpstat.warn .n{color:#B47607}
+[data-theme="light"] .dphead .dpday em{color:#FFE2BE}
+
+/* ---------- filters, chips and popovers ---------- */
+[data-theme="light"] .colchip{background:#fff}
+/* The FR / AG marks and the site codes are identifiers, not results — they take
+   the page's blue and violet accents so they stop reading as another status. */
+[data-theme="light"] .ptag.agent{background:var(--accent)}
+[data-theme="light"] .ptag.franchise{background:var(--violet)}
+[data-theme="light"] .dpcode{background:var(--accent-soft);color:var(--accent-ink)}
+[data-theme="light"] .otcode{color:var(--accent-ink)}
+[data-theme="light"] .dpcoltitle,[data-theme="light"] .colgrph,
+[data-theme="light"] .dailybar-lab{color:#5E6C88}
+[data-theme="light"] .dpcolbar,[data-theme="light"] .dpfilters,
+[data-theme="light"] .dailybar{
+  background:linear-gradient(180deg,#F8FAFE 0%,var(--card-2) 100%);
+}
+/* The rail is the one full-height surface on the page; a flat white column
+   beside a tinted page reads as a gap in it. */
+[data-theme="light"] .sidebar{
+  background:linear-gradient(180deg,#FFFFFF 0%,#F2F6FC 100%);
+}
+[data-theme="light"] .sbgh{color:#5E6C88}
+[data-theme="light"] .sbitem.sbtheme .navico{color:var(--accent)}
+[data-theme="light"] .sbbrand-n{color:var(--ink-2)}
+[data-theme="light"] .colchip.locked:hover{background:#fff}
+[data-theme="light"] .colgrph.tap.off,[data-theme="light"] .colgrph.tap.off em{color:#9AA3B2}
+[data-theme="light"] .ms-btn:hover{border-color:#B9C2D0}
+[data-theme="light"] .ms-btn.filtered{color:var(--ink)}
+[data-theme="light"] .ms-pop{border-color:var(--line);box-shadow:var(--shadow)}
+[data-theme="light"] .ms-row:hover{background:var(--card-3)}
+[data-theme="light"] .ms-warn{background:#FBF0D8;color:#8A5A08}
+[data-theme="light"] .ms-btn.empty .ms-n{color:#241A05}
+[data-theme="light"] .of-reset:hover{border-color:#B9C2D0}
+[data-theme="light"] .dpfilters .seg button:active:not(.on){background:#DDE3EC}
+[data-theme="light"] .legend button:hover{border-color:#C9D0DB}
+
+/* ---------- notices ---------- */
+[data-theme="light"] .err{background:var(--red-soft);border-color:#F0C3BE;color:#8E1109}
+[data-theme="light"] .errclose{color:#B81810}
+[data-theme="light"] .errclose:hover{background:#F9D3CF;border-color:#F0C3BE;color:#8E1109}
+[data-theme="light"] .warnbox{background:#FEF4E4;border-color:#F3D8A6;color:#8A5A08}
+[data-theme="light"] .dropzone{border-color:#C9D0DB}
+[data-theme="light"] .dropzone.hot{border-color:var(--jt-red);background:#FDECEA}
+[data-theme="light"] .lock{color:var(--ink-3)}
+/* The tooltip stays a dark plate on purpose — it is a floating layer over the
+   page, and on white a white tooltip needs a border to exist at all, which is
+   more furniture than a hint deserves. Only its own edges are softened. */
+[data-theme="light"] .tipbox{background:#12151A;border-color:#2A2F38;color:#F2F2F2}
+[data-theme="light"] .tipbox::after{background:#12151A;border-color:#2A2F38}
+
+/* ---------- OTPU ----------
+   The section's depth comes from a white hairline and heavy black shadows; on
+   white the hairline has to become a dark one and the shadows have to lighten,
+   or every card reads as smudged. */
+[data-theme="light"] .otpusection{
+  --ot-hair:rgba(16,24,40,.09);
+  --ot-hair-lit:rgba(16,24,40,.14);
+  --ot-lift:0 1px 2px rgba(16,24,40,.07), 0 10px 28px -12px rgba(16,24,40,.18);
+  --ot-lift-hi:0 2px 4px rgba(16,24,40,.09), 0 18px 40px -14px rgba(16,24,40,.22);
+}
+/* The section's surfaces are drawn as a dark-to-card gradient — the sheen that
+   gives them depth on black. Each one keeps the same shape on white, starting a
+   step *lighter* than the card instead of a step darker. */
+[data-theme="light"] .otpusection .otcard{
+  background:linear-gradient(180deg,#FFFFFF 0%,var(--card) 62%);
+}
+[data-theme="light"] .otpusection .dpstat{
+  background:linear-gradient(180deg,#FFFFFF 0%,var(--card) 70%);
+  border-left-color:#C6CCD8;
+}
+[data-theme="light"] .otpusection .panel > h3{
+  background:linear-gradient(180deg,#FFFFFF 0%,var(--card-2) 100%);
+}
+[data-theme="light"] .otpusection .dpfilters,
+[data-theme="light"] .otpusection .dailybar{
+  background:linear-gradient(180deg,#FFFFFF 0%,var(--card-2) 100%);
+}
+[data-theme="light"] .otpusection table.otgrid tbody tr:nth-child(even) td{background:#F7F9FC}
+[data-theme="light"] .otpusection table.otgrid tbody tr:nth-child(even) td.sticky{background:#F2F5FA}
+[data-theme="light"] .otpusection table.otgrid tbody td.sticky{background:#fff}
+[data-theme="light"] .otpusection .dphead .dpday{border-top-color:rgba(255,255,255,.34)}
+[data-theme="light"] .otpusection .dpstat[title]:hover{
+  background:linear-gradient(180deg,#FFFFFF 0%,var(--card-2) 70%);
+}
+[data-theme="light"] .otpusection .dpstat.mute{border-left-color:#C6CCD8}
+
+/* ---------- the login screen ---------- */
+[data-theme="light"] .loginpage.has-bg .logincard{
+  background:rgba(255,255,255,.93);
+  border:1px solid rgba(16,24,40,.10);
+  border-bottom:3px solid var(--jt-red);
+  box-shadow:inset 0 1px 0 rgba(255,255,255,.6),0 24px 64px rgba(16,24,40,.22),0 4px 14px rgba(16,24,40,.12);
+}
+[data-theme="light"] .loginfield input{
+  background:#fff;border-color:var(--line);color:var(--ink);
+}
+[data-theme="light"] .loginfield input:hover:not(:disabled):not(:focus){border-color:#B9C2D0}
+[data-theme="light"] .loginfield input:-webkit-autofill,
+[data-theme="light"] .loginfield input:-webkit-autofill:hover,
+[data-theme="light"] .loginfield input:-webkit-autofill:focus{
+  -webkit-box-shadow:0 0 0 1000px #fff inset;-webkit-text-fill-color:var(--ink);
+}
+[data-theme="light"] .pweye{color:var(--ink-3)}
+[data-theme="light"] .pweye:hover{color:var(--ink)}
+
+/* The switch on the login screen, which has no rail to live in. */
+.loginthemebtn{
+  position:absolute;top:16px;right:16px;z-index:4;
+  display:inline-flex;align-items:center;gap:7px;
+  padding:7px 13px;border-radius:999px;cursor:pointer;font-family:inherit;
+  font-size:12.5px;font-weight:700;
+  background:rgba(255,255,255,.10);color:#F2F2F2;border:1px solid rgba(255,255,255,.22);
+  backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);
+  transition:background-color .16s var(--ease-out-quint),border-color .16s var(--ease-out-quint),
+    color .16s var(--ease-out-quint),transform .16s var(--ease-out-quint);
+}
+.loginthemebtn:hover{background:rgba(255,255,255,.18);border-color:rgba(255,255,255,.4);transform:translateY(-1px)}
+.loginthemebtn:active{transform:translateY(0) scale(.97)}
+.loginthemebtn:focus-visible{outline:2px solid #fff;outline-offset:2px}
+[data-theme="light"] .loginthemebtn{
+  background:rgba(255,255,255,.85);color:var(--ink);border-color:rgba(16,24,40,.14);
+  box-shadow:0 2px 10px rgba(16,24,40,.12);
+}
+[data-theme="light"] .loginthemebtn:hover{background:#fff;border-color:rgba(16,24,40,.24)}
+[data-theme="light"] .loginthemebtn:focus-visible{outline-color:var(--jt-red)}
+@media (max-width:520px){
+  .loginthemebtn{top:10px;right:10px;padding:6px 11px;font-size:12px}
+}
+@media (prefers-reduced-motion:reduce){
+  .loginthemebtn{transition:none}
+  .loginthemebtn:hover,.loginthemebtn:active{transform:none}
+}
+
 @media print{
   /* landscape and colour-accurate: without print-color-adjust Chrome drops the
      red table headers and the green/red status colours entirely */
@@ -2657,6 +3111,16 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
   .stbadge.stable{background:#EDF6F1 !important;color:#2A7A52 !important}
   table.dpgrid th.cat.unscored{color:#FFD9D6 !important}
   .warnbox{background:#FEF4E4 !important;border-color:#F3D8A6 !important;color:#8A5A08 !important}
+
+  /* The light theme sets the same tokens from a more specific selector
+     (`:root[data-theme="light"]`), so on a light-mode screen those values would
+     outrank the ones above and the sheet would print on the page's light grey
+     rather than on white. Only the handful that actually differ are restated —
+     the rest are already identical in both. */
+  :root[data-theme="light"]{
+    --bg:#fff; --card-3:#EDF0F5; --c-grid:#EDF0F5;
+  }
+  :root[data-theme="light"] body{background:#fff;background-image:none}
 
   /* zoom (not transform) so the layout actually reflows to the smaller size */
   .wrap{max-width:none;padding:0;zoom:.62}

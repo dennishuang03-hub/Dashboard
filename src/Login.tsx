@@ -21,6 +21,7 @@ import Zh from './components/Zh'
 import { LOGIN_BG } from './lib/assets'
 import type { CSSProperties } from 'react'
 import type { Identity } from './lib/session'
+import type { Theme } from './lib/theme'
 import './dashboard.css'
 
 /**
@@ -58,7 +59,33 @@ function EyeOff() {
   )
 }
 
-export default function Login({ onSignedIn }: { onSignedIn: (who: Identity) => void }) {
+/* The theme switch's two glyphs, drawn here rather than imported from the rail:
+   Sidebar's set is built for 24px rail rows and this button is 15px. */
+function SunIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <circle cx="12" cy="12" r="4.1" />
+      <path d="M12 2.6v2.3M12 19.1v2.3M4.4 4.4l1.6 1.6M18 18l1.6 1.6M2.6 12h2.3M19.1 12h2.3M4.4 19.6L6 18M18 6l1.6-1.6" />
+    </svg>
+  )
+}
+
+function MoonIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+         strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      <path d="M20.5 14.2A8.6 8.6 0 0 1 9.8 3.5a8.6 8.6 0 1 0 10.7 10.7z" />
+    </svg>
+  )
+}
+
+export default function Login({ onSignedIn, theme, onToggleTheme }: {
+  onSignedIn: (who: Identity) => void
+  /** the same switch the rail carries, so the choice can be made before signing in */
+  theme: Theme
+  onToggleTheme: () => void
+}) {
   const [username, setUsername] = useState('')
   const [password, setPassword] = useState('')
   const [showPw, setShowPw] = useState(false)
@@ -131,6 +158,21 @@ export default function Login({ onSignedIn }: { onSignedIn: (who: Identity) => v
           It is a sibling of the form, not a child, so nothing about the card —
           its padding, its clipped corners, its `overflow:hidden` — can crop the
           raised edge the logo casts. */}
+      {/* The rail is not on this screen, so the switch gets a corner of its
+          own — otherwise a light-mode reader signs in through a dark page to
+          reach the control that changes it. */}
+      <button
+        type="button"
+        className="loginthemebtn"
+        onClick={onToggleTheme}
+        title={theme === 'dark' ? 'Ganti ke Mode Terang' : 'Ganti ke Mode Gelap'}
+        aria-label={theme === 'dark' ? 'Ganti ke Mode Terang' : 'Ganti ke Mode Gelap'}
+        aria-pressed={theme === 'light'}
+      >
+        {theme === 'dark' ? <SunIcon /> : <MoonIcon />}
+        <span>{theme === 'dark' ? 'Mode Terang' : 'Mode Gelap'}</span>
+      </button>
+
       <div className="loginstack">
         <div className="loginbrand plain">
           <JntLogo className="jtlogo" variant="plain" />

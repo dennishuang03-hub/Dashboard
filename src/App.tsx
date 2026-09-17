@@ -24,6 +24,8 @@ import Dashboard from './Dashboard'
 import Login from './Login'
 import { DEV_IDENTITY, skipLogin } from './devConfig'
 import type { Identity } from './lib/session'
+import { applyTheme, storedTheme } from './lib/theme'
+import type { Theme } from './lib/theme'
 import './dashboard.css'
 
 export default function App() {
@@ -32,6 +34,22 @@ export default function App() {
      compiled in. See devConfig.ts. */
   const [who, setWho] = useState<Identity | null>(skipLogin ? DEV_IDENTITY : null)
   const [booting, setBooting] = useState(!skipLogin)
+  /* Dark unless this browser has been told otherwise. The attribute is already
+     on <html> from the inline script in index.html; this keeps React's copy of
+     the answer in step with it, and writes it back on every change. */
+  const [theme, setTheme] = useState<Theme>(storedTheme)
+  const toggleTheme = useCallback(
+    () => setTheme((t) => {
+      const next: Theme = t === 'dark' ? 'light' : 'dark'
+      applyTheme(next)
+      return next
+    }),
+    [],
+  )
+  /* Not only on toggle: the inline script runs before this component exists,
+     and a browser that refused it (or a stored value written by another tab)
+     would otherwise leave the two disagreeing. */
+  useEffect(() => { applyTheme(theme) }, [theme])
 
   useEffect(() => {
     /* Nothing to ask — the answer was decided at build time. */
@@ -57,6 +75,6 @@ export default function App() {
   const onExpired = useCallback(() => setWho(null), [])
 
   if (booting) return <div className="bootscreen">Memeriksa sesi…</div>
-  if (!who) return <Login onSignedIn={setWho} />
-  return <Dashboard who={who} onSignedOut={onExpired} />
+  if (!who) return <Login onSignedIn={setWho} theme={theme} onToggleTheme={toggleTheme} />
+  return <Dashboard who={who} onSignedOut={onExpired} theme={theme} onToggleTheme={toggleTheme} />
 }
