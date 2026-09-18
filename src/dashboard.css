@@ -1065,10 +1065,11 @@ body.shooting .chartscroll{overflow:visible !important}
    the clear button, which is absolutely placed inside the field. */
 .dpsearchbox{position:relative;display:flex;flex:1;min-width:220px;max-width:330px}
 .dpfilters .dpsearchbox input[type=text]{min-width:0;flex:1;max-width:none}
-/* Room on the right for the clear button, and only while it is there — padding
-   held open permanently would leave the placeholder looking mis-centred on an
-   empty box, which is most of the time. */
+/* Room on the right for whichever control is sitting in the field, and only
+   while it is there — padding held open permanently would leave the placeholder
+   looking mis-centred on an empty box, which is most of the time. */
 .dpfilters .dpsearchbox:has(.dpsearchx) input[type=text]{padding-right:28px}
+.dpfilters .dpsearchbox:has(.tdrop-btn) input[type=text]{padding-right:58px}
 .dpsearchx{
   position:absolute;right:4px;top:50%;transform:translateY(-50%);
   display:flex;align-items:center;justify-content:center;
@@ -1078,29 +1079,69 @@ body.shooting .chartscroll{overflow:visible !important}
   transition:background .13s ease,color .13s ease;
 }
 .dpsearchx:hover{background:var(--card-3);color:var(--ink)}
-/* The pasted-code dropdown. It wears `MultiSelect`'s shell — see TermDropdown —
-   so only the parts that differ live here: its rows carry a remove button
-   instead of a tick box, and it ends with an action rather than a warning. */
-.tdrop-row{justify-content:space-between;gap:8px}
-.tdrop-row .ms-lab{
+/* ---- the pasted-code list, inside the search field ----
+
+   The trigger is a count badge and a caret at the right-hand end of the input;
+   the panel drops from the bottom edge of the field and is pinned to both of its
+   sides, so it comes out exactly as wide as the box it belongs to. That is why
+   the panel is a child of `.dpsearchbox` and not of the trigger. */
+.tdrop-btn{
+  position:absolute;right:5px;top:50%;transform:translateY(-50%);
+  display:flex;align-items:center;gap:5px;
+  height:22px;padding:0 4px;border:none;border-radius:5px;
+  background:transparent;color:var(--ink-3);font-family:inherit;cursor:pointer;
+  transition:background .13s ease,color .13s ease;
+}
+.tdrop-btn:hover,.tdrop-btn.open{background:var(--card-3);color:var(--ink)}
+.tdrop-n{
+  display:flex;align-items:center;justify-content:center;
+  min-width:18px;height:18px;padding:0 5px;border-radius:9px;
+  background:var(--jt-red);color:#fff;
+  font-size:11px;font-weight:800;line-height:1;font-variant-numeric:tabular-nums;
+}
+.tdrop-caret{width:9px;height:6px;flex:none;transition:transform .15s ease}
+.tdrop-btn.open .tdrop-caret{transform:rotate(180deg)}
+
+.tdrop-pop{
+  position:absolute;top:calc(100% + 6px);left:0;right:0;z-index:40;
+  display:flex;flex-direction:column;max-height:300px;
+  background:var(--card);border:1.5px solid #4A4A4A;border-radius:10px;
+  box-shadow:var(--shadow);overflow:hidden;
+}
+/* The list scrolls; the footer below it does not — a Clear that scrolls out of
+   reach on a fifty-code paste is the one control you would be reaching for. */
+.tdrop-list{overflow-y:auto;min-height:0;padding:5px}
+.tdrop-row{
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+  padding:4px 4px 4px 8px;border-radius:6px;
+}
+.tdrop-row:hover{background:var(--card-3)}
+.tdrop-lab{
+  flex:1;min-width:0;font-size:12.5px;font-weight:700;color:var(--ink-2);
   font-variant-numeric:tabular-nums;letter-spacing:.2px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
 }
 .tdrop-x{
   flex:none;display:flex;align-items:center;justify-content:center;
   width:20px;height:20px;padding:0;border:none;border-radius:5px;
-  background:transparent;color:var(--ink-3);font-family:inherit;font-size:15px;line-height:1;
+  background:transparent;color:transparent;
+  font-family:inherit;font-size:15px;line-height:1;
   cursor:pointer;transition:background .13s ease,color .13s ease;
 }
-.tdrop-row:hover .tdrop-x{color:var(--ink-2)}
+/* Invisible until the row is under the cursor or the button has the keyboard —
+   fifty rows each showing a permanent X reads as a list of delete buttons rather
+   than as a list of codes. `color:transparent` rather than `display:none` keeps
+   it in the tab order and keeps the row from reflowing on hover. */
+.tdrop-row:hover .tdrop-x,.tdrop-x:focus-visible{color:var(--ink-3)}
 .tdrop-x:hover{background:rgba(226,35,26,.16);color:var(--jt-red)}
+.tdrop-foot{border-top:1px solid var(--line);padding:5px}
 .tdrop-clear{
-  width:100%;margin-top:6px;border:1.5px solid var(--line);border-radius:7px;
-  padding:6px 10px;background:var(--card);color:var(--ink-2);
+  width:100%;border:none;border-radius:6px;padding:7px 10px;
+  background:transparent;color:var(--ink-2);
   font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;
-  transition:border-color .13s ease,color .13s ease,background .13s ease;
+  transition:color .13s ease,background .13s ease;
 }
-.tdrop-clear:hover{border-color:var(--jt-red);color:var(--ink);background:var(--card-3)}
+.tdrop-clear:hover{background:var(--card-3);color:var(--jt-red)}
 /* The "Hanya di bawah target" checkbox is gone — the Status filter asks the same
    question of the whole scorecard instead. The chip shell is kept for the next
    plain checkbox that lands on this bar, so it arrives looking like a control
@@ -2533,7 +2574,10 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
   .dpstat .l{font-size:12px}
 
   .dpfilters{gap:7px;padding:9px 10px}
-  .dpfilters input[type=text]{flex:1 1 100%;max-width:none;min-width:0}
+  /* The search box takes the whole first row. The rule is on the wrapper, not
+     the input: the wrapper is what the filter bar lays out, and the input inside
+     it is already full width. */
+  .dpsearchbox{flex:1 1 100%;max-width:none;min-width:0}
   .dpfilters select{flex:1 1 calc(50% - 4px);min-width:0}
   /* Two per row, and the trigger fills its half — a chip sized to its text left
      the row ragged, and the summary is the first thing to truncate at this

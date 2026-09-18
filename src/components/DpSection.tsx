@@ -1273,25 +1273,26 @@ export default function DpSection({
               aria-label="Cari drop point — tempel beberapa kode sekaligus"
               disabled={basketOn}
             />
-            {/* Only when there is something to clear: a permanently visible X on
-                an empty box is a button that does nothing. It clears the pasted
-                list too, so the one obvious "start over" gesture does not leave
-                a filter behind in a dropdown. */}
-            {(terms.length > 0 || q) && !basketOn && (
+            {/* The X and the code list share the right-hand end of the field,
+                and only one of them is ever there: the list has a Clear of its
+                own in its footer, so a second clear button beside its caret
+                would be the same action twice, two pixels apart. With no list,
+                the X is the only way to empty a box someone has typed in. */}
+            {q && terms.length === 0 && !basketOn && (
               <button
                 type="button" className="dpsearchx" onClick={clearSearch}
-                title="Hapus semua kata kunci" aria-label="Hapus semua kata kunci"
+                title="Hapus kata kunci" aria-label="Hapus kata kunci"
               >×</button>
             )}
+            {/* The pasted list, inside the field rather than under it — see
+                `TermDropdown`. It renders nothing while the list is empty, so
+                the box looks the way it always did for the single-term search
+                that is still the common case. */}
+            <TermDropdown
+              key={basketOn ? 'basket' : 'live'}
+              terms={terms} onRemove={removeTerm} onClear={clearSearch} disabled={basketOn}
+            />
           </div>
-          {/* The pasted list, folded into a dropdown beside the box rather than
-              spread under it — see `TermDropdown`. It renders nothing at all
-              while the list is empty, so the bar looks the way it always did for
-              the single-term search that is still the common case. */}
-          <TermDropdown
-            key={basketOn ? 'basket' : 'live'}
-            terms={terms} onRemove={removeTerm} onClear={clearSearch} disabled={basketOn}
-          />
           {/* Three multi-selects where there were four single-choice selects.
               The supervisor one is gone: with the name searchable in the box to
               the left and shown in its own column, a fourth dropdown listing
