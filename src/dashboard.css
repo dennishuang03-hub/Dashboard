@@ -1060,7 +1060,47 @@ body.shooting .chartscroll{overflow:visible !important}
   border:1.5px solid var(--line);border-radius:8px;padding:6px 10px;font-size:13.5px;font-weight:600;
   background:var(--card);color:var(--ink);font-family:inherit;
 }
-.dpfilters input[type=text]{min-width:220px;flex:1;max-width:330px}
+/* The search box. The only item on this bar allowed to grow — everything else
+   on the row is a dropdown sized by its own label. `position:relative` is for
+   the clear button, which is absolutely placed inside the field. */
+.dpsearchbox{position:relative;display:flex;flex:1;min-width:220px;max-width:330px}
+.dpfilters .dpsearchbox input[type=text]{min-width:0;flex:1;max-width:none}
+/* Room on the right for the clear button, and only while it is there — padding
+   held open permanently would leave the placeholder looking mis-centred on an
+   empty box, which is most of the time. */
+.dpfilters .dpsearchbox:has(.dpsearchx) input[type=text]{padding-right:28px}
+.dpsearchx{
+  position:absolute;right:4px;top:50%;transform:translateY(-50%);
+  display:flex;align-items:center;justify-content:center;
+  width:20px;height:20px;padding:0;border:none;border-radius:5px;
+  background:transparent;color:var(--ink-3);font-size:16px;line-height:1;
+  font-family:inherit;cursor:pointer;
+  transition:background .13s ease,color .13s ease;
+}
+.dpsearchx:hover{background:var(--card-3);color:var(--ink)}
+/* The pasted-code dropdown. It wears `MultiSelect`'s shell — see TermDropdown —
+   so only the parts that differ live here: its rows carry a remove button
+   instead of a tick box, and it ends with an action rather than a warning. */
+.tdrop-row{justify-content:space-between;gap:8px}
+.tdrop-row .ms-lab{
+  font-variant-numeric:tabular-nums;letter-spacing:.2px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.tdrop-x{
+  flex:none;display:flex;align-items:center;justify-content:center;
+  width:20px;height:20px;padding:0;border:none;border-radius:5px;
+  background:transparent;color:var(--ink-3);font-family:inherit;font-size:15px;line-height:1;
+  cursor:pointer;transition:background .13s ease,color .13s ease;
+}
+.tdrop-row:hover .tdrop-x{color:var(--ink-2)}
+.tdrop-x:hover{background:rgba(226,35,26,.16);color:var(--jt-red)}
+.tdrop-clear{
+  width:100%;margin-top:6px;border:1.5px solid var(--line);border-radius:7px;
+  padding:6px 10px;background:var(--card);color:var(--ink-2);
+  font-family:inherit;font-size:12.5px;font-weight:700;cursor:pointer;
+  transition:border-color .13s ease,color .13s ease,background .13s ease;
+}
+.tdrop-clear:hover{border-color:var(--jt-red);color:var(--ink);background:var(--card-3)}
 /* The "Hanya di bawah target" checkbox is gone — the Status filter asks the same
    question of the whole scorecard instead. The chip shell is kept for the next
    plain checkbox that lands on this bar, so it arrives looking like a control

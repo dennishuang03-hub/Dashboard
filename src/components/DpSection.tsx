@@ -22,6 +22,7 @@
  * excused. The file says which it is; nothing here second-guesses it.
  */
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import type { ClipboardEvent, KeyboardEvent } from 'react'
 import {
   BIZ_MODEL_LABEL, BIZ_MODEL_TAG, CANONICAL_ORDER, CATEGORY_ZH, DP_KIND_LABEL, DP_KIND_ZH,
   DP_STATUS_HINT, DP_STATUS_LABEL, DP_STATUS_RANGE, DP_STATUS_ZH, SCORE_TOTAL, SPRINTER_LABELS,
@@ -34,6 +35,7 @@ import type { HBar } from './Charts'
 import BtnIcon from './BtnIcon'
 import ExportButtons from './ExportButtons'
 import MultiSelect from './MultiSelect'
+import TermDropdown from './TermDropdown'
 import Zh from './Zh'
 import type { ExportCol, ExportTable, ExportTone, ExportValue } from '../lib/tableExport'
 
@@ -79,6 +81,24 @@ const COL_STATUS = '__status__'
  * paint, so the default announces itself rather than hiding what it did.
  */
 const DEFAULT_HIDDEN: readonly string[] = [COL_AGENT, COL_RM, COL_SPV, COL_ONTARGET]
+
+/**
+ * What separates one search term from the next in pasted text.
+ *
+ * Newlines and tabs are what a column copied out of Excel actually arrives as;
+ * commas and semicolons are what the same list looks like once it has been
+ * through a chat message or a cell someone joined by hand.
+ *
+ * A space is deliberately **not** a separator. Site names carry underscores, but
+ * the RM and supervisor names in the same search space are two and three words
+ * long, and splitting on spaces would turn a search for one person into a search
+ * for everyone sharing either of their names.
+ */
+const TERM_SPLIT_RE = /[\n\r\t,;]+/
+
+/** Pasted text → the terms in it, trimmed, with the empties dropped. */
+const splitTerms = (s: string): string[] =>
+  s.split(TERM_SPLIT_RE).map((t) => t.trim()).filter(Boolean)
 
 /** Sort order for the Status column — worst first, so `▲` puts the work on top. */
 const STATUS_RANK: Record<DpStatus, number> = { urgent: 0, perhatian: 1, stable: 2, '': 3 }
@@ -577,6 +597,20 @@ export default function DpSection({
   /* ---------------------------------------------------------- table state */
 
   const [q, setQ] = useState('')
+  /**
+   * Committed search terms, shown as chips under the box.
+   *
+   * The box holds one term at a time; this holds the ones already entered, and
+   * the two are OR'd together. That split is what lets a column of codes copied
+   * out of Excel become a filter: the paste arrives as one string of many lines,
+   * which as a single needle matches nothing at all, so it is split here into
+   * terms instead of being typed into the box.
+   *
+   * A list rather than a set, because the chips are shown and the order they
+   * were added in is the order they are read in. Duplicates are turned away on
+   * entry — see `addTerms`.
+   */
+  const [terms, setTerms] = useState<readonly string[]>([])
   /*
    * Three filters, and each holds the values switched **off** rather than the
    * one value chosen. They were single-choice `<select>`s, which could not
@@ -706,8 +740,59 @@ export default function DpSection({
   const cell = (s: Scored, k: Kpi): number | null =>
     mode === 'mtd' ? (s.dp.vals[k.label]?.mtd ?? null) : s.vals[k.label]
 
+  /**
+   * Every DP code and site name on the table, upper-cased.
+   *
+   * This is what decides whether a search term is a code someone pasted or a
+   * fragment someone is typing — see `matchers`. Built from `scored`, which is
+   * every row before any filter: a code has to be recognised as a code even when
+   * the row it names is currently filtered out, or the same paste would behave
+   * differently depending on what the dropdowns happen to be set to.
+   */
+  const exactKeys = useMemo(() => {
+    const set = new Set<string>()
+    for (const s of scored) {
+      if (s.dp.dpCode) set.add(s.dp.dpCode.toUpperCase())
+      if (s.dp.label) set.add(s.dp.label.toUpperCase())
+    }
+    return set
+  }, [scored])
+
   const filtered = useMemo(() => {
-    const needle = q.trim().toLowerCase()
+    /*
+     * The chips, plus whatever is half-typed in the box.
+     *
+     * The live text counts as a term of its own so the table still narrows on
+     * every keystroke, the way it did when the box was the whole filter. Without
+     * it, typing would do nothing until Enter — which is a worse box for the
+     * single-term search that is still the common case.
+     */
+    const liveTerm = q.trim()
+    const allTerms = liveTerm ? [...terms, liveTerm] : terms
+
+    /*
+     * One test per term, decided once rather than per row.
+     *
+     * A term that *is* a DP code or a site name is matched exactly, and that is
+     * the whole point of the paste: `DPK26` and `DPK260` are two different sites,
+     * and a substring test would hand you both when you asked for one. A term
+     * that matches no code — a partly typed name, an RM, a supervisor — falls
+     * back to the substring search across the identity columns, so typing still
+     * works as it always has.
+     *
+     * The rows are OR'd across terms: the list is "show me these", not "show me
+     * rows that are all of these", which nothing could be.
+     */
+    const matchers = allTerms.map((t) => {
+      const up = t.toUpperCase()
+      if (exactKeys.has(up)) {
+        return (s: Scored) => s.dp.dpCode.toUpperCase() === up || s.dp.label.toUpperCase() === up
+      }
+      const lc = t.toLowerCase()
+      return (s: Scored) =>
+        `${s.dp.label} ${s.dp.dpCode} ${s.dp.agentLabel} ${s.dp.regionalManager} ${s.dp.supervisor}`
+          .toLowerCase().includes(lc)
+    })
 
     /*
      * A basket is not another filter, and this is the one design decision worth
@@ -736,11 +821,7 @@ export default function DpSection({
       /* The supervisor and the RM are searchable even though neither has a
          dropdown of its own: typing a name is the fastest way to scope the table
          to one person, and it costs nothing to leave in. */
-      if (needle
-        && !`${s.dp.label} ${s.dp.dpCode} ${s.dp.agentLabel} ${s.dp.regionalManager} ${s.dp.supervisor}`
-          .toLowerCase().includes(needle)) {
-        return false
-      }
+      if (matchers.length && !matchers.some((m) => m(s))) return false
       return true
     })
 
@@ -785,13 +866,71 @@ export default function DpSection({
       return dir * (av - bv)
     })
     return out
-  }, [scored, q, svcOff, stOff, typeOff, bizOff, liveSort, liveDir, mode,
+  }, [scored, q, terms, exactKeys, svcOff, stOff, typeOff, bizOff, liveSort, liveDir, mode,
       catKpis, basketOn, picked])
 
   /* A deliberate selection is never truncated: forty is a guard against dumping
      1,666 rows nobody asked for, and ticking sites one at a time is the opposite
      of that. */
   const shown = showAll || basketOn ? filtered : filtered.slice(0, 40)
+
+  /**
+   * Add terms to the chip list, keeping the ones already there.
+   *
+   * Case-insensitively deduplicated, because the same code pasted twice is one
+   * filter and two chips would only be two things to remove. The first spelling
+   * entered is the one kept — it is the one already on screen, and rewriting it
+   * to match a later paste would look like the list had been edited.
+   */
+  const addTerms = (incoming: string[]) => {
+    if (!incoming.length) return
+    setTerms((prev) => {
+      const seen = new Set(prev.map((t) => t.toUpperCase()))
+      const next = [...prev]
+      for (const t of incoming) {
+        const up = t.toUpperCase()
+        if (seen.has(up)) continue
+        seen.add(up)
+        next.push(t)
+      }
+      return next
+    })
+  }
+
+  const removeTerm = (t: string) => setTerms((prev) => prev.filter((x) => x !== t))
+  const clearSearch = () => { setTerms([]); setQ('') }
+
+  /**
+   * A paste is intercepted only when it carries more than one term.
+   *
+   * A single-value paste stays an ordinary paste: it lands in the box as text
+   * someone can still edit, which is what pasting one code to look it up should
+   * do. Splitting that into a chip immediately would take the text out of reach
+   * of the cursor that just put it there.
+   */
+  const onSearchPaste = (e: ClipboardEvent<HTMLInputElement>) => {
+    const text = e.clipboardData.getData('text')
+    if (!TERM_SPLIT_RE.test(text)) return
+    e.preventDefault()
+    addTerms(splitTerms(text))
+    setQ('')
+  }
+
+  const onSearchKeyDown = (e: KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === 'Enter' && q.trim()) {
+      e.preventDefault()
+      addTerms(splitTerms(q))
+      setQ('')
+      return
+    }
+    /* Backspace on an empty box takes back the last chip — the standard gesture
+       for this control, and the only way to undo a mis-typed Enter without
+       reaching for the mouse. */
+    if (e.key === 'Backspace' && !q && terms.length) {
+      e.preventDefault()
+      setTerms((prev) => prev.slice(0, -1))
+    }
+  }
 
   const sortOn = (key: string) => {
     if (sortKey === key) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
@@ -904,7 +1043,9 @@ export default function DpSection({
     })
 
     const period = mode === 'mtd' ? 'Pencapaian bulan ini' : `Tanggal ${day.date ? fmtDateFull(day.date) : 'hari terakhir'}`
-    const needle = q.trim()
+    /* Every term, chips included — an export whose row count was cut by a list
+       of fifty codes has to say so, or it reads as a day the region shrank. */
+    const needle = [...terms, q.trim()].filter(Boolean).join(', ')
     return {
       title: basketOn ? 'Perbandingan DP / CP' : 'Daftar DP / CP',
       meta: [
@@ -1121,10 +1262,35 @@ export default function DpSection({
             them — and a search box that accepts typing and changes nothing is a
             worse answer than one that plainly says it is not in use. */}
         <div className="dpfilters">
-          <input
-            type="text" placeholder="Cari DP / CP, kode, agen, RM atau supervisor…" value={q}
-            onChange={(e) => setQ(e.target.value)} aria-label="Cari drop point"
-            disabled={basketOn}
+          <div className="dpsearchbox">
+            <input
+              type="text"
+              placeholder="Cari / tempel daftar kode DP…"
+              value={q}
+              onChange={(e) => setQ(e.target.value)}
+              onPaste={onSearchPaste}
+              onKeyDown={onSearchKeyDown}
+              aria-label="Cari drop point — tempel beberapa kode sekaligus"
+              disabled={basketOn}
+            />
+            {/* Only when there is something to clear: a permanently visible X on
+                an empty box is a button that does nothing. It clears the pasted
+                list too, so the one obvious "start over" gesture does not leave
+                a filter behind in a dropdown. */}
+            {(terms.length > 0 || q) && !basketOn && (
+              <button
+                type="button" className="dpsearchx" onClick={clearSearch}
+                title="Hapus semua kata kunci" aria-label="Hapus semua kata kunci"
+              >×</button>
+            )}
+          </div>
+          {/* The pasted list, folded into a dropdown beside the box rather than
+              spread under it — see `TermDropdown`. It renders nothing at all
+              while the list is empty, so the bar looks the way it always did for
+              the single-term search that is still the common case. */}
+          <TermDropdown
+            key={basketOn ? 'basket' : 'live'}
+            terms={terms} onRemove={removeTerm} onClear={clearSearch} disabled={basketOn}
           />
           {/* Three multi-selects where there were four single-choice selects.
               The supervisor one is gone: with the name searchable in the box to
