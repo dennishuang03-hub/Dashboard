@@ -57,6 +57,7 @@ const TOTAL_CAT = '__total__'
 const COL_NAME = '__name__'
 const COL_AGENT = '__agent__'
 const COL_SPV = '__spv__'
+const COL_RM = '__rm__'
 const COL_SERVICE = '__layanan__'
 const COL_ONTARGET = '__ontarget__'
 const COL_STATUS = '__status__'
@@ -69,13 +70,15 @@ const COL_STATUS = '__status__'
  * thing anyone did was turn three of them off again. These three are the ones
  * that went: Agen repeats across every row of a single-agent view, Supervisor
  * is a lookup rather than a measurement, and Sesuai target is the raw count the
- * new Status column exists to interpret.
+ * new Status column exists to interpret. RM joins them for the same reason as
+ * Supervisor, and more strongly: it is the coarser of the two lookups, so it
+ * repeats down even more of the table than the supervisor's name does.
  *
- * All three are one tick away in the switch above the table, and the counter
- * there reads "8/11" from the first paint, so the default announces itself
- * rather than hiding what it did.
+ * All four are one tick away in the switch above the table, and the counter
+ * there states the number showing out of the number there are from the first
+ * paint, so the default announces itself rather than hiding what it did.
  */
-const DEFAULT_HIDDEN: readonly string[] = [COL_AGENT, COL_SPV, COL_ONTARGET]
+const DEFAULT_HIDDEN: readonly string[] = [COL_AGENT, COL_RM, COL_SPV, COL_ONTARGET]
 
 /** Sort order for the Status column — worst first, so `▲` puts the work on top. */
 const STATUS_RANK: Record<DpStatus, number> = { urgent: 0, perhatian: 1, stable: 2, '': 3 }
@@ -197,6 +200,7 @@ export default function DpSection({
   /* The agent column only exists in the all-agents view at all, so it is hidden
      by either of two independent things and both have to be asked. */
   const showAgent = allAgents && !hiddenCols.has(COL_AGENT)
+  const showRm = !hiddenCols.has(COL_RM)
   const showSpv = !hiddenCols.has(COL_SPV)
   const showService = !hiddenCols.has(COL_SERVICE)
   const showOnTarget = !hiddenCols.has(COL_ONTARGET)
@@ -221,6 +225,10 @@ export default function DpSection({
            leaving someone hunting for the one that is missing from it. */
         { id: COL_NAME, label: 'DP / CP', zh: '网点', locked: true },
         ...(allAgents ? [{ id: COL_AGENT, label: 'Agen', zh: '代理区' }] : []),
+        /* RM before SPV, the way the org runs and the way the file writes them —
+           the wider scope on the left, so the pair reads as one chain of
+           responsibility rather than two unrelated name columns. */
+        { id: COL_RM, label: 'RM', zh: '区域经理' },
         { id: COL_SPV, label: 'Supervisor', zh: '主管' },
         { id: COL_SERVICE, label: 'Jenis Layanan', zh: '服务类型' },
       ],
@@ -725,11 +733,11 @@ export default function DpSection({
       if (stOff.has(s.status)) return false
       if (typeOff.has(s.dp.isCp ? 'cp' : 'dp')) return false
       if (bizOff.has(s.dp.bizModel)) return false
-      /* The supervisor is searchable even though it has no dropdown of its own:
-         typing a name is the fastest way to scope the table to one person, and
-         it costs nothing to leave in. */
+      /* The supervisor and the RM are searchable even though neither has a
+         dropdown of its own: typing a name is the fastest way to scope the table
+         to one person, and it costs nothing to leave in. */
       if (needle
-        && !`${s.dp.label} ${s.dp.dpCode} ${s.dp.agentLabel} ${s.dp.supervisor}`
+        && !`${s.dp.label} ${s.dp.dpCode} ${s.dp.agentLabel} ${s.dp.regionalManager} ${s.dp.supervisor}`
           .toLowerCase().includes(needle)) {
         return false
       }
@@ -740,6 +748,11 @@ export default function DpSection({
     out = [...out].sort((a, b) => {
       if (liveSort === COL_NAME) return dir * a.dp.label.localeCompare(b.dp.label)
       if (liveSort === COL_AGENT) return dir * a.dp.agentLabel.localeCompare(b.dp.agentLabel)
+      if (liveSort === COL_RM) {
+        /* Same null-sinks rule as the supervisor column below. */
+        if (!a.dp.regionalManager !== !b.dp.regionalManager) return a.dp.regionalManager ? -1 : 1
+        return dir * a.dp.regionalManager.localeCompare(b.dp.regionalManager)
+      }
       if (liveSort === COL_SPV) {
         /* Sites with no named supervisor sink, both ways round — the same rule
            the KPI columns use for a missing reading, and for the same reason. */
@@ -855,6 +868,7 @@ export default function DpSection({
       { head: 'Model Bisnis', width: 12 },
     ]
     if (showAgent) cols.push({ head: 'Agen', width: 22 })
+    if (showRm) cols.push({ head: 'RM', width: 22 })
     if (showSpv) cols.push({ head: 'Supervisor', width: 22 })
     if (showService) cols.push({ head: 'Jenis Layanan', width: 16 })
     for (const run of catRuns) {
@@ -870,6 +884,7 @@ export default function DpSection({
     const rows = filtered.map((s): ExportValue[] => {
       const row: ExportValue[] = [s.dp.label, s.dp.dpCode || null, BIZ_MODEL_LABEL[s.dp.bizModel]]
       if (showAgent) row.push(s.dp.agentLabel)
+      if (showRm) row.push(s.dp.regionalManager || null)
       if (showSpv) row.push(s.dp.supervisor || null)
       if (showService) row.push(DP_KIND_LABEL[s.kind])
       for (const run of catRuns) {
@@ -914,8 +929,26 @@ export default function DpSection({
 
   /* the name column, plus whatever the switch left standing — the empty-state
      row has to span exactly the columns that are there */
-  const colCount = 1 + (showAgent ? 1 : 0) + (showSpv ? 1 : 0) + (showService ? 1 : 0)
+  const colCount = 1 + (showAgent ? 1 : 0) + (showRm ? 1 : 0) + (showSpv ? 1 : 0)
+    + (showService ? 1 : 0)
     + visKpis.length + (showOnTarget ? 1 : 0) + (showStatus ? 1 : 0)
+
+  /**
+   * The agent, RM and supervisor as one line, for the phone layout where all
+   * three of their columns are hidden and they ride inside the pinned name cell.
+   *
+   * Built by joining the non-empty ones rather than by placing separators by
+   * hand: three names means three separator conditions written out pairwise, and
+   * each of them is a way to leave a stray middot on a row whose middle name is
+   * blank. Whatever is left over is capped and ellipsised by `.dpagent` — this
+   * stays one line, because a third line in the pinned cell starts pushing the
+   * figures off the right of the screen.
+   */
+  const foldedNames = (dp: DpRow): string => [
+    showAgent ? dp.agentLabel : '',
+    showRm ? dp.regionalManager : '',
+    showSpv ? dp.supervisor : '',
+  ].filter(Boolean).join(' · ')
 
   /* a plain function, not a nested component: React would remount a component
      declared inside render on every keystroke and the select would lose focus */
@@ -1089,7 +1122,7 @@ export default function DpSection({
             worse answer than one that plainly says it is not in use. */}
         <div className="dpfilters">
           <input
-            type="text" placeholder="Cari DP / CP, kode, agen atau supervisor…" value={q}
+            type="text" placeholder="Cari DP / CP, kode, agen, RM atau supervisor…" value={q}
             onChange={(e) => setQ(e.target.value)} aria-label="Cari drop point"
             disabled={basketOn}
           />
@@ -1283,6 +1316,7 @@ export default function DpSection({
                 <tr className="secrow" ref={secRowRef}>
                   <th className="sticky" />
                   {showAgent && <th className="agentcol" />}
+                  {showRm && <th className="rmcol" />}
                   {showSpv && <th className="spvcol" />}
                   {showService && <th />}
                   {catRuns.map((run, i) => (
@@ -1304,6 +1338,11 @@ export default function DpSection({
                   {showAgent && (
                     <th className="agentcol" onClick={() => sortOn(COL_AGENT)}>
                       Agen{arrow(COL_AGENT)}<Zh>代理区</Zh>
+                    </th>
+                  )}
+                  {showRm && (
+                    <th className="rmcol" onClick={() => sortOn(COL_RM)}>
+                      RM{arrow(COL_RM)}<Zh>区域经理</Zh>
                     </th>
                   )}
                   {showSpv && (
@@ -1407,16 +1446,19 @@ export default function DpSection({
                           by a middot rather than taking two: the pinned cell is
                           nearly the whole screen at that width, and a third line
                           of it starts pushing the numbers out of sight. */}
-                      {(showAgent || (showSpv && s.dp.supervisor)) && (
-                        <span className="dpagent">
-                          {showAgent ? s.dp.agentLabel : ''}
-                          {showAgent && showSpv && s.dp.supervisor ? ' · ' : ''}
-                          {showSpv && s.dp.supervisor ? s.dp.supervisor : ''}
-                        </span>
+                      {foldedNames(s.dp) && (
+                        <span className="dpagent">{foldedNames(s.dp)}</span>
                       )}
                     </td>
                     {showAgent && (
                       <td className="muted agentcol">{s.dp.agentLabel}<Zh>{agentZh(s.dp.agentLabel)}</Zh></td>
+                    )}
+                    {showRm && (
+                      <td className="rmcol" title={s.dp.regionalManager || undefined}>
+                        {/* A dash, not a blank, for the same reason as the
+                            supervisor cell below. */}
+                        {s.dp.regionalManager || <span className="muted">—</span>}
+                      </td>
                     )}
                     {showSpv && (
                       <td className="spvcol" title={s.dp.supervisor || undefined}>
@@ -1514,8 +1556,9 @@ export default function DpSection({
         Nilai yang ditampilkan: {mode === 'mtd' ? 'pencapaian bulan ini' : dayLabel}.
         {' '}<b>Jenis Layanan</b> diambil apa adanya dari kolom Jenis Layanan di file
         (<i>ALL DP DATA</i>) — <b>Pickup Delivery</b>, <b>Delivery</b>, <b>Pickup</b>, atau
-        {' '}<b>Tutup</b> — bukan lagi ditebak dari angka hari itu. <b>Supervisor</b> diambil dari
-        sheet <i>Fr&amp;Ag</i>; tanda <b>—</b> berarti file tidak mencantumkannya.
+        {' '}<b>Tutup</b> — bukan lagi ditebak dari angka hari itu. <b>RM</b> dan <b>Supervisor</b>
+        {' '}diambil dari sheet <i>Fr&amp;Ag</i>; tanda <b>—</b> berarti file tidak
+        mencantumkannya.
         {' '}<b>Status</b> dihitung dari {SCORE_TOTAL} indikator — {UNSCORED_LABELS.join(', ')}
         {' '}(bertanda <b>*</b>) tetap ditampilkan tetapi tidak ikut dinilai:
         {' '}<b>Stable</b> {DP_STATUS_RANGE.stable}, <b>Perhatian</b> {DP_STATUS_RANGE.perhatian},

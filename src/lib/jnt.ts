@@ -161,6 +161,14 @@ export interface DpRow {
    */
   supervisor: string
   /**
+   * The regional manager over this site, from the `Fr&Ag` tab’s
+   * 区域经理 Regional Manager (RM) column. `''` when that tab is absent, has no
+   * row for this site, or leaves the cell blank — the same three states the
+   * supervisor has, and not told apart for the same reason: the file does not
+   * distinguish them either.
+   */
+  regionalManager: string
+  /**
    * The site’s own code — `JKT08L` — from the `Fr&Ag` tab’s 网点代码 Kode DP
    * column. `''` when that tab is absent or states none for this site. The
    * readings tabs do not carry it, so the reference join is the only source.
@@ -984,6 +992,19 @@ const SERVICE_HEADER_RE = /jenis\s*layanan|jenis\s*service|service\s*type|tipe\s
 const SPV_HEADER_RE = /supervisor|\bspv\b|penyelia|atasan|主管|督导/i
 
 /**
+ * The Regional Manager column on the `Fr&Ag` reference tab — written
+ * `区域经理 Regional Manager (RM)` in the files seen so far.
+ *
+ * "Manager" on its own is deliberately not in here. The supervisor column sits
+ * immediately beside this one and is titled `主管 Supervisor (SPV)` today, but
+ * nothing stops a file from calling that role a manager too — and two adjacent
+ * columns of free-text names is exactly the case a loose pattern gets wrong,
+ * silently, with no shape in the values to catch it. The region word, the bare
+ * initialism, or the Chinese: each of those names this column and only this one.
+ */
+const RM_HEADER_RE = /regional\s*manager|manajer\s*regional|\brm\b|区域经理|大区经理/i
+
+/**
  * The site’s own code column on the `Fr&Ag` reference tab — 网点代码 Kode DP.
  *
  * Narrower than `CODE_HEADER_RE`, which matches "kode" on its own and would take
@@ -1190,6 +1211,8 @@ export interface BizModelEntry {
   model: BizModel
   /** `''` when the tab has no Supervisor column, or the cell is blank */
   supervisor: string
+  /** `''` when the tab has no Regional Manager column, or the cell is blank */
+  regionalManager: string
   /** the site’s own code; `''` when the tab has no Kode DP column */
   dpCode: string
   /**
@@ -1265,10 +1288,18 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
 
   const claimed = (C: number) =>
     C === dpCol || C === modelCol || C === agentCol || C === codeCol || C === dpCodeCol
-  const spvCol = findValueCol(m, lastC, headerRow + 4, SPV_HEADER_RE, null, claimed)
+  /* The RM is looked for before the supervisor, not after, and the order is the
+     point: `SPV_HEADER_RE` cannot match this column's title, but taking the RM
+     first means that even a file that titles the two ambiguously hands the
+     narrower pattern its column before the looser one gets to bid. */
+  const rmCol = findValueCol(m, lastC, headerRow + 4, RM_HEADER_RE, null, claimed)
+  const spvCol = findValueCol(
+    m, lastC, headerRow + 4, SPV_HEADER_RE, null,
+    (C) => claimed(C) || C === rmCol,
+  )
   const svcCol = findValueCol(
     m, lastC, headerRow + 4, SERVICE_HEADER_RE, null,
-    (C) => claimed(C) || C === spvCol,
+    (C) => claimed(C) || C === rmCol || C === spvCol,
   )
 
   const headerText = txt(m[headerRow][dpCol])
@@ -1291,13 +1322,14 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
 
     const model = bizModelOf(txt(m[R][modelCol]))
     const supervisor = spvCol >= 0 ? txt(m[R][spvCol]).trim() : ''
+    const regionalManager = rmCol >= 0 ? txt(m[R][rmCol]).trim() : ''
     const service = svcCol >= 0 ? serviceKindOf(txt(m[R][svcCol])) : ''
     const dpCode = dpCodeCol >= 0 ? txt(m[R][dpCodeCol]).trim() : ''
     /* Nothing on this row worth carrying. The test used to be `!model` alone,
        which was right when the model was all this tab held — now a site with a
        named supervisor but a blank Model Bisnis cell has something to say, and
        dropping the row would lose it. */
-    if (!model && !supervisor && !service && !dpCode) continue
+    if (!model && !supervisor && !regionalManager && !service && !dpCode) continue
 
     const c = codeCol >= 0 ? txt(m[R][codeCol]) : ''
     if (c) lastCode = c
@@ -1308,6 +1340,7 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
       name: normKey(name),
       model,
       supervisor,
+      regionalManager,
       service,
       dpCode,
     })
@@ -1345,6 +1378,7 @@ function indexBizModels(entries: BizModelEntry[]) {
       ...prev,
       model: prev.model === e.model ? prev.model : '',
       supervisor: prev.supervisor === e.supervisor ? prev.supervisor : '',
+      regionalManager: prev.regionalManager === e.regionalManager ? prev.regionalManager : '',
       service: prev.service === e.service ? prev.service : '',
       dpCode: prev.dpCode === e.dpCode ? prev.dpCode : '',
     })
@@ -1557,6 +1591,7 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
       /* both filled in from the Fr&Ag reference tab once every sheet has been
          read — see the join in `parseWorkbook` */
       supervisor: '',
+      regionalManager: '',
       dpCode: '',
       sheet: sheetName,
       vals,
@@ -1877,8 +1912,8 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
    */
   /**
    * Fill in the standing facts from the `Fr&Ag` reference tab: the business
-   * model where the readings tab did not carry one, and the supervisor, which
-   * only ever lives there.
+   * model where the readings tab did not carry one, and the supervisor and
+   * regional manager, which only ever live there.
    *
    * Done before the agent join below, which overwrites `agentKey` with the
    * summary sheet's key — `agentCode` is the raw Kode Agent both tabs share, and
@@ -1887,8 +1922,9 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
    * Anything already read off the row itself wins. The older per-agent tabs
    * carry their own Model Bisnis column and `ALL DP DATA` carries Jenis Layanan,
    * and a reference tab that has drifted out of date must not overrule the sheet
-   * the numbers came from. The supervisor has no such contest — the readings tab
-   * never states it — so it is simply copied across.
+   * the numbers came from. The supervisor and the regional manager have no such
+   * contest — the readings tabs never state either — so they are simply copied
+   * across.
    */
   if (bizEntries.length) {
     const { byPair, byName } = indexBizModels(bizEntries)
@@ -1899,6 +1935,7 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
       if (!d.bizModel) d.bizModel = e.model
       if (!d.service) d.service = e.service
       if (!d.supervisor) d.supervisor = e.supervisor
+      if (!d.regionalManager) d.regionalManager = e.regionalManager
       if (!d.dpCode) d.dpCode = e.dpCode
     }
   }
