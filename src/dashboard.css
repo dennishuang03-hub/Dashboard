@@ -3131,3 +3131,105 @@ body.shooting .titleblock,
 body.shooting .topbar .titleblock{padding:11px 0 !important;text-align:center !important}
 body.shooting .titleblock h1{font-size:23px !important;line-height:1.2 !important}
 body.shooting .titleblock .meta{font-size:13.5px !important;line-height:1.5 !important}
+
+/* ---------- the bands, the section heads and the counters ----------
+
+   Same fault as the top bar, three more places: `@media (max-width:640px)`
+   steps the type and the padding down so a 390px screen is not all chrome, and
+   nothing undid it for the shot. The capture is 1480px wide whichever device
+   took it, so a phone's export came back with a 15.5px band heading and 11px
+   gutters where the same button on a desk produces 17px and 16px — two pictures
+   of the same report that do not stack. */
+body.shooting .partband,
+body.shooting .dphead{padding:12px 16px !important;gap:8px 13px !important}
+body.shooting .partband{gap:13px !important}
+body.shooting .dphead h2,
+body.shooting .partband .parttitle{font-size:17px !important;line-height:normal !important}
+body.shooting .dphead .partsub,
+body.shooting .partband .partsub{
+  font-size:12.5px !important;margin-top:2px !important;line-height:1.4 !important;
+}
+body.shooting .sechead{font-size:16px !important;padding:9px 14px !important;gap:11px !important}
+body.shooting .sechead .secnum{width:26px !important;height:26px !important;font-size:15px !important}
+body.shooting .sechead .seccount{font-size:12px !important;padding:3px 10px !important}
+body.shooting .cards{gap:10px !important}
+body.shooting .dpstats{gap:10px !important}
+body.shooting .dpstat{padding:9px 13px !important}
+body.shooting .dpstat .n{font-size:31px !important}
+body.shooting .dpstat .l{font-size:13.5px !important}
+
+/* ---------- the panel heading ----------
+
+   On a phone the heading wraps and the title takes a line of its own, because
+   at 390px a title and a KPI switcher cannot share one. At capture width they
+   can, and left wrapped the switcher dropped to a second line under a heading
+   with room to spare beside it. */
+body.shooting .panel > h3{
+  padding:10px 14px !important;gap:12px !important;
+  font-size:15px !important;min-height:40px !important;flex-wrap:nowrap !important;
+}
+body.shooting .panel > h3 .ptitle{flex:1 1 0% !important}
+body.shooting .panel > h3 .hsel{flex:none !important;max-width:60% !important}
+/* Padding only, and never the DP/CP table's own body: that one carries
+   `padding:0` as an inline style so the grid sits flush against the panel, and
+   an `!important` here would outrank it and put a gutter round the table — the
+   same trap the `body.shooting .panel .body` rule above is written around. */
+body.shooting .panel:not(.dptable) .body{padding:10px 13px !important}
+
+/* ---------- the Status key ----------
+
+   Three pills in a row, not a stack. The phone rule turns them into a full-width
+   column because 390px cannot hold a badge, a range and a count side by side;
+   in a 1480px picture that column is three slabs of empty pill with the counts
+   floated off to the right, and the footnote — hidden on a phone because it
+   repeats under the table — is missing from a picture that has no "under the
+   table" to repeat it in. */
+body.shooting .stleg{padding:8px 13px !important;gap:8px 14px !important}
+body.shooting .stleg-h{flex:none !important}
+body.shooting .stleg-pills{
+  flex:0 1 auto !important;gap:8px !important;
+  flex-direction:row !important;align-items:center !important;
+}
+body.shooting .stleg-p{width:auto !important}
+body.shooting .stleg-p .stleg-r{margin-right:0 !important}
+body.shooting .stleg-note{display:inline !important;min-width:auto !important}
+
+/* ---------- the grid itself ----------
+
+   This is the one that cost a phone export its data rather than its looks.
+
+   The pinned name column is capped at 172px on a phone and the name inside it is
+   ellipsised, so the eight columns of figures keep the width they need. On
+   screen nothing is lost: the whole name is in the cell's `title`, and the
+   column can be read at leisure. A picture has neither. "JAKARTA BARAT KEMB…"
+   is where the name ends, permanently, for everyone the file is sent to — and
+   the capture is 1480px wide, so the room the cap was protecting was never
+   short in the first place.
+
+   The category headings are the same rule from the other side: `nowrap` on a
+   phone because the grid pans and a five-line heading would set the row height
+   for every row under it. Photographed, nothing pans — the headings simply push
+   the picture out to 1615px where a desk's export of the same table is 1330px,
+   and the type comes out correspondingly smaller wherever it is read. */
+body.shooting table.dpgrid th.sticky,
+body.shooting table.dpgrid td.sticky{max-width:none !important}
+body.shooting .dpname .dptext{
+  overflow:visible !important;text-overflow:clip !important;white-space:nowrap !important;
+}
+body.shooting table.dpgrid th.cat{max-width:104px !important;white-space:normal !important}
+
+/* ---------- and nothing under the cursor ----------
+
+   `:hover` is a live state and html2canvas copies computed style, so whatever
+   the pointer happened to be resting on is photographed in its hover colour —
+   one row of the table tinted lighter than the rest, or a column heading in
+   `--jt-red-dark` against seven in `--jt-red`, which reads as data rather than
+   as an accident of where the mouse was left.
+
+   `pointer-events:none` is the fix rather than a rule per hover state: an
+   element that is not a hit-test target does not match `:hover` at all, so this
+   covers the rows, the headings, the cards and anything added later, without
+   naming a background colour that would then have to be kept in step with the
+   theme. Nothing in a capture is clickable anyway — it lasts for the length of
+   the shot and comes off in the `finally`. */
+body.shooting .wrap{pointer-events:none !important}
