@@ -893,6 +893,149 @@ body.shooting .chartscroll{overflow:visible !important}
 .dpstat.bad  .n{color:var(--jt-red)}
 .dpstat.mute .n{color:var(--ink-3)}
 
+/* ---------- Display reports: the headline cards ----------
+
+   One card per headline figure — the region's (or the chosen agent's) figure
+   for the day, recomputed from the DP rows, with its H-1, month and week beside
+   it. On the 0730 & 1200 page there are two, and they are buttons: the one
+   pressed is the figure the status column, the rankings and the sort follow. */
+.dxcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:10px;margin-top:20px}
+.dxcard{
+  display:flex;flex-direction:column;gap:4px;text-align:left;font:inherit;color:inherit;
+  background:var(--card);border-radius:var(--radius);box-shadow:var(--shadow);
+  border:1px solid transparent;border-top:4px solid #4A4A4A;padding:12px 16px 13px;
+}
+.dxcard.ok{border-top-color:var(--green)}
+.dxcard.bad{border-top-color:var(--jt-red)}
+button.dxcard{cursor:pointer;transition:background .13s ease,border-color .13s ease}
+button.dxcard:hover{background:var(--card-2)}
+button.dxcard:focus-visible{outline:2px solid var(--jt-red-lit);outline-offset:2px}
+.dxcards.multi .dxcard:not(.on){opacity:.72}
+.dxcards.multi .dxcard.on{border-color:var(--line);border-top-color:#4A4A4A}
+.dxcards.multi .dxcard.on.ok{border-top-color:var(--green)}
+.dxcards.multi .dxcard.on.bad{border-top-color:var(--jt-red)}
+.dxc-lab{font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--ink-2)}
+.dxc-main{display:flex;align-items:baseline;gap:12px;flex-wrap:wrap}
+.dxc-val{font-size:36px;font-weight:800;letter-spacing:-1px;line-height:1.1;font-variant-numeric:tabular-nums}
+.dxcard.ok .dxc-val{color:var(--green)}
+.dxcard.bad .dxc-val{color:var(--jt-red-lit)}
+.dxc-delta{font-size:14px;font-weight:800;font-variant-numeric:tabular-nums}
+.dxc-tgt{font-size:12.5px;color:var(--ink-3);font-weight:600}
+.dxc-foot{
+  display:flex;flex-wrap:wrap;gap:6px 18px;margin-top:6px;padding-top:8px;
+  border-top:1px solid var(--line);font-size:13px;font-weight:700;font-variant-numeric:tabular-nums;
+}
+.dxc-foot em{font-style:normal;color:var(--ink-3);font-weight:600;margin-right:6px}
+.dxc-foot i{font-style:normal;font-size:12px}
+/* the column the page is judged on, marked in the header so the eye finds it */
+table.dxgrid thead th.dxkey{box-shadow:inset 0 -3px 0 var(--amber)}
+.dxsection .dpfilters .act-clear{margin-left:auto}
+
+/* ---------- Display tables: the dated columns, in amber ----------
+
+   A header the sheet merges across several dates is a band, and the date
+   headings under it are amber instead of red — one colour for every dated run,
+   so "this column is a day or a week" reads the same everywhere on the page.
+
+   Dark ink on the amber, not white: white on yellow is the one pairing that
+   fails at a glance. The band above is a deep bronze with amber lettering, so
+   the band and its dates read as one block, and a thin darker rule between the
+   dates keeps three neighbouring days from running together. */
+table.dxgrid thead tr.secrow th.dxband{
+  background:#3B2C06;color:#FFD466;border-bottom:2px solid #F5B82E;
+}
+table.dxgrid thead tr.catrow th.dxdate{
+  background:#F5B82E;color:#1E1600;text-align:center;
+  border-left:1px solid rgba(30,22,0,.18);
+}
+table.dxgrid thead tr.catrow th.dxdate.seam{border-left:2px solid #4A4A4A}
+table.dxgrid thead tr.catrow th.dxdate:hover{background:#FFC84A}
+table.dxgrid thead tr.secrow th.dxband:hover{background:#3B2C06}
+/* the column the page is judged on: a red underline, which amber cannot hide */
+table.dxgrid thead tr.catrow th.dxdate.dxkey{box-shadow:inset 0 -3px 0 var(--jt-red)}
+
+/* ---------- Display tables: one heading per RM ----------
+
+   The list arrives in RM order, and each RM's run opens with a heading row:
+   the name, how many sites, the RM's own figure for the day, how many sites
+   missed — and, when the RM has sites with nothing due that day, the tick that
+   shows them. The label is pinned to the left edge so it stays in view while
+   the figures scroll sideways under it. */
+table.dxgrid tbody tr.rmsep td{
+  padding:0;background:#151515;border-top:2px solid var(--jt-red);border-bottom:1px solid var(--line);
+}
+.rmsep-in{
+  position:sticky;left:0;display:inline-flex;align-items:center;flex-wrap:wrap;gap:4px 16px;
+  padding:8px 12px;font-size:12.5px;font-weight:700;color:var(--ink-3);white-space:nowrap;
+}
+.rmsep-in b{font-size:13px;font-weight:800;color:var(--ink);letter-spacing:.3px;text-transform:uppercase}
+table.dxgrid tbody tr.rmsep:first-child td{border-top:none}
+
+/* The two "show the zeros" ticks — one per RM heading, one for the lot. Drawn
+   as quiet chips so they read as a choice about the list, not as data. */
+.rmzero,.zerotoggle{
+  display:inline-flex;align-items:center;gap:6px;cursor:pointer;white-space:nowrap;
+  border:1px dashed #5A5A5A;border-radius:99px;padding:2px 10px 2px 7px;
+  font-size:12px;font-weight:700;color:var(--ink-3);
+}
+.rmzero:hover,.zerotoggle:hover{border-color:var(--ink-3);color:var(--ink-2)}
+.rmzero.on,.zerotoggle.on{border-style:solid;border-color:var(--amber);color:var(--amber)}
+.rmzero:has(input:disabled){opacity:.55;cursor:default}
+.zerotoggle{padding:6px 12px 6px 9px;font-size:12.5px}
+.zerotoggle b{color:var(--ink-2)}
+.rmzero input,.zerotoggle input{margin:0;accent-color:var(--amber)}
+body.shooting .rmzero,body.shooting .zerotoggle{display:none !important}
+
+/* ---------- Display pages: the per-agent columns ----------
+
+   Ten columns and a target line in the height of one table row group, where the
+   horizontal bar list needed six hundred pixels. Each column is a button: the
+   table below follows the one pressed, and the others dim so the choice is
+   visible from the chart itself. */
+.agpanel > h3 .aghint{font-size:12px;font-weight:600;color:var(--ink-3);margin-left:auto}
+.agpanel > h3 .act-clear{margin-left:auto}
+.agchart{
+  --ag-plot:128px;--ag-lab:40px;
+  position:relative;display:grid;grid-template-columns:repeat(var(--ag-n),minmax(62px,1fr));
+  gap:8px;padding-top:22px;overflow-x:auto;
+}
+.agcol{
+  display:flex;flex-direction:column;align-items:stretch;gap:0;min-width:0;
+  background:none;border:0;padding:0;font:inherit;color:inherit;cursor:pointer;border-radius:8px;
+}
+.agplot{position:relative;height:var(--ag-plot);display:flex;align-items:flex-end;justify-content:center}
+.agfill{
+  position:relative;width:min(64%,52px);border-radius:7px 7px 2px 2px;
+  background:var(--green);transition:filter .13s ease,opacity .13s ease,transform .13s ease;
+}
+.agcol.bad .agfill{background:var(--jt-red-lit)}
+.agval{
+  position:absolute;bottom:100%;left:50%;transform:translateX(-50%);margin-bottom:3px;
+  font-size:12.5px;font-weight:800;white-space:nowrap;font-variant-numeric:tabular-nums;color:var(--ink);
+}
+.agname{
+  height:calc(var(--ag-lab) - 16px);display:flex;align-items:flex-end;justify-content:center;
+  font-size:12px;font-weight:800;letter-spacing:.2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+  border-top:1px solid var(--line);padding-top:5px;
+}
+.agsub{height:16px;text-align:center;font-size:11px;font-weight:600;color:var(--ink-3);white-space:nowrap}
+.agsub em{font-style:normal;color:var(--jt-red-lit);font-weight:800}
+.agcol:hover .agfill{filter:brightness(1.15);transform:translateY(-2px)}
+.agcol:focus-visible{outline:2px solid var(--jt-red-lit);outline-offset:2px}
+.agcol.on .agfill{box-shadow:0 0 0 2px var(--card),0 0 0 4px var(--ink)}
+.agcol.on .agname{color:var(--amber)}
+.agcol.dim .agfill{opacity:.3}
+.agcol.dim .agval,.agcol.dim .agname{opacity:.55}
+.agtarget{
+  position:absolute;left:0;right:0;pointer-events:none;z-index:1;
+  bottom:calc(var(--ag-lab) + var(--ag-plot) * var(--ag-t) / 100);
+  border-top:2px dashed #8FB4FF;
+}
+.agtarget span{
+  position:absolute;right:0;bottom:2px;font-size:11px;font-weight:800;color:#8FB4FF;
+  background:var(--card);padding:0 4px;border-radius:4px;
+}
+
 .row-dp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
 @media (max-width:900px){ .row-dp{grid-template-columns:1fr} }
 /* caption under a ranking chart — explains an exclusion, so it stays visible in
@@ -2602,6 +2745,26 @@ body.shoot-table .dptable .body table.dpgrid{min-width:100% !important}
 [data-theme="light"] .dpstat.warn{background:linear-gradient(180deg,#FFFFFF 0%,#FDF8EE 100%)}
 [data-theme="light"] .dpstat.bad{background:linear-gradient(180deg,#FFFFFF 0%,#FDF3F2 100%)}
 [data-theme="light"] .dpstat.mute{background:linear-gradient(180deg,#FFFFFF 0%,#F5F7FB 100%)}
+[data-theme="light"] .dxcard{border-color:var(--line);border-top-width:4px}
+[data-theme="light"] .dxcard.ok{background:linear-gradient(180deg,#FFFFFF 0%,#F2FAF5 100%)}
+[data-theme="light"] .dxcard.bad{background:linear-gradient(180deg,#FFFFFF 0%,#FDF3F2 100%)}
+[data-theme="light"] .dxcard.bad .dxc-val{color:var(--jt-red)}
+[data-theme="light"] .dxcards.multi .dxcard.on{border-color:#9AA3B2}
+/* the amber outranks the light theme's red gradient on every heading */
+[data-theme="light"] table.dxgrid thead tr.secrow th.dxband{
+  background:linear-gradient(180deg,#FFF3D1 0%,#FFE7A6 100%);color:#6B4D00;border-bottom-color:#E0A21A;
+}
+[data-theme="light"] table.dxgrid thead tr.catrow th.dxdate{
+  background:linear-gradient(180deg,#FFCB47 0%,#F5B82E 100%);color:#241A00;
+}
+[data-theme="light"] table.dxgrid thead tr.catrow th.dxdate:hover{background:#FFD466}
+[data-theme="light"] table.dxgrid thead tr.secrow th.dxband:hover{background:linear-gradient(180deg,#FFF3D1 0%,#FFE7A6 100%)}
+[data-theme="light"] table.dxgrid tbody tr.rmsep td{background:#EEF2F8}
+[data-theme="light"] .rmzero,[data-theme="light"] .zerotoggle{border-color:#B8C0CE}
+[data-theme="light"] .rmzero.on,[data-theme="light"] .zerotoggle.on{border-color:#B47607;color:#8A5A00}
+[data-theme="light"] .agcol.on .agname{color:#8A5A00}
+[data-theme="light"] .agtarget{border-top-color:#3E6FD8}
+[data-theme="light"] .agtarget span{color:#3E6FD8}
 
 /* ---------- action buttons ----------
    Two of the six were drawn for a dark surround and lose their edges on white:
@@ -2808,6 +2971,8 @@ body.shoot-table .dptable .body table.dpgrid{min-width:100% !important}
 }
 
 @media print{
+  /* the "show the zeros" ticks are controls, not report */
+  .rmzero,.zerotoggle{display:none !important}
   /* landscape and colour-accurate: without print-color-adjust Chrome drops the
      red table headers and the green/red status colours entirely */
   @page{ size:A4 landscape; margin:8mm }

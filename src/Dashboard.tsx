@@ -2,18 +2,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   CATEGORY_ZH, KPI_SECTIONS, PALETTE, STATUS_COLOR, agentFull, agentZh, averageRows,
-  dayName, explain, fmtDate, fmtDateFull, iconFor, exportPng, isIgnoredSheet, isoDay, kpiSeries,
+  dayName, explain, fmtDate, fmtDateFull, iconFor, exportPng, isDisplaySheet, isIgnoredSheet, isoDay, kpiSeries,
   parseWorkbook, pct, readSheetNames, readWorkbookSheets, resolveDpDate, statusOf, targetFor,
 } from './lib/jnt'
 import type { Explanation, Kpi, Model } from './lib/jnt'
 import { LineChart, Sparkline } from './components/Charts'
 import type { AxisLabel } from './components/Charts'
 import BtnIcon from './components/BtnIcon'
+import DisplaySection from './components/DisplaySection'
 import DpSection from './components/DpSection'
 import JntLogo from './components/JntLogo'
 import Sidebar, { NavButton } from './components/Sidebar'
-import type { NavGroup } from './components/Sidebar'
+import type { IconName, NavGroup, NavItem } from './components/Sidebar'
 import Zh from './components/Zh'
+import { parseDisplays } from './lib/display'
+import type { DisplayId, DisplayReport } from './lib/display'
 import type { Identity } from './lib/session'
 import type { Theme } from './lib/theme'
 import './dashboard.css'
@@ -30,8 +33,16 @@ import './dashboard.css'
  */
 const VIEW_AGEN = 'agen'
 const VIEW_DP = 'dp'
+/**
+ * The three per-DP "Display" reports, each a sub-entry under Data per DP/CP.
+ * The id is the report's own, prefixed, so the rail and the page cannot
+ * disagree about which report an entry means.
+ */
+const VIEW_DX = 'dx-'
 
-type View = typeof VIEW_AGEN | typeof VIEW_DP
+type View = typeof VIEW_AGEN | typeof VIEW_DP | `${typeof VIEW_DX}${DisplayId}`
+
+const DX_ICON: Record<DisplayId, IconName> = { absensi: 'users', ttd730: 'clock', ritase: 'check' }
 
 /** Below this the rail goes off-canvas and the hamburger appears. */
 const DRAWER_BP = 900
@@ -108,6 +119,9 @@ export default function Dashboard({
   onToggleTheme: () => void
 }) {
   const [model, setModel] = useState<Model | null>(null)
+  /* The Display tabs — a separate parse, so a workbook without them still makes
+     a whole dashboard and simply offers no sub-entries. */
+  const [displays, setDisplays] = useState<DisplayReport[]>([])
   /* The toolbar picture is locked while it is being taken — a second press used
      to start a second capture and save the same file twice. */
   const [pngBusy, setPngBusy] = useState(false)
@@ -123,7 +137,13 @@ export default function Dashboard({
 
   /* ------------------------------------------------------------- the rail */
 
-  const [view, setView] = useState<View>(VIEW_AGEN)
+  const [viewWanted, setView] = useState<View>(VIEW_AGEN)
+  /* A Display page whose tab is missing from a newly loaded file falls back to
+     the DP/CP page it lives under, rather than to a page with nothing behind it. */
+  const dxReport = viewWanted.startsWith(VIEW_DX)
+    ? displays.find((r) => `${VIEW_DX}${r.id}` === viewWanted) ?? null
+    : null
+  const view: View = viewWanted.startsWith(VIEW_DX) && !dxReport ? VIEW_DP : viewWanted
   /** desktop: icons only. Two separate states — see the note in Sidebar.tsx. */
   const [mini, setMini] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -178,17 +198,27 @@ export default function Dashboard({
        * The names come back for a fraction of the cost of the cells, and they
        * are enough to leave out the tabs this dashboard does not show (see
        * `isIgnoredSheet`) before paying to read any of them.
+       *
+       * The Display tabs are read on their own, with `styles` on: which of
+       * their columns are hidden is how the table decides what to show, and
+       * SheetJS only reports that when it reads the column styles too.
        */
       const names = readSheetNames(buf)
-      const wb = readWorkbookSheets(buf, names.filter((n) => !isIgnoredSheet(n)))
+      const wb = readWorkbookSheets(buf, names.filter((n) => !isIgnoredSheet(n) && !isDisplaySheet(n)))
       const mdl = parseWorkbook(wb)
+      /* A broken Display tab must not take the daily dashboard down with it. */
+      let dx: DisplayReport[] = []
+      const dxNames = names.filter(isDisplaySheet)
+      try { dx = dxNames.length ? parseDisplays(readWorkbookSheets(buf, dxNames, true)) : [] } catch { dx = [] }
       setModel(mdl)
+      setDisplays(dx)
       setFileName(name)
       setAgentKey('TOTAL')
       setDateIdx(Math.max(0, mdl.dates.length - 1))
       setErr('')
     } catch (ex) {
       setModel(null)
+      setDisplays([])
       setErr((ex as Error).message)
     }
   }, [])
@@ -313,11 +343,11 @@ export default function Dashboard({
      * that list is unreadable at any scale, so the summary shot leaves it out
      * and its own button takes it full width.
      */
-    const shot: Record<View, { stem: string; cls: string }> = {
-      [VIEW_AGEN]: { stem: `jnt-agen-${stamp}`, cls: 'shoot-main' },
-      [VIEW_DP]: { stem: `jnt-dp-cp-${stamp}`, cls: 'shoot-dp' },
-    }
-    const pick = shot[view]
+    const pick = view === VIEW_AGEN
+      ? { stem: `jnt-agen-${stamp}`, cls: 'shoot-main' }
+      : dxReport
+        ? { stem: `jnt-dp-${dxReport.id}-${dxReport.date ? isoDay(dxReport.date) : 'laporan'}`, cls: 'shoot-dp' }
+        : { stem: `jnt-dp-cp-${stamp}`, cls: 'shoot-dp' }
     setPngBusy(true)
     setErr('')
     try {
@@ -430,6 +460,12 @@ export default function Dashboard({
             ? `${model.dps.length.toLocaleString('id-ID')} titik`
             : 'belum ada data',
         },
+        /* Indented under Data per DP/CP: the same drop points, one category
+           each, in more depth. Offered only for the tabs the file carries. */
+        ...displays.map((r): NavItem => ({
+          id: `${VIEW_DX}${r.id}`, label: r.label, zh: r.zh, icon: DX_ICON[r.id], sub: true,
+          hint: `${r.rows.length.toLocaleString('id-ID')} titik · ${r.kpis.map((k) => k.label).join(' & ')}`,
+        })),
       ],
     },
   ]
@@ -465,6 +501,9 @@ export default function Dashboard({
             look at yesterday's copy and believe it was live. The drop zone on
             the empty state keeps the ability, where it is a recovery path rather
             than a standing offer. */}
+        {/* The Display reports are a one-day snapshot with their own date on the
+            band, so the day picker would describe a scope that is not on screen. */}
+        {!dxReport && (
         <Field label="Tanggal laporan · 报表日期">
           <select value={di} onChange={(e) => setDateIdx(Number(e.target.value))}>
             {dates.map((d, i) => (
@@ -475,6 +514,7 @@ export default function Dashboard({
             ))}
           </select>
         </Field>
+        )}
         <Field label={`Agen · 代理区 — ${model.region}`}>
           <select className="agentsel" value={agentKey} onChange={(e) => setAgentKey(e.target.value)}>
             <option value="TOTAL">SEMUA AGEN ({model.rows.length})</option>
@@ -515,7 +555,7 @@ export default function Dashboard({
           >
             <BtnIcon name={pngBusy ? 'spin' : 'image'} />
             <span>
-              {pngBusy ? 'Menyimpan…' : view === VIEW_DP ? 'Simpan PNG · Ringkasan' : 'Simpan PNG'}
+              {pngBusy ? 'Menyimpan…' : view !== VIEW_AGEN ? 'Simpan PNG · Ringkasan' : 'Simpan PNG'}
             </span>
           </button>
           {/* "Cetak / PDF" used to sit here. The print stylesheet it drove is
@@ -665,6 +705,16 @@ export default function Dashboard({
         <DpSection
           model={model} kpis={kpis} agentKey={agentKey}
           agentLabel={current.label} day={dpDay} wanted={dToday} onError={setErr}
+        />
+      )}
+
+      {/* Parts B1–B3: the Display reports. Keyed by report so switching between
+          them starts each with its own filters rather than the last one's. */}
+      {dxReport && (
+        <DisplaySection
+          key={dxReport.id} report={dxReport}
+          part={`B${displays.indexOf(dxReport) + 1}`}
+          agentKey={agentKey} agentLabel={current.label} onError={setErr}
         />
       )}
 

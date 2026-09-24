@@ -206,7 +206,20 @@ export const REGION_LABEL = 'Jawa & Bali'
  * `api/_lib/xlsxsplit.ts` and never sends them; change one and change the other.
  */
 const IGNORED_SHEET_RE = /^\s*otpu\s*[-_ ]*(agen|seller)/i
-export const isIgnoredSheet = (name: string): boolean => IGNORED_SHEET_RE.test(name)
+/* The RM Pencapaian tabs (per regional manager) are not shown here yet. Named so
+   they are skipped rather than read as drop-point tabs — "RM Pencapaian Harian"
+   is shaped enough like one to be merged into the DP/CP list as 101 extra rows. */
+const UNUSED_SHEET_RE = /^\s*rm\s+pencapaian\b/i
+export const isIgnoredSheet = (name: string): boolean =>
+  IGNORED_SHEET_RE.test(name) || UNUSED_SHEET_RE.test(name)
+
+/**
+ * The per-DP "Display" tabs, which `lib/display.ts` reads into reports of their
+ * own. `parseWorkbook` skips them: left to fall through, "Display 730 & 1200"
+ * is merged into the DP/CP list as 1,707 extra sites. Same test as
+ * `displayIdOf` there, kept here so this file does not import that one.
+ */
+export const isDisplaySheet = (name: string): boolean => /^\s*display\b/i.test(name)
 
 export type Status = 'ok' | 'warn' | 'bad' | 'na'
 
@@ -1705,7 +1718,7 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
     const ws = wb.Sheets[sheetName]
 
     /* Another report's tab — not part of this dashboard, not a broken sheet. */
-    if (isIgnoredSheet(sheetName)) return
+    if (isIgnoredSheet(sheetName) || isDisplaySheet(sheetName)) return
 
     /* per-agent drop-point tab — parsed into its own model, never merged into
        the agent rows (see `looksLikeDpSheet`) */
@@ -2110,10 +2123,14 @@ export function readSheetNames(buf: ArrayBuffer): string[] {
  * full read, because `sheets: []` matches no tab at all and would turn a file
  * this function was merely unsure about into an unreadable one.
  */
-export function readWorkbookSheets(buf: ArrayBuffer, names: string[]): XLSX.WorkBook {
+export function readWorkbookSheets(
+  buf: ArrayBuffer, names: string[],
+  /** also read column widths and hidden flags (`!cols`) — slower, so opt-in */
+  styles = false,
+): XLSX.WorkBook {
   if (!names.length) return readWorkbook(buf)
   return XLSX.read(new Uint8Array(buf), {
-    type: 'array', cellDates: false, cellNF: true, sheets: names,
+    type: 'array', cellDates: false, cellNF: true, sheets: names, cellStyles: styles,
   })
 }
 
