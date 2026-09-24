@@ -114,13 +114,11 @@ async function report(req: Request): Promise<Response> {
   }
 
   /*
-   * Half a workbook, unless the caller asks otherwise.
+   * The daily tabs only, unless the caller asks otherwise.
    *
-   * The dashboard opens on the daily report and reads the OTPU tabs only when
-   * somebody goes looking for them — so sending those tabs to every visitor is
-   * several megabytes spent on a page most of them never open. `?part=otpu`
-   * fetches the other half when they do, and `?part=full` still sends the file
-   * entire, which is what an export or a debugging session wants.
+   * The OTPU tabs in the workbook are shown on a separate site, so sending them
+   * would be several megabytes nobody here reads. `?part=full` still sends the
+   * file entire, which is what an export or a debugging session wants.
    *
    * `splitWorkbook` returns the original bytes for anything it cannot split
    * safely, so the worst case here is the traffic this route already had.

@@ -151,7 +151,7 @@ input[type=radio]:disabled{opacity:.45;cursor:not-allowed}
 
 /* ---------- Scrollbars ----------
 
-   The dropdowns and the seller table all scroll, and every one of them was
+   The dropdowns and the DP/CP table all scroll, and every one of them was
    drawing the platform's default bar: on Windows a light-grey trough with a
    chunky mid-grey thumb, which inside a #1F1F1F popover is the brightest thing
    on the panel. It pulled the eye straight to the one element carrying no
@@ -1293,69 +1293,6 @@ body.shooting .chartscroll{overflow:visible !important}
    object, not a lookalike. What it adds is the structure a single list does not
    have — two titled sections, and a footer, because this panel is staged and
    needs somewhere to say so. */
-.of{position:relative;display:inline-flex}
-.of-btn{max-width:none}
-.of.open .ms-caret{transform:rotate(180deg)}
-.of.open .ms-btn{border-color:var(--jt-red);background:var(--card-3)}
-.of-ico{flex:none;width:14px;height:14px;color:var(--ink-3)}
-.of-btn.filtered .of-ico{color:var(--jt-red-lit)}
-/* Taller than a plain MultiSelect: this one carries two lists, a section head
-   each and a footer, and at `.ms-pop`'s 340px the flex box paid for the footer
-   by squeezing both lists down to three rows. Capped against the viewport too,
-   so a short window scrolls the panel rather than running it off the bottom. */
-.of-pop{min-width:264px;max-width:300px;max-height:min(470px,78vh)}
-/* Opens leftwards, for the reason spelled out above `.ms-pop`: this control sits
-   fourth among the bar's divs, far enough right that a 300px panel anchored to
-   its left edge runs off the page. Same static counting rule, same trade. */
-.dpfilters .of:nth-of-type(n+3) .of-pop{left:auto;right:0}
-
-/* A section head, not a panel head: `.ms-head` has a rule under it that would
-   cut the panel in three once there are two of them. The separation between the
-   two halves is carried by the margin above the second instead. */
-.of-sec{
-  display:flex;align-items:center;gap:8px;
-  padding:5px 8px 6px;
-}
-.of-sec2{margin-top:5px;border-top:1px solid var(--line);padding-top:9px}
-.of-secico{flex:none;width:14px;height:14px;color:var(--ink-3)}
-.of-sectitle{
-  flex:1;min-width:0;font-size:12.5px;font-weight:800;color:var(--ink);
-  white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
-}
-/* Right-aligned in the section head, as in the reference. Smaller and greyer
-   than a day row so it reads as a control over the list rather than the first
-   item in it. */
-.of-master{
-  flex:none;display:inline-flex;align-items:center;gap:6px;cursor:pointer;
-  font-size:12px;font-weight:700;color:var(--ink-3);
-}
-.of-master:has(input:disabled){opacity:.45;cursor:not-allowed}
-/* Both lists get a ceiling of their own rather than sharing whatever the panel
-   has left. Left to flex, adding a ninth floor silently stole a row from the
-   days below it. */
-.of-list{overflow-y:auto;min-height:0;max-height:166px}
-.of-days{max-height:176px}
-/* Greyed, not hidden. The days keep their ticks while there is no floor to read
-   them on, and a list that vanished would make the panel jump under the cursor
-   every time the top section changed. */
-.of-idle{opacity:.45;pointer-events:none}
-.of-radio input{flex:none}
-
-.of-foot{
-  display:flex;gap:7px;margin-top:6px;padding-top:7px;border-top:1px solid var(--line);
-}
-.of-foot button{
-  flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;
-  padding:7px 10px;border-radius:8px;cursor:pointer;
-  font-family:inherit;font-size:13px;font-weight:700;
-  transition:background .13s ease,border-color .13s ease;
-}
-.of-foot svg{flex:none;width:13px;height:13px}
-.of-reset{border:1.5px solid var(--line);background:var(--card);color:var(--ink-2)}
-.of-reset:hover{background:var(--card-3);border-color:#4A4A4A;color:var(--ink)}
-.of-apply{border:1.5px solid var(--jt-red);background:var(--jt-red);color:#fff}
-.of-apply:hover{background:var(--jt-red-lit);border-color:var(--jt-red-lit)}
-.of-foot button:focus-visible{outline:2px solid var(--jt-red-lit);outline-offset:1px}
 
 /* ---------- the column switch ----------
 
@@ -1380,12 +1317,6 @@ body.shooting .chartscroll{overflow:visible !important}
   font-size:12px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;color:var(--ink-3);
 }
 .dpcoltitle .zh{text-transform:none;letter-spacing:0}
-/* the count is the one thing that survives a sideways scroll: a hidden column
-   leaves no gap behind it, so "8/11" in red is the standing evidence that
-   something is switched off rather than missing from the workbook */
-.dpcoln{font-size:13px;font-weight:700;color:var(--ink-2);font-variant-numeric:tabular-nums}
-.dpcoln b{color:var(--ink);font-weight:800}
-.dpcoln.off b{color:var(--jt-red-lit)}
 
 .dpcolwrap{display:flex;flex-wrap:wrap;gap:7px 16px;align-items:center}
 /* a section's columns stay together as one cluster, so the row reads in the
@@ -1394,36 +1325,6 @@ body.shooting .chartscroll{overflow:visible !important}
 .colgrph{
   font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;
   color:var(--ink-3);margin-right:1px;
-}
-
-/* ---------- Daily-column switches (OTPU Seller) ----------
-
-   Three figures — Total Order, Volume OTPU, %OTPU — each with a tick that shows
-   or hides its band and a dropdown that picks which of the week's days that band
-   covers. They sit on a bar of their own under the filter row because they are
-   not filters: nothing here changes which sellers are listed, only how much of
-   each one the table draws.
-
-   One figure per line, stacked, rather than three pairs strung along a single
-   row. Side by side they read as one long list of six controls and the tick
-   that belongs to a dropdown is ambiguous at a glance; stacked, each line is
-   one figure and the eye can run down the ticks alone. */
-.dailybar{
-  display:flex;flex-direction:column;align-items:flex-start;gap:6px;
-  padding:9px 13px;border-bottom:1px solid var(--line);background:var(--card-2);
-}
-.dailybar-lab{
-  font-size:11px;font-weight:800;letter-spacing:.4px;text-transform:uppercase;
-  color:var(--ink-3);
-}
-.dailyrow{display:flex;align-items:center;gap:8px}
-/* A floor under the tick so the three dropdowns start on the same x. The labels
-   are different lengths — "%OTPU Harian" against "Volume OTPU Harian" — and
-   ragged dropdowns make the block look like three unrelated controls. */
-.dailyrow .colchip{min-width:250px}
-@media (max-width:720px){
-  .dailyrow{flex-wrap:wrap}
-  .dailyrow .colchip{min-width:0}
 }
 .colchip{
   display:inline-flex;align-items:center;gap:7px;white-space:nowrap;cursor:pointer;
@@ -1948,191 +1849,6 @@ body.shoot-table .dptable .stleg{width:0;min-width:100%}
    plate. Specificity has to beat `body.shooting .panel .body table` (three
    classes), hence the longer selector rather than a bare `table.dpgrid`. */
 body.shoot-table .dptable .body table.dpgrid{min-width:100% !important}
-
-/* ---------- On Time Pick Up ----------
-
-   The OTPU pages reuse the DP/CP furniture wholesale — `.dpstat`, `.dpfilters`,
-   `.dpscroll`, `.dpgrid`, `.dphead` — and that reuse is the point rather than a
-   shortcut. Those classes already carry the sticky-header offsets, the capture
-   overrides and the print rules, all of which took a while to get right; a
-   parallel set of table styles would have had to relearn every one of them, and
-   would have drifted the first time one was fixed on only one side.
-
-   What is genuinely new is below: the headline cards, which are not KPI cards,
-   and the comparison pills, which the DP table has no equivalent of. */
-
-.otcards{
-  display:grid;grid-template-columns:repeat(auto-fit,minmax(238px,1fr));
-  gap:10px;margin-bottom:12px;
-}
-/* The red seam along the top is what ties these to the band above them; the
-   two comparison cards then recolour it to say which way they went. Green and
-   red are the same pair the deltas use everywhere else on the dashboard, so a
-   colour never means two things. */
-.otcard{
-  position:relative;background:var(--card);border-radius:var(--radius);
-  box-shadow:var(--shadow);padding:14px 16px 15px;
-  border-top:3px solid var(--jt-red);
-}
-.otcard.t-up{border-top-color:var(--green)}
-.otcard.t-down{border-top-color:var(--jt-red-lit)}
-.otc-lab{
-  font-size:11.5px;font-weight:800;letter-spacing:1.1px;text-transform:uppercase;
-  color:var(--ink-2);
-}
-.otc-lab .zh{letter-spacing:0;text-transform:none;font-weight:700}
-.otc-sub{font-size:12px;font-weight:600;color:var(--ink-3);margin-top:3px;line-height:1.35}
-/* Read from across a desk, and always in tabular figures — these four sit in a
-   row and a proportional `1` would make the columns of digits ripple. */
-.otc-val{
-  font-size:33px;font-weight:800;letter-spacing:-1px;line-height:1.1;
-  margin-top:9px;font-variant-numeric:tabular-nums;
-}
-.otcard.t-up .otc-val{color:var(--green)}
-.otcard.t-down .otc-val{color:var(--jt-red-lit)}
-.otc-foot{font-size:12.5px;font-weight:700;color:var(--ink-3);margin-top:7px}
-.otc-foot .up{color:var(--green)}
-.otc-foot .down{color:var(--jt-red-lit)}
-
-/* The comparison plate. A filled pill rather than the bare `▲ +0,99` the daily
-   report uses, because in this table it shares a row with seven other numbers
-   and has to be findable by shape before it is read. */
-.otpill{
-  display:inline-block;min-width:66px;text-align:center;
-  padding:2px 9px;border-radius:99px;
-  font-size:12.5px;font-weight:800;font-variant-numeric:tabular-nums;
-  border:1px solid transparent;
-}
-.otpill.up{background:#15321F;color:#5BE79A;border-color:#1E5636}
-.otpill.down{background:#4A1512;color:#FF8C82;border-color:#6E2019}
-/* Not "no change" — "too small to call". Grey, so it is plainly neither of the
-   two things that matter. */
-.otpill.flatp{background:#2B2B2B;color:#A5A5A5;border-color:#3D3D3D}
-
-/* The band over the weekly columns needs a second line under the `W2`: the
-   short head is what makes eight narrow columns scannable, and the date range
-   is what makes it mean anything. */
-table.otgrid th .otsub{
-  display:block;font-size:10.5px;font-weight:600;letter-spacing:0;
-  color:rgba(255,255,255,.72);text-transform:none;margin-top:1px;
-}
-/* The cumulative percentage is the column the row is judged on, so it is the
-   one number in a run of eight that is allowed to be heavier than its
-   neighbours. On the span rather than the cell: which cell holds it moves with
-   the column switch, the span goes wherever the column does. */
-.otkumv{font-weight:800;color:var(--ink)}
-table.otgrid td.otkum{font-weight:800;color:var(--ink)}
-
-/* The GTL benchmark, in both OTPU tables.
-   It used to be `muted` — the same grey as GTL Hub and DP Pickup, which made
-   the one number every result on the row is measured against look like more
-   filing. Blue instead, so the comparison figure is visibly a different kind of
-   number from the results around it.
-   The column head is left alone: `.catrow` is a red band, and blue on red is
-   the one place this colour would fight rather than label. */
-.gtlv,table.otgrid td.gtlv{color:var(--gtl);font-weight:700}
-
-/* ---------- Where the slack goes ----------
-
-   `table.dpgrid` is `min-width:100%`, so whenever the columns add up to less
-   than the panel — which is most of the time now that each daily figure opens on
-   one or three days instead of all seven — the browser has spare width to hand
-   out. Left alone it spreads it evenly, and the result is what it looks like:
-   five-digit numbers floating in the middle of columns twice the width they
-   need, with the gap sitting *inside* the data rather than around it.
-
-   The band head stops forcing its columns wide. "Total Order Harian" set on one
-   line is about 150px, which a single day column carrying `8.255` has no use
-   for; wrapped, the band asks for what it needs and the day column keeps its own
-   width. `--secrow-h` is measured in OtpuSection, so a band on two lines still
-   has the category row pinned exactly beneath it.
-
-   Padding is deliberately untouched. The rows stay as tall and the cells as
-   roomy as they were — the gap being closed is the one *inside* a column, not
-   the breathing room around the numbers. */
-table.otgrid thead tr.secrow th.secband{
-  white-space:normal;line-height:1.25;padding:4px 9px;
-}
-/* The TOTAL row is not one of the agents and must not read as one. A heavier
-   rule under it rather than a tint, so it separates the summary from the list
-   without competing with the red-and-green cells in it. */
-table.otgrid tbody tr.ottotal td{
-  background:var(--card-2);font-weight:800;
-  border-bottom:2px solid var(--jt-red);
-}
-table.otgrid tbody tr.ottotal td.sticky{background:var(--card-2)}
-.otname{display:flex;flex-direction:column;gap:1px;min-width:0}
-/* The code in J&T red and the city in plain ink: the code is the join key
-   everyone quotes on a call, the city is what makes the row recognisable. */
-.otcode{font-size:11.5px;font-weight:800;letter-spacing:.6px;color:var(--jt-red-lit)}
-.otcity{font-weight:800}
-.otseller{
-  display:block;font-weight:700;max-width:280px;
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-}
-/* A seller with no orders this week is shown only when asked for, and when it
-   is, it should not look like a seller that scored zero. */
-table.otgrid tbody tr.otzero td{color:var(--ink-3)}
-.otlegend{flex:none;display:flex;gap:14px;font-size:11.5px;font-weight:700}
-.otleg.up{color:#7BF0AF}
-.otleg.down{color:#FFB0A8}
-/* The per-table export button, sitting inside a title that is otherwise text. */
-.otinline{margin-left:10px;vertical-align:middle}
-
-@media (max-width:900px){
-  .otlegend{display:none}
-  .otc-val{font-size:28px}
-}
-
-/* ---------- OTPU capture scope: one picture, whole page ----------
-
-   The DP/CP page splits its export in two because its table is 1,666 rows and
-   genuinely cannot share an image with anything. Neither OTPU table is: the
-   agent one is ten rows and the seller one opens on forty. So there is one
-   button, in the toolbar, and it photographs the page as it stands.
-
-   `body.shooting` has already hidden the rail, the toolbar and the tooltips,
-   and released `.dpscroll` from its scroll box — so a table wider than the
-   pinned 1480px capture simply overflows, and `capturedSize` walks the
-   descendants and grows the canvas to hold it. Nothing else to declare here;
-   what this scope needs is the rules it does *not* have.
-
-   The filter bar and the column switch are gone from the picture too, but not
-   because of anything written here — `body.shooting` already drops `.dpfilters`,
-   `.dpcolbar` and `.dpmore` for the DP/CP shot, and the OTPU tables reuse those
-   exact classes. That reuse is why this scope needs no rules of its own; the
-   class exists so `exportPng` has something to pass and so this note has
-   somewhere to live. */
-
-/* ---------- the column switch's group toggle ----------
-
-   The band name is a button: "Total Order, all three weeks" is one thought and
-   should be one press. Drawn as the same small caps caption it replaced rather
-   than as a button, because a third control style in a bar that already has
-   chips and a master tick would be noise — the count beside it is what says it
-   does something, and it lights up on hover like the chips do. */
-.colgrph.tap{
-  border:0;background:transparent;padding:2px 0;margin-right:1px;
-  font-family:inherit;font-size:11px;font-weight:800;letter-spacing:.4px;
-  text-transform:uppercase;color:var(--ink-3);cursor:pointer;
-}
-.colgrph.tap:hover{color:var(--jt-red-lit)}
-.colgrph.tap:focus-visible{outline:2px solid var(--jt-red-lit);outline-offset:2px;border-radius:4px}
-.colgrph.tap em{
-  font-style:normal;margin-left:5px;color:var(--ink-2);
-  font-variant-numeric:tabular-nums;letter-spacing:0;
-}
-/* Whole band switched off — the group reads as absent rather than as a heading
-   over nothing. */
-.colgrph.tap.off{color:#5E5E5E}
-.colgrph.tap.off em{color:#5E5E5E}
-
-/* Why fewer agents are listed than the file holds, said next to the control
-   that did it — and that the TOTAL row is deliberately not following along. */
-.otfilternote{
-  font-size:12.5px;font-weight:600;color:var(--ink-2);line-height:1.4;
-}
-.otfilternote b{color:var(--ink);font-weight:800}
 
 /* ---------- the rail's sub-entries ----------
 
@@ -2841,7 +2557,7 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
   border:1px solid rgba(37,99,196,.22);
 }
 /* The two red bands — Part A/B/C and the DP head — get the same shallow
-   gradient the OTPU band already carries in both themes. */
+   gradient in both themes. */
 [data-theme="light"] .partband,
 [data-theme="light"] .dphead{
   background:linear-gradient(100deg,#EC2A20 0%,var(--jt-red) 52%,#CF1E15 100%);
@@ -2951,16 +2667,9 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
   border-bottom-color:#7FA8AD;
 }
 [data-theme="light"] table.dpgrid thead tr.secrow th:hover{background:linear-gradient(180deg,#22345A 0%,#1A2848 100%)}
-[data-theme="light"] table.otgrid thead tr.secrow th,
-[data-theme="light"] .otpusection table.otgrid thead tr.secrow th{
-  background:linear-gradient(180deg,#1E2C4A 0%,var(--jt-black) 100%);
-}
-[data-theme="light"] .otpusection table.otgrid thead tr.secrow th:hover{
-  background:linear-gradient(180deg,#22345A 0%,#1A2848 100%);
-}
 /* The category row is the biggest single area of red on the page. As a flat
    slab it reads as a warning strip; as a shallow gradient it reads as a
-   surface, which is the same treatment the OTPU tables already use. */
+   surface. */
 [data-theme="light"] table.dpgrid thead tr.catrow th,
 [data-theme="light"] thead th{
   background:linear-gradient(180deg,#EC2A20 0%,var(--jt-red) 55%,#CF1E15 100%);
@@ -3003,11 +2712,6 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
 [data-theme="light"] .stleg-p.perhatian .stleg-n{color:#8A5A08}
 [data-theme="light"] .stleg-p.stable .stleg-n{color:#0A6B34}
 [data-theme="light"] .ptag.unknown{background:#98A1B0}
-[data-theme="light"] .otpill.up{background:#EDF6F1;color:#0A6B34;border-color:#BFE3CE}
-[data-theme="light"] .otpill.down{background:#FDECEA;color:#B81810;border-color:#F0C3BE}
-[data-theme="light"] .otpill.flatp{background:#F1F3F7;color:#5D6675;border-color:#D9DFE8}
-[data-theme="light"] .otleg.up{color:#0A6B34}
-[data-theme="light"] .otleg.down{color:#B81810}
 [data-theme="light"] .dpstat{border-left-color:#C6CCD8}
 [data-theme="light"] .dpstat.warn{border-left-color:#B47607}
 [data-theme="light"] .dpstat.warn .n{color:#B47607}
@@ -3020,11 +2724,8 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
 [data-theme="light"] .ptag.agent{background:var(--accent)}
 [data-theme="light"] .ptag.franchise{background:var(--violet)}
 [data-theme="light"] .dpcode{background:var(--accent-soft);color:var(--accent-ink)}
-[data-theme="light"] .otcode{color:var(--accent-ink)}
-[data-theme="light"] .dpcoltitle,[data-theme="light"] .colgrph,
-[data-theme="light"] .dailybar-lab{color:#5E6C88}
-[data-theme="light"] .dpcolbar,[data-theme="light"] .dpfilters,
-[data-theme="light"] .dailybar{
+[data-theme="light"] .dpcoltitle,[data-theme="light"] .colgrph{color:#5E6C88}
+[data-theme="light"] .dpcolbar,[data-theme="light"] .dpfilters{
   background:linear-gradient(180deg,#F8FAFE 0%,var(--card-2) 100%);
 }
 /* The rail is the one full-height surface on the page; a flat white column
@@ -3036,14 +2737,12 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
 [data-theme="light"] .sbitem.sbtheme .navico{color:var(--accent)}
 [data-theme="light"] .sbbrand-n{color:var(--ink-2)}
 [data-theme="light"] .colchip.locked:hover{background:#fff}
-[data-theme="light"] .colgrph.tap.off,[data-theme="light"] .colgrph.tap.off em{color:#9AA3B2}
 [data-theme="light"] .ms-btn:hover{border-color:#B9C2D0}
 [data-theme="light"] .ms-btn.filtered{color:var(--ink)}
 [data-theme="light"] .ms-pop{border-color:var(--line);box-shadow:var(--shadow)}
 [data-theme="light"] .ms-row:hover{background:var(--card-3)}
 [data-theme="light"] .ms-warn{background:#FBF0D8;color:#8A5A08}
 [data-theme="light"] .ms-btn.empty .ms-n{color:#241A05}
-[data-theme="light"] .of-reset:hover{border-color:#B9C2D0}
 [data-theme="light"] .dpfilters .seg button:active:not(.on){background:#DDE3EC}
 [data-theme="light"] .legend button:hover{border-color:#C9D0DB}
 
@@ -3060,42 +2759,6 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
    more furniture than a hint deserves. Only its own edges are softened. */
 [data-theme="light"] .tipbox{background:#12151A;border-color:#2A2F38;color:#F2F2F2}
 [data-theme="light"] .tipbox::after{background:#12151A;border-color:#2A2F38}
-
-/* ---------- OTPU ----------
-   The section's depth comes from a white hairline and heavy black shadows; on
-   white the hairline has to become a dark one and the shadows have to lighten,
-   or every card reads as smudged. */
-[data-theme="light"] .otpusection{
-  --ot-hair:rgba(16,24,40,.09);
-  --ot-hair-lit:rgba(16,24,40,.14);
-  --ot-lift:0 1px 2px rgba(16,24,40,.07), 0 10px 28px -12px rgba(16,24,40,.18);
-  --ot-lift-hi:0 2px 4px rgba(16,24,40,.09), 0 18px 40px -14px rgba(16,24,40,.22);
-}
-/* The section's surfaces are drawn as a dark-to-card gradient — the sheen that
-   gives them depth on black. Each one keeps the same shape on white, starting a
-   step *lighter* than the card instead of a step darker. */
-[data-theme="light"] .otpusection .otcard{
-  background:linear-gradient(180deg,#FFFFFF 0%,var(--card) 62%);
-}
-[data-theme="light"] .otpusection .dpstat{
-  background:linear-gradient(180deg,#FFFFFF 0%,var(--card) 70%);
-  border-left-color:#C6CCD8;
-}
-[data-theme="light"] .otpusection .panel > h3{
-  background:linear-gradient(180deg,#FFFFFF 0%,var(--card-2) 100%);
-}
-[data-theme="light"] .otpusection .dpfilters,
-[data-theme="light"] .otpusection .dailybar{
-  background:linear-gradient(180deg,#FFFFFF 0%,var(--card-2) 100%);
-}
-[data-theme="light"] .otpusection table.otgrid tbody tr:nth-child(even) td{background:#F7F9FC}
-[data-theme="light"] .otpusection table.otgrid tbody tr:nth-child(even) td.sticky{background:#F2F5FA}
-[data-theme="light"] .otpusection table.otgrid tbody td.sticky{background:#fff}
-[data-theme="light"] .otpusection .dphead .dpday{border-top-color:rgba(255,255,255,.34)}
-[data-theme="light"] .otpusection .dpstat[title]:hover{
-  background:linear-gradient(180deg,#FFFFFF 0%,var(--card-2) 70%);
-}
-[data-theme="light"] .otpusection .dpstat.mute{border-left-color:#C6CCD8}
 
 /* ---------- the login screen ---------- */
 [data-theme="light"] .loginpage.has-bg .logincard{
@@ -3245,148 +2908,18 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
   .kcard .spark{height:22px}
   .panel .body{padding:8px 10px}
 }
-/* ============================================================================
-   On Time Pick Up — the finish pass
-   ============================================================================
-
-   Everything below is scoped to `.otpusection`. The OTPU pages borrow the DP
-   report's furniture on purpose (see the note above `.otcards`), and that reuse
-   is worth keeping — but it also means the two reports share every surface
-   style, so an unscoped change here would restyle a page nobody asked about.
-   The scope is the point of this block, not tidiness.
-
-   What it changes, and why any of it counts as "premium":
-
-   Depth instead of flatness. The page was built from flat fills — a solid red
-   band, solid grey cards, a solid red table head — and flat fills at this size
-   read as unfinished rather than as restrained. Every surface here now carries a
-   shallow vertical gradient, a hairline top edge where light would catch, and a
-   two-part shadow: a tight dark one for contact, a wide soft one for lift. That
-   is the whole trick, and it is the difference between a panel sitting *on* the
-   page and being *printed* on it.
-
-   Less raw saturation, same colour. `--jt-red` at full strength across a tall
-   band is the loudest thing on a black page, and loud is the opposite of
-   expensive. The band and the table head keep the exact brand red, but as the
-   light end of a gradient that falls to `--jt-red-dark` — same hue, same
-   identity, a surface rather than a slab.
-
-   Numbers that line up. Every figure on the page is tabular, so a column of them
-   has straight edges, and the display figures get negative tracking, which is
-   what stops a 33px number reading as a shout. */
-
-.otpusection{
-  /* The hairline that suggests an edge catching light. Deliberately weak: at
-     .10 it reads as a border, which is a different and cheaper effect. */
-  --ot-hair:rgba(255,255,255,.065);
-  --ot-hair-lit:rgba(255,255,255,.10);
-  /* Contact shadow plus lift shadow. One shadow cannot do both — a tight one
-     alone looks stuck down, a wide one alone looks like it is floating away. */
-  --ot-lift:0 1px 2px rgba(0,0,0,.45), 0 10px 28px -10px rgba(0,0,0,.65);
-  --ot-lift-hi:0 2px 4px rgba(0,0,0,.5), 0 18px 40px -12px rgba(0,0,0,.7);
-}
 
 /* ---------- the section band ---------- */
-.otpusection .dphead{
-  background:
-    linear-gradient(180deg, rgba(255,255,255,.10) 0%, rgba(255,255,255,0) 42%),
-    linear-gradient(112deg, var(--jt-red) 0%, var(--jt-red-dark) 100%);
-  border:1px solid rgba(255,255,255,.11);
-  /* The red bloom is the one place on the page colour is allowed into a shadow.
-     Kept under 20% and well spread, so it reads as the band lighting the page
-     rather than as a glow effect. */
-  box-shadow:
-    0 1px 2px rgba(0,0,0,.45),
-    0 14px 34px -14px rgba(226,35,26,.42),
-    0 10px 28px -12px rgba(0,0,0,.6);
-  padding:14px 18px;
-}
-.otpusection .dphead h2{letter-spacing:.1px}
-.otpusection .dphead .partnum{
-  background:rgba(0,0,0,.34);
-  border:1px solid rgba(255,255,255,.14);
-  box-shadow:inset 0 1px 0 rgba(255,255,255,.10);
-}
-.otpusection .dphead .dpday{border-top-color:rgba(255,255,255,.24)}
 
 /* ---------- headline cards ---------- */
-.otpusection .otcard{
-  background:linear-gradient(180deg, #262626 0%, var(--card) 62%);
-  border:1px solid var(--ot-hair);
-  /* the brand accent stays; it is what ties these to the band */
-  border-top:3px solid var(--jt-red);
-  box-shadow:var(--ot-lift);
-  padding:15px 17px 16px;
-  transition:transform .17s cubic-bezier(.2,.7,.3,1), box-shadow .17s ease;
-}
-.otpusection .otcard:hover{transform:translateY(-2px);box-shadow:var(--ot-lift-hi)}
-.otpusection .otc-val{letter-spacing:-1.1px}
-/* The label is the quietest thing on the card and was competing with the value
-   at the same weight; dropping it a step is what lets the figure carry. */
-.otpusection .otc-lab{color:var(--ink-3);font-size:11px;letter-spacing:1.2px}
 
 /* ---------- the counter row ---------- */
-.otpusection .dpstat{
-  background:linear-gradient(180deg, #242424 0%, var(--card) 70%);
-  border:1px solid var(--ot-hair);
-  border-left:4px solid #4A4A4A;
-  box-shadow:var(--ot-lift);
-  padding:11px 14px;
-}
-.otpusection .dpstat.good{border-left-color:var(--green)}
-.otpusection .dpstat.warn{border-left-color:#B47607}
-.otpusection .dpstat.bad{border-left-color:var(--jt-red)}
-.otpusection .dpstat.mute{border-left-color:#5A5A5A}
-.otpusection .dpstat[title]:hover{background:linear-gradient(180deg,#2A2A2A 0%,var(--card-2) 70%)}
-.otpusection .dpstat .n{font-variant-numeric:tabular-nums;letter-spacing:-.7px}
 
 /* ---------- panels ---------- */
-.otpusection .panel{
-  border:1px solid var(--ot-hair);
-  box-shadow:var(--ot-lift);
-}
-.otpusection .panel > h3{
-  background:linear-gradient(180deg, #323232 0%, var(--card-2) 100%);
-  box-shadow:inset 0 1px 0 var(--ot-hair-lit);
-}
 
 /* ---------- the table ---------- */
-/* Same red, given a surface. The category row is the one people read across for
-   minutes at a time, and a flat saturated fill under 12.5px white type is the
-   most tiring version of it. */
-.otpusection table.otgrid thead th{
-  background:linear-gradient(180deg, #EC2A20 0%, var(--jt-red) 55%, var(--jt-red-dark) 100%);
-}
-.otpusection table.otgrid thead tr.secrow th{
-  background:linear-gradient(180deg, #1C1C1C 0%, var(--jt-black) 100%);
-  box-shadow:inset 0 1px 0 var(--ot-hair);
-}
-.otpusection table.otgrid thead tr.secrow th:hover{background:var(--jt-black)}
-.otpusection table.otgrid thead th:not(.secband):hover{
-  background:linear-gradient(180deg, var(--jt-red) 0%, var(--jt-red-dark) 100%);
-}
-/* Every number in the body on the same rail. Mixed tabular and proportional
-   figures is the detail that makes a table look assembled rather than designed. */
-.otpusection table.otgrid tbody td.num,
-.otpusection table.otgrid tbody td.ctr{font-variant-numeric:tabular-nums}
-/* A quieter zebra. #242424 against #1F1F1F was a visible stripe; the row
-   separation does its job at half that. */
-.otpusection table.otgrid tbody tr:nth-child(even) td{background:#222222}
-.otpusection table.otgrid tbody tr:nth-child(even) td.sticky{background:#252525}
 
 /* ---------- controls ---------- */
-.otpusection .dpfilters,
-.otpusection .dailybar{
-  background:linear-gradient(180deg, #2A2A2A 0%, var(--card-2) 100%);
-}
-.otpusection .ms-btn,
-.otpusection .colchip{
-  box-shadow:0 1px 2px rgba(0,0,0,.3);
-}
-.otpusection .of-pop,
-.otpusection .ms-pop{
-  box-shadow:0 2px 6px rgba(0,0,0,.5), 0 22px 48px -14px rgba(0,0,0,.8);
-}
 
 /* ---------- responsive ----------
 
@@ -3396,125 +2929,6 @@ table.otgrid tbody tr.otzero td{color:var(--ink-3)}
    counters and filter bar reflow instead of forcing the whole document sideways.
    The table keeps its own horizontal scroll, which is the documented answer for
    wide tabular data rather than a fallback. */
-@media (max-width:1180px){
-  .otpusection .otcards{grid-template-columns:repeat(auto-fit,minmax(210px,1fr))}
-  .otpusection .row-dp{grid-template-columns:1fr}
-}
-@media (max-width:860px){
-  .otpusection .dphead{padding:12px 14px}
-  .otpusection .dphead h2{font-size:15.5px}
-  .otpusection .otcards{grid-template-columns:1fr 1fr;gap:8px}
-  .otpusection .otc-val{font-size:26px;letter-spacing:-.7px}
-  .otpusection .dpstats{grid-template-columns:1fr 1fr;gap:8px}
-  .otpusection .dpstat .n{font-size:25px}
-  .otpusection .otcard{padding:12px 14px 13px}
-}
-@media (max-width:560px){
-  .otpusection .otcards,
-  .otpusection .dpstats{grid-template-columns:1fr}
-  .otpusection .dpfilters{gap:7px}
-  .otpusection .dpfilters input[type=text]{max-width:none;flex:1 1 100%}
-  .otpusection .ms,
-  .otpusection .of{flex:1 1 100%}
-  .otpusection .ms-btn,
-  .otpusection .of-btn{width:100%;max-width:none}
-  /* the panels anchor left at this width, so a right-anchored popover would
-     hang off the other edge instead */
-  .otpusection .dpfilters .ms:nth-of-type(n+3) .ms-pop,
-  .otpusection .dpfilters .of:nth-of-type(n+3) .of-pop{left:0;right:auto}
-}
-
-/* The capture path paints its own flat surfaces — gradients and lift shadows
-   photograph as banding and grey haze, and the PNG is meant to look like the
-   report, not like a screenshot of a screen. */
-body.shooting .otpusection .otcard,
-body.shooting .otpusection .dpstat,
-body.shooting .otpusection .panel{
-  transform:none !important;box-shadow:var(--shadow) !important;
-}
-
-/* The finish pass, undone for paper.
-
-   The block above is unconditional, and it is declared after the print theme —
-   so on an office laser every one of those gradients and lift shadows would beat
-   the light tokens that were carefully set up above. Gradients print as banding,
-   lift shadows print as grey haze, and a #222 zebra prints as a solid bar.
-
-   Restoring the flat values the components had before, in the print palette, is
-   all this needs to do; the tokens themselves are already flipped by then. */
-@media print{
-  .otpusection .dphead{
-    background:var(--jt-red) !important;box-shadow:none !important;border:none !important;
-  }
-  .otpusection .dphead .partnum{background:rgba(0,0,0,.30) !important;border:none !important;box-shadow:none !important}
-  .otpusection .otcard,
-  .otpusection .dpstat{
-    background:var(--card) !important;
-    box-shadow:none !important;transform:none !important;
-    border:1px solid var(--line) !important;
-  }
-  .otpusection .otcard{border-top:3px solid var(--jt-red) !important}
-  .otpusection .dpstat{border-left:4px solid #C4CBD6 !important}
-  .otpusection .dpstat.good{border-left-color:var(--green) !important}
-  .otpusection .dpstat.bad{border-left-color:var(--jt-red) !important}
-  .otpusection .panel{box-shadow:none !important;border:1px solid var(--line) !important}
-  .otpusection .panel > h3{background:var(--card-2) !important;box-shadow:none !important}
-  .otpusection .dpfilters,
-  .otpusection .dailybar{background:var(--card-2) !important}
-  .otpusection table.otgrid thead th,
-  .otpusection table.otgrid thead th:not(.secband):hover{background:var(--jt-red) !important}
-  .otpusection table.otgrid thead tr.secrow th{
-    background:var(--jt-black) !important;box-shadow:none !important;
-  }
-  /* the zebra the print theme already chose, reasserted at cell level because
-     the screen rule paints the cell rather than the row */
-  .otpusection table.otgrid tbody tr:nth-child(even) td,
-  .otpusection table.otgrid tbody tr:nth-child(even) td.sticky{background:#FAFBFD !important}
-  .otpusection table.otgrid tbody td.sticky{background:#fff !important}
-}
-
-/* ---------- OTPU summary: the two ranking panels ----------
-
-   Scoped like the rest of the finish pass. These two panels are the only charts
-   on the summary page, and they sit directly under a row of counters — so they
-   were competing with the counters for the same attention while carrying less of
-   it, which is backwards.
-
-   Nothing here changes what the charts encode; that lives in Charts.tsx, where
-   the axis was the actual problem. This is spacing, weight and the panel head. */
-
-/* A quieter head. The 3px red rule under every panel title is the brand accent
-   repeated twice on one screen — once on the section band, once here — and at
-   this size it reads as a warning stripe rather than as a heading. Two pixels
-   and a fade: still unmistakably the accent, no longer the loudest edge in the
-   panel. */
-.otpusection .panel > h3{
-  border-bottom:2px solid transparent;
-  border-image:linear-gradient(90deg, var(--jt-red) 0%, rgba(226,35,26,.25) 100%) 1;
-}
-.otpusection .panel > h3 .ptitle{font-size:14.5px;letter-spacing:.15px}
-
-/* Charts want air on the sides more than above: the value labels sit to the
-   right of the longest mark and were running close to the panel edge. */
-.otpusection .row-dp .panel .body{padding:12px 16px 14px}
-
-/* The caption reads as a footnote, so it is set like one — the old size and
-   weight had it competing with the axis labels directly above it. */
-.otpusection .chartnote{
-  font-size:11.5px;font-weight:500;color:var(--ink-3);line-height:1.55;
-  padding-top:9px;margin-top:10px;border-top:1px solid var(--ot-hair-lit);
-}
-.otpusection .chartnote b{color:var(--ink-2)}
-
-@media print{
-  /* `border-image` with a gradient prints as a grey smear on most drivers, and
-     the caption has to stay readable on white — it is the line explaining which
-     hubs were left out of the ranking. */
-  .otpusection .panel > h3{
-    border-image:none !important;border-bottom:3px solid var(--jt-red) !important;
-  }
-  .otpusection .chartnote{color:var(--ink-2) !important;border-top-color:var(--line) !important}
-}
 
 /* ============================================================================
    Pinning the rest of the layout for a capture
@@ -3526,20 +2940,15 @@ body.shooting .otpusection .panel{
    real viewport matched is already baked in. Every phone rule therefore has to
    be undone in the live document before the shot, or it goes into the picture.
 
-   Two sets of rules were missed.
+   One set of rules was missed.
 
-   The top bar, which is what broke the OTPU Agent export. `@media
+   The top bar, which is what broke an export. `@media
    (max-width:640px)` gives the wordmark `width:100%` so it can be a full-width
    band on a phone; `body.shooting` then pins `.wrap` to 1480px without undoing
    that, so "100%" became 1480px and the export came out as a single letter of
    the logo two thousand pixels across, with the rest of the report pushed off
    the bottom of the canvas. Nothing about it looked like a width bug, because
    the width was the one thing that was correct.
-
-   And the OTPU responsive block added later in this file, which had exactly the
-   same hole: single-column cards and counters, full-width filter chips. Those
-   never reached a bug report only because nobody had yet exported that page from
-   a narrow window.
 
    `!important` throughout, and for the reason given up there — these compete
    with later rules of equal specificity and lose on source order otherwise. */
@@ -3557,23 +2966,3 @@ body.shooting .titleblock,
 body.shooting .topbar .titleblock{padding:11px 0 !important;text-align:center !important}
 body.shooting .titleblock h1{font-size:23px !important;line-height:1.2 !important}
 body.shooting .titleblock .meta{font-size:13.5px !important;line-height:1.5 !important}
-
-/* ---------- the OTPU page's own responsive rules ---------- */
-body.shooting .otpusection .otcards{
-  grid-template-columns:repeat(auto-fit,minmax(238px,1fr)) !important;gap:10px !important;
-}
-body.shooting .otpusection .dpstats{
-  grid-template-columns:repeat(auto-fit,minmax(150px,1fr)) !important;gap:10px !important;
-}
-body.shooting .otpusection .row-dp{grid-template-columns:1fr 1fr !important}
-body.shooting .otpusection .otcard{padding:15px 17px 16px !important}
-body.shooting .otpusection .otc-val{font-size:33px !important;letter-spacing:-1.1px !important}
-body.shooting .otpusection .dpstat .n{font-size:31px !important}
-body.shooting .otpusection .dphead{padding:14px 18px !important}
-body.shooting .otpusection .dphead h2{font-size:17px !important}
-/* The filter bars are hidden in a shot (see `body.shooting .dpfilters`), but the
-   chips inside them are laid out before that takes effect on some engines. */
-body.shooting .otpusection .ms,
-body.shooting .otpusection .of{flex:0 0 auto !important}
-body.shooting .otpusection .ms-btn{width:auto !important;max-width:230px !important}
-body.shooting .otpusection .of-btn{width:auto !important;max-width:none !important}

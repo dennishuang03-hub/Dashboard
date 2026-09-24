@@ -91,9 +91,8 @@ export interface SheetInfo {
    * 'dp'     one row per drop point / collection point, with readings
    * 'lookup' no readings at all — a reference table naming each site's business
    *          model, merged into the DP rows rather than shown on its own
-   * 'otpu'   an On Time Pick Up tab, read by `lib/otpu.ts` into its own model
    */
-  kind: 'agent' | 'dp' | 'lookup' | 'otpu'
+  kind: 'agent' | 'dp' | 'lookup'
 }
 
 /* ------------------------------------------------------- drop point level */
@@ -198,23 +197,16 @@ export const REGION_RE = /jawa|java|bali/i
 export const REGION_LABEL = 'Jawa & Bali'
 
 /**
- * The On Time Pick Up tabs, which this parser deliberately does not read.
+ * Tabs the workbook carries that belong to another report, not this dashboard.
  *
- * They are weekly where everything else here is daily, they carry their own GTL
- * benchmark, and the seller tab is one row per seller × drop point rather than
- * one per agent — three different shapes, none of which fits the agent model
- * below. `lib/otpu.ts` reads them into a model of their own.
- *
- * The patterns live here rather than there because `parseWorkbook` has to
- * recognise these tabs in order to *skip* them: without that they fall through
- * to `parseOneSheet`, fail, and are reported to the user as two broken sheets in
- * a file that is perfectly fine. `lib/otpu.ts` imports them from here, so the
- * two halves cannot disagree about which tab is which.
+ * The On Time Pick Up tabs are shown on a separate site. They are recognised by
+ * name so they can be left out before any cells are read — without that they
+ * fall through to `parseOneSheet`, fail, and are reported as broken sheets in a
+ * file that is perfectly fine. The server applies the same test in
+ * `api/_lib/xlsxsplit.ts` and never sends them; change one and change the other.
  */
-export const OTPU_AGENT_RE = /^\s*otpu\s*[-_ ]*agen/i
-export const OTPU_SELLER_RE = /^\s*otpu\s*[-_ ]*seller/i
-export const isOtpuSheet = (name: string): boolean =>
-  OTPU_AGENT_RE.test(name) || OTPU_SELLER_RE.test(name)
+const IGNORED_SHEET_RE = /^\s*otpu\s*[-_ ]*(agen|seller)/i
+export const isIgnoredSheet = (name: string): boolean => IGNORED_SHEET_RE.test(name)
 
 export type Status = 'ok' | 'warn' | 'bad' | 'na'
 
@@ -1712,13 +1704,8 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
   wb.SheetNames.forEach((sheetName, sheetIdx) => {
     const ws = wb.Sheets[sheetName]
 
-    /* On Time Pick Up — a different report in the same workbook. Claimed here
-       so it is recorded as a sheet that was read rather than skipped, and left
-       to `lib/otpu.ts`, which is called alongside this function. */
-    if (isOtpuSheet(sheetName)) {
-      sheets.push({ name: sheetName, ok: true, kind: 'otpu', kpiCount: 0, agentCount: 0 })
-      return
-    }
+    /* Another report's tab — not part of this dashboard, not a broken sheet. */
+    if (isIgnoredSheet(sheetName)) return
 
     /* per-agent drop-point tab — parsed into its own model, never merged into
        the agent rows (see `looksLikeDpSheet`) */
@@ -2109,16 +2096,15 @@ export function readSheetNames(buf: ArrayBuffer): string[] {
  * `readWorkbook`, restricted to the sheets named.
  *
  * The cost of reading a workbook is the cost of turning its cells into objects,
- * and it is not spread evenly: in the current file the OTPU Seller tab is 88% of
- * the cells and roughly three quarters of the time. Reading the tabs the page in
- * front of the reader actually needs, and the rest when it is asked for, is the
- * difference between a dashboard that opens and one that hangs.
+ * and it is not spread evenly: one large tab can be most of the cells and most
+ * of the time. Reading only the tabs the page actually needs is the difference
+ * between a dashboard that opens and one that hangs.
  *
  * `SheetNames` still lists every tab — SheetJS fills it from the workbook part,
  * not from what it parsed — so `parseWorkbook` still reports the file’s true
  * shape, and the sheets it was not given simply have no worksheet behind them.
- * It already tolerates that: OTPU tabs are claimed by name before the worksheet
- * is touched, and `looksLikeDpSheet` answers `false` for a missing one.
+ * It already tolerates that: ignored tabs are skipped by name before the
+ * worksheet is touched, and `looksLikeDpSheet` answers `false` for a missing one.
  *
  * An empty list means "no opinion" rather than "nothing": it falls through to a
  * full read, because `sheets: []` matches no tab at all and would turn a file

@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
   CATEGORY_ZH, KPI_SECTIONS, PALETTE, STATUS_COLOR, agentFull, agentZh, averageRows,
-  dayName, explain, fmtDate, fmtDateFull, iconFor, exportPng, isOtpuSheet, isoDay, kpiSeries,
+  dayName, explain, fmtDate, fmtDateFull, iconFor, exportPng, isIgnoredSheet, isoDay, kpiSeries,
   parseWorkbook, pct, readSheetNames, readWorkbookSheets, resolveDpDate, statusOf, targetFor,
 } from './lib/jnt'
 import type { Explanation, Kpi, Model } from './lib/jnt'
@@ -11,13 +11,9 @@ import type { AxisLabel } from './components/Charts'
 import BtnIcon from './components/BtnIcon'
 import DpSection from './components/DpSection'
 import JntLogo from './components/JntLogo'
-import OtpuSection from './components/OtpuSection'
-import type { OtpuPart } from './components/OtpuSection'
 import Sidebar, { NavButton } from './components/Sidebar'
 import type { NavGroup } from './components/Sidebar'
 import Zh from './components/Zh'
-import { nfmt, parseOtpu } from './lib/otpu'
-import type { OtpuReport } from './lib/otpu'
 import type { Identity } from './lib/session'
 import type { Theme } from './lib/theme'
 import './dashboard.css'
@@ -34,28 +30,8 @@ import './dashboard.css'
  */
 const VIEW_AGEN = 'agen'
 const VIEW_DP = 'dp'
-/**
- * On Time Pick Up: a parent page and its two halves.
- *
- * Three ids rather than one id plus a tab state inside the section, so that the
- * rail is the only thing that says where you are. A tab strip *inside* a page
- * the rail also points at gives two controls for one decision, and they
- * disagree the first time somebody links to the wrong one.
- */
-const VIEW_OTPU = 'otpu'
-const VIEW_OTPU_AGENT = 'otpu-agen'
-const VIEW_OTPU_SELLER = 'otpu-seller'
 
-type View =
-  | typeof VIEW_AGEN | typeof VIEW_DP
-  | typeof VIEW_OTPU | typeof VIEW_OTPU_AGENT | typeof VIEW_OTPU_SELLER
-
-/** The part of the OTPU report each of the three ids asks for. */
-const OTPU_PART: Partial<Record<View, OtpuPart>> = {
-  [VIEW_OTPU]: 'all',
-  [VIEW_OTPU_AGENT]: 'agent',
-  [VIEW_OTPU_SELLER]: 'seller',
-}
+type View = typeof VIEW_AGEN | typeof VIEW_DP
 
 /** Below this the rail goes off-canvas and the hamburger appears. */
 const DRAWER_BP = 900
@@ -132,29 +108,6 @@ export default function Dashboard({
   onToggleTheme: () => void
 }) {
   const [model, setModel] = useState<Model | null>(null)
-  /* Its own state rather than a field on `Model`: the OTPU tabs are a separate
-     report parsed by a separate function, and a workbook without them has to
-     keep producing a perfectly good daily dashboard. `null` here means "no OTPU
-     in this file", and the rail simply does not offer it. */
-  const [otpu, setOtpu] = useState<OtpuReport | null>(null)
-  /**
-   * Whether the file has OTPU tabs, kept apart from whether they have been read.
-   *
-   * These used to be one fact, because the tabs were read on the way in and
-   * `otpu` was either a report or the file’s answer that there is none. They are
-   * two facts now: reading those tabs is three quarters of the load, so it waits
-   * until somebody asks for the page, and between opening the dashboard and that
-   * moment "the file has OTPU" is true while `otpu` is still null.
-   *
-   * The rail is built from this one, not from `otpu` — an entry that appears only
-   * after you visit it is an entry nobody can visit.
-   */
-  const [hasOtpu, setHasOtpu] = useState(false)
-  /** `none` — nothing to read · `idle` — not read yet · `reading` · `done` ·
-   *  `failed` — the request never came back, so a retry is offered. */
-  const [otpuState, setOtpuState] = useState<'none' | 'idle' | 'reading' | 'done' | 'failed'>('none')
-  /* Bumped by "Coba lagi" to run the OTPU read again after a failed request. */
-  const [otpuTry, setOtpuTry] = useState(0)
   /* The toolbar picture is locked while it is being taken — a second press used
      to start a second capture and save the same file twice. */
   const [pngBusy, setPngBusy] = useState(false)
@@ -170,21 +123,7 @@ export default function Dashboard({
 
   /* ------------------------------------------------------------- the rail */
 
-  const [viewWanted, setView] = useState<View>(VIEW_AGEN)
-  /**
-   * The destination that is actually reachable.
-   *
-   * Loading a workbook without the OTPU tabs while an OTPU page is open would
-   * otherwise leave the rail pointing at a page that has nothing behind it and
-   * no entry to click back from — the entry it was reached by is gone too. The
-   * fallback is a pure function of what the file has, so it is resolved here
-   * rather than corrected in an effect, which would render the dead page once
-   * before fixing it.
-   */
-  const view: View = OTPU_PART[viewWanted] && !hasOtpu ? VIEW_AGEN : viewWanted
-  /* Hoisted above the loading branches below, because the effect that reads the
-     OTPU tabs is driven by it and hooks cannot sit after an early return. */
-  const otpuPart = OTPU_PART[view]
+  const [view, setView] = useState<View>(VIEW_AGEN)
   /** desktop: icons only. Two separate states — see the note in Sidebar.tsx. */
   const [mini, setMini] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -215,7 +154,7 @@ export default function Dashboard({
     setView(id as View)
     setDrawerOpen(false)
     /* An error belongs to the page it happened on. Carried over, a failed PNG
-       on the DP/CP list sat above the OTPU page as if OTPU had failed. */
+       on the DP/CP list sat above the other page as if it had failed. */
     setErr('')
     /* Back to the top: the two reports are different documents, and arriving at
        the second one scrolled halfway down because the first one was, is
@@ -225,148 +164,34 @@ export default function Dashboard({
 
   const fileRef = useRef<HTMLInputElement>(null)
   const wrapRef = useRef<HTMLDivElement>(null)
-  /* The OTPU tab names, learned from the daily response — `workbook.xml` names
-     every sheet whether or not its part was sent — and used twice: to decide
-     whether the rail offers OTPU at all, and to say which tabs to read out of
-     the second response when it arrives. */
-  const otpuTabsRef = useRef<string[]>([])
-  /**
-   * Two flags the OTPU load needs that must not be React state.
-   *
-   * `otpuStarted` is the once-only guard. It cannot be `otpuState`, because an
-   * effect that both reads a state and sets it re-runs itself: the run that set
-   * `reading` was torn down mid-`await` by its own state change, its `cancelled`
-   * flag went true, and the four megabytes it had just finished downloading were
-   * thrown away — the page then sat on "Memuat…" for ever. Dev survived it on
-   * scheduling luck; the built bundle did not.
-   *
-   * `alive` replaces that per-run `cancelled`. What the load actually has to
-   * respect is the component going away, not the view changing under it, and a
-   * reader who clicks OTPU and then OTPU Seller while it downloads means to keep
-   * waiting, not to start again.
-   */
-  const otpuStartedRef = useRef(false)
-  const aliveRef = useRef(true)
   const rerender = () => force((n) => n + 1)
 
   /* ------------------------------------------------------------ loading */
 
   /** One path in for both sources — an upload and the served report differ only
    *  in how the bytes arrive, never in how they are read. */
-  /* Set on mount as well as cleared on unmount: StrictMode mounts twice in
-     development, and a flag that only ever goes false would leave the second
-     mount unable to finish anything it started. */
-  useEffect(() => {
-    aliveRef.current = true
-    return () => { aliveRef.current = false }
-  }, [])
-
   const loadBuffer = useCallback((buf: ArrayBuffer, name: string) => {
     try {
       /*
        * Two reads, and the first one reads nothing.
        *
-       * The names come back for a fraction of the cost of the cells, and they are
-       * enough to split the file in two: the daily report, which is the page this
-       * dashboard opens on, and the OTPU tabs, which are most of the work and are
-       * not on screen yet. Only the first half is read here. The second half is
-       * read by the effect below, the first time somebody asks for it.
-       *
-       * `isOtpuSheet` is the same test `parseWorkbook` uses to hand those tabs to
-       * `lib/otpu.ts`, so the two halves cannot drift apart.
+       * The names come back for a fraction of the cost of the cells, and they
+       * are enough to leave out the tabs this dashboard does not show (see
+       * `isIgnoredSheet`) before paying to read any of them.
        */
       const names = readSheetNames(buf)
-      const otpuTabs = names.filter(isOtpuSheet)
-      const wb = readWorkbookSheets(buf, names.filter((n) => !isOtpuSheet(n)))
+      const wb = readWorkbookSheets(buf, names.filter((n) => !isIgnoredSheet(n)))
       const mdl = parseWorkbook(wb)
-      otpuTabsRef.current = otpuTabs
-      otpuStartedRef.current = false
       setModel(mdl)
-      setOtpu(null)
-      setHasOtpu(otpuTabs.length > 0)
-      setOtpuState(otpuTabs.length > 0 ? 'idle' : 'none')
       setFileName(name)
       setAgentKey('TOTAL')
       setDateIdx(Math.max(0, mdl.dates.length - 1))
       setErr('')
     } catch (ex) {
       setModel(null)
-      setOtpu(null)
-      otpuTabsRef.current = []
-      otpuStartedRef.current = false
-      setHasOtpu(false)
-      setOtpuState('none')
       setErr((ex as Error).message)
     }
   }, [])
-
-  /**
-   * The other half of the workbook, fetched and read the first time an OTPU page
-   * is opened.
-   *
-   * It is a second download, not a second look at the bytes already here: the
-   * server sends the daily tabs alone on the first request, so these ones have
-   * genuinely not arrived yet. That is the point — the OTPU Seller tab is three
-   * quarters of the file, and a reader who never opens the page never waits for
-   * it, on the wire or on the thread.
-   *
-   * The `setTimeout` around the parse is not a delay, it is a paint. Reading
-   * those tabs takes the main thread for seconds, and starting it in the tick
-   * the bytes land in would mean the browser never draws the screen that says
-   * so. Yielding once lets "Memuat On Time Pick Up…" reach the glass first, so
-   * the wait is something the reader can see rather than something that looks
-   * like a crash.
-   *
-   * It runs once, guarded by `otpuStartedRef`, and lands on `done` however it
-   * turns out, so a failure is answered on screen rather than retried on every
-   * render.
-   */
-  useEffect(() => {
-    if (!otpuPart || otpuStartedRef.current || !otpuTabsRef.current.length) return
-    otpuStartedRef.current = true
-    setOtpuState('reading')
-
-    void (async () => {
-      let buf: ArrayBuffer
-      try {
-        const res = await fetch(`${REPORT_URL}?part=otpu`, { credentials: 'same-origin' })
-        /* The session ran out while the dashboard was open. Same answer as the
-           first request gives: back to the login screen, not "tab tidak
-           terbaca" about a file that is perfectly readable. */
-        if (res.status === 401) {
-          if (aliveRef.current) onSignedOut()
-          return
-        }
-        if (!res.ok) throw new Error(String(res.status))
-        buf = await res.arrayBuffer()
-      } catch {
-        /* A dropped connection is not a broken file. The request is allowed to
-           run again, and the page offers to — it used to report the tabs as
-           unreadable and stay that way until a full reload. */
-        if (aliveRef.current) {
-          otpuStartedRef.current = false
-          setOtpu(null)
-          setOtpuState('failed')
-        }
-        return
-      }
-      if (!aliveRef.current) return
-
-      window.setTimeout(() => {
-        if (!aliveRef.current) return
-        try {
-          /* Filtered by name even though the response should already hold only
-             these tabs: `splitWorkbook` falls back to sending the whole file when
-             it cannot split one safely, and this keeps that fallback cheap to
-             read rather than turning it back into the parse this all avoids. */
-          setOtpu(parseOtpu(readWorkbookSheets(buf, otpuTabsRef.current)))
-        } catch {
-          setOtpu(null)
-        }
-        setOtpuState('done')
-      }, 0)
-    })()
-  }, [otpuPart, otpuTry, onSignedOut])
 
   const handleFile = useCallback((f: File | undefined | null) => {
     if (!f) return
@@ -383,8 +208,6 @@ export default function Dashboard({
 
     ;(async () => {
       try {
-        /* The daily half. `/api/report` defaults to it, and the OTPU tabs are a
-           second request made only if somebody opens one of those pages. */
         const res = await fetch(REPORT_URL, { credentials: 'same-origin' })
 
         /* The session expired while the tab sat open. Hand the user back to the
@@ -484,19 +307,15 @@ export default function Dashboard({
     /*
      * Which picture this button takes, per destination.
      *
-     * The rule is the same in all five cases: photograph the page, minus
-     * whatever on it has an export button of its own. The DP/CP list, the OTPU
-     * agent table and the OTPU seller list are each wider than the page and can
-     * each run to hundreds of rows — one image holding a summary *and* one of
-     * those is unreadable at any scale, so the summary shot leaves them out and
-     * their own buttons take them full width.
+     * The rule is the same in both cases: photograph the page, minus whatever
+     * on it has an export button of its own. The DP/CP list is wider than the
+     * page and can run to hundreds of rows — one image holding a summary *and*
+     * that list is unreadable at any scale, so the summary shot leaves it out
+     * and its own button takes it full width.
      */
     const shot: Record<View, { stem: string; cls: string }> = {
       [VIEW_AGEN]: { stem: `jnt-agen-${stamp}`, cls: 'shoot-main' },
       [VIEW_DP]: { stem: `jnt-dp-cp-${stamp}`, cls: 'shoot-dp' },
-      [VIEW_OTPU]: { stem: 'jnt-otpu-ringkasan', cls: 'shoot-otpu' },
-      [VIEW_OTPU_AGENT]: { stem: 'jnt-otpu-agent', cls: 'shoot-otpu' },
-      [VIEW_OTPU_SELLER]: { stem: 'jnt-otpu-seller', cls: 'shoot-otpu' },
     }
     const pick = shot[view]
     setPngBusy(true)
@@ -615,57 +434,7 @@ export default function Dashboard({
     },
   ]
 
-  /*
-   * On Time Pick Up — a group of its own, and only when the file carries it.
-   *
-   * Hidden rather than shown-and-empty, which is the opposite of the choice made
-   * for the DP/CP entry a few lines up, and deliberately so. DP/CP is part of
-   * every daily report and a day that happens to be missing it is a gap in the
-   * data; OTPU is a different report that some workbooks simply do not contain,
-   * and offering three destinations that all say "this file has no OTPU tabs"
-   * would be three ways to find the same nothing.
-   *
-   * The parent is a destination in its own right — the summary — with the two
-   * halves indented under it. It is not a folder: clicking it goes somewhere.
-   */
-  if (hasOtpu) {
-    /* Null until the tabs have been read. The hints then say what the pages are
-       rather than how big they are — a count is the better hint and it arrives a
-       moment later, but a rail that renders nothing until then is worse than one
-       that describes its destinations. */
-    const a = otpu?.agent ?? null
-    const s = otpu?.seller ?? null
-    nav.push({
-      id: 'otpu',
-      label: 'On Time Pick Up',
-      items: [
-        {
-          id: VIEW_OTPU, label: 'OTPU', zh: '及时揽收', icon: 'clock',
-          hint: a?.total?.pctTotal != null
-            ? `Kumulatif ${a.total.pctTotal.toFixed(2).replace('.', ',')}%`
-            : 'Agent + Seller',
-        },
-        {
-          id: VIEW_OTPU_AGENT, label: 'OTPU Agent', zh: '揽收代理', icon: 'users', sub: true,
-          hint: a ? `${a.rows.length} agen · ${a.weeks.length} minggu`
-            : otpuState === 'done' ? 'tab tidak terbaca' : otpuState === 'failed' ? 'gagal dimuat' : 'per agen · mingguan',
-        },
-        {
-          id: VIEW_OTPU_SELLER, label: 'OTPU Seller', zh: '商家', icon: 'bars', sub: true,
-          hint: s ? `${nfmt(s.rows.length)} baris seller`
-            : otpuState === 'done' ? 'tab tidak terbaca' : otpuState === 'failed' ? 'gagal dimuat' : 'per seller · harian',
-        },
-      ],
-    })
-  }
-
   const onAgen = view === VIEW_AGEN
-
-  /** `AGENT12` → `TANGERANG`, from the daily report's own agent rows. */
-  const cityOf = (code: string): string => {
-    const want = code.replace(/\s+/g, '').toUpperCase()
-    return model.rows.find((r) => r.code.replace(/\s+/g, '').toUpperCase() === want)?.label ?? ''
-  }
 
   /* The report itself, bound to a name rather than returned inline — the shell
      around it is three elements and putting them at the top would push 300 lines
@@ -690,29 +459,12 @@ export default function Dashboard({
       />
 
       {/* -------- toolbar -------- */}
-      {/* `solo` when the two pickers below are hidden. On the OTPU pages they
-          are, which left `.toolbar-end` alone in a full-width bar with its
-          `margin-left:auto` pushing everything into the right quarter and two
-          thirds of the bar empty — a gap that reads as a control that failed to
-          render rather than as space. */}
-      <div className={`toolbar${otpuPart ? ' solo' : ''}`}>
+      <div className="toolbar">
         {/* No upload button here any more. The report comes from the server now,
             and a control that swaps it for a local file only invited someone to
             look at yesterday's copy and believe it was live. The drop zone on
             the empty state keeps the ability, where it is a recovery path rather
             than a standing offer. */}
-        {/*
-          The day picker and the agent picker belong to the daily report, and
-          only to it.
-
-          They are hidden rather than disabled on the OTPU pages because they
-          would be lying, not merely inert: OTPU is weekly and covers every agent
-          at once, so a control reading "19 Agustus 2026 · TANGERANG" over a
-          table of ten agents and two weeks describes a scope that is not the one
-          on screen. The OTPU pages carry their own scope in the band and their
-          own filters in the table.
-        */}
-        {!otpuPart && (<>
         <Field label="Tanggal laporan · 报表日期">
           <select value={di} onChange={(e) => setDateIdx(Number(e.target.value))}>
             {dates.map((d, i) => (
@@ -734,7 +486,6 @@ export default function Dashboard({
             ))}
           </select>
         </Field>
-        </>)}
         {/*
           The right-hand end, grouped rather than left as four loose flex items
           after a `.spacer`.
@@ -751,32 +502,20 @@ export default function Dashboard({
         */}
         <div className="toolbar-end">
           <span className="filechip">
-            {otpuPart && !otpu
-              ? <>On Time Pick Up · {otpuState === 'done' ? 'tab tidak terbaca' : otpuState === 'failed' ? 'gagal dimuat' : 'memuat…'}</>
-              : otpuPart && otpu
-              ? <>
-                  On Time Pick Up · {otpu.agent ? `${otpu.agent.rows.length} agen · ${otpu.agent.weeks.length} minggu` : 'tab agen tidak terbaca'}
-                  {otpu.seller && ` · ${nfmt(otpu.seller.rows.length)} baris seller`}
-                </>
-              : <>
-                  {model.region} · {model.rows.length} agen · {kpis.length} Indikator · {dates.length} hari
-                  {model.dps.length > 0 && ` · ${model.dps.length} DP/CP dari ${dpSheets.length} tab agen`}
-                </>}
+            {model.region} · {model.rows.length} agen · {kpis.length} Indikator · {dates.length} hari
+            {model.dps.length > 0 && ` · ${model.dps.length} DP/CP dari ${dpSheets.length} tab agen`}
           </span>
           {/* Named for what it will contain. Two buttons on the DP/CP page read
-              "Simpan PNG" and take different pictures, so each has to say which
-              — and the OTPU pages have between one and three of their own. */}
-          {/* Locked while OTPU is still loading: the picture would be of the
-              "Memuat…" screen, not of the report. */}
+              "Simpan PNG" and take different pictures, so each has to say which. */}
           <button
             className={`btn act act-png${pngBusy ? ' is-busy' : ''}`}
             onClick={savePng}
-            disabled={pngBusy || (!!otpuPart && !otpu)}
-            title={otpuPart && !otpu ? 'Tunggu sampai data OTPU selesai dimuat' : 'Simpan halaman ini sebagai gambar PNG'}
+            disabled={pngBusy}
+            title="Simpan halaman ini sebagai gambar PNG"
           >
             <BtnIcon name={pngBusy ? 'spin' : 'image'} />
             <span>
-              {pngBusy ? 'Menyimpan…' : view === VIEW_DP || otpuPart ? 'Simpan PNG · Ringkasan' : 'Simpan PNG'}
+              {pngBusy ? 'Menyimpan…' : view === VIEW_DP ? 'Simpan PNG · Ringkasan' : 'Simpan PNG'}
             </span>
           </button>
           {/* "Cetak / PDF" used to sit here. The print stylesheet it drove is
@@ -921,56 +660,12 @@ export default function Dashboard({
       </>)}
 
       {/* Part B. It carries its own band and its own export buttons — see
-          DpSection — so there is nothing to add around it here.
-
-          Tested against `VIEW_DP` rather than `!onAgen`, which is what it used
-          to say. That negation was exactly right while there were two
-          destinations and became a bug the moment there were five: every OTPU
-          page is "not the agent page", so all three of them rendered the
-          drop-point list underneath themselves. */}
+          DpSection — so there is nothing to add around it here. */}
       {view === VIEW_DP && dpDay && (
         <DpSection
           model={model} kpis={kpis} agentKey={agentKey}
           agentLabel={current.label} day={dpDay} wanted={dToday} onError={setErr}
         />
-      )}
-
-      {/* Part C, in three. Same arrangement as Part B: its own band, its own
-          per-table export buttons, nothing to wrap it in here. */}
-      {otpuPart && otpu && (
-        <OtpuSection report={otpu} part={otpuPart} cityOf={cityOf} onError={setErr} />
-      )}
-
-      {/* The OTPU tabs are the biggest thing in the workbook and they are read on
-          arrival rather than on startup, so arriving is a wait. It is named, and
-          it says why — a screen that only spins reads as a fault, and this one is
-          the price of the dashboard having opened quickly in the first place. */}
-      {otpuPart && !otpu && otpuState === 'failed' && (
-        <div className="dropzone">
-          <h2>Data OTPU gagal diambil <Zh>加载失败</Zh></h2>
-          <p>Permintaan ke server tidak selesai — biasanya koneksi terputus sebentar.
-            Datanya sendiri tidak bermasalah.</p>
-          <button className="btn act act-retry" onClick={() => setOtpuTry((n) => n + 1)}>
-            <BtnIcon name="retry" />
-            <span>Coba lagi</span>
-          </button>
-        </div>
-      )}
-
-      {otpuPart && !otpu && otpuState !== 'done' && otpuState !== 'failed' && (
-        <div className="dropzone">
-          <h2>Memuat On Time Pick Up… <Zh>正在加载</Zh></h2>
-          <p>Tab OTPU adalah bagian terbesar dari workbook dan dibaca saat dibuka,
-            supaya halaman lain tidak ikut menunggu.</p>
-        </div>
-      )}
-
-      {otpuPart && !otpu && otpuState === 'done' && (
-        <div className="dropzone">
-          <h2>Tab OTPU tidak dapat dibaca <Zh>无法读取</Zh></h2>
-          <p>Workbook ini memuat tab OTPU, tetapi isinya tidak dikenali. Periksa
-            sheet <b>OTPU Agent</b> dan <b>OTPU Seller</b> pada file sumber.</p>
-        </div>
       )}
 
       {/* The destination exists in the rail whether or not the file has anything

@@ -1,14 +1,12 @@
 /**
- * Send half a workbook.
+ * Send the workbook without the OTPU tabs.
  *
  * ── Why a route has any business opening a zip ───────────────────────────────
  *
- * The dashboard already reads only the tabs the page in front of the reader
- * needs — the OTPU tabs wait until somebody opens an OTPU page. That halved the
- * time the browser spends parsing, and it did nothing at all for the time spent
- * downloading, because the tabs it was not reading still arrived in the same
- * file. On a 10 Mbps line that is the larger half: 4,6 s of download against
- * 4,1 s of parse, measured, on the file this was written for.
+ * The OTPU tabs are shown on a separate site, and the browser skips them — but
+ * skipping them there does nothing for the time spent downloading, because
+ * they still arrive in the same file. On a 10 Mbps line that is most of the
+ * wait: the OTPU Seller tab alone is most of the file.
  *
  * An .xlsx is a zip, and each worksheet is its own entry in it. So the two
  * halves can be separated without understanding a single cell: read the central
@@ -38,12 +36,12 @@
  */
 import { inflateRawSync } from 'node:zlib'
 
-export type ReportPart = 'daily' | 'otpu' | 'full'
+export type ReportPart = 'daily' | 'full'
 
 /**
- * Which tabs are the OTPU report.
+ * Which tabs are the OTPU report — shown on a separate site, never sent here.
  *
- * Deliberately the same two patterns as `isOtpuSheet` in `src/lib/jnt.ts`, which
+ * Deliberately the same pattern as `isIgnoredSheet` in `src/lib/jnt.ts`, which
  * is where the browser makes the identical decision — change one and change the
  * other. They are duplicated rather than shared because this file runs in the
  * serverless function and that one pulls in SheetJS; four lines of regex is a
@@ -257,8 +255,7 @@ export function splitWorkbook(bytes: Buffer, part: ReportPart): Buffer {
      both halves, and together they are a fraction of either. */
   const drop = new Set<string>()
   for (const [name, path] of parts) {
-    const isOtpu = OTPU_TAB_RE.test(name)
-    if (part === 'otpu' ? !isOtpu : isOtpu) drop.add(path)
+    if (OTPU_TAB_RE.test(name)) drop.add(path)
   }
   if (!drop.size) return bytes
 
@@ -270,7 +267,7 @@ export function splitWorkbook(bytes: Buffer, part: ReportPart): Buffer {
   }
 }
 
-/** `?part=` as one of the three understood values; anything else is `daily`. */
+/** `?part=` as one of the two understood values; anything else is `daily`. */
 export function partOf(raw: string | null): ReportPart {
-  return raw === 'otpu' || raw === 'full' ? raw : 'daily'
+  return raw === 'full' ? raw : 'daily'
 }
