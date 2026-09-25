@@ -114,10 +114,12 @@ export default function DisplaySection({
    */
   const [showZero, setShowZero] = useState(false)
   const [zeroRms, setZeroRms] = useState<ReadonlySet<string>>(() => new Set())
-  /* Grouped by RM from the start: the list is read one regional manager at a
-     time, and the RM headings only mean something in that order. */
-  const [sortKey, setSortKey] = useState<string>(COL_RM)
-  const [sortDir, setSortDir] = useState<SortDir>('asc')
+  /* Always grouped by RM: the list is read one regional manager at a time. The
+     sort orders the drop points inside each RM — by default the day's
+     attendance percentage (Persentase Absensi), best first. */
+  const defaultKey = report.cols.some((c) => c.id === 'd_pabs') ? 'd_pabs' : kpi.day
+  const [sortKey, setSortKey] = useState<string>(defaultKey)
+  const [sortDir, setSortDir] = useState<SortDir>('desc')
   const [showAll, setShowAll] = useState(false)
 
   const agentList = useMemo(() => [...new Set(scoped.map((r) => r.agent))], [scoped])
@@ -129,7 +131,14 @@ export default function DisplaySection({
       return m
     }
     const agents = count((r) => r.agent)
-    const rms = count((r) => r.rm || '—')
+    /* Only the RMs of the agents still ticked — pick one agent and the RM list
+       is that agent's RMs. */
+    const rms = new Map<string, number>()
+    for (const r of scoped) {
+      if (agentOff.has(r.agent)) continue
+      const k = r.rm || '—'
+      rms.set(k, (rms.get(k) ?? 0) + 1)
+    }
     const st = new Map<RowStatus, number>()
     for (const r of scoped) st.set(statusOf(r), (st.get(statusOf(r)) ?? 0) + 1)
     return {
@@ -142,7 +151,7 @@ export default function DisplaySection({
       counts: st,
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scoped, kpi])
+  }, [scoped, kpi, agentOff])
 
   /* The sheet's own visible columns, as the sheet shows them — see
      `parseDisplaySheet`. A merged header is a band over its columns; a column
@@ -170,11 +179,10 @@ export default function DisplaySection({
   }, [visCols])
 
   /* The Agen column exists only in the all-agents view; a sort on it falls back
-     to the RM order without forgetting what was asked for. */
+     to the default order without forgetting what was asked for. */
   const sortGone = sortKey === COL_AGENT && !allAgents
-  const liveSort = sortGone ? COL_RM : sortKey
-  const liveDir: SortDir = sortGone ? 'asc' : sortDir
-  const grouped = liveSort === COL_RM
+  const liveSort = sortGone ? defaultKey : sortKey
+  const liveDir: SortDir = sortGone ? 'desc' : sortDir
 
   /** Every row the filters keep, zeros included, in table order. */
   const base = useMemo(() => {
@@ -186,21 +194,30 @@ export default function DisplaySection({
       if (needle && !`${r.dp} ${r.rm} ${r.agent}`.toLowerCase().includes(needle)) return false
       return true
     })
-    const dir = liveDir === 'asc' ? 1 : -1
     const colKind = new Map(report.cols.map((c) => [c.id, c]))
-    return [...out].sort((a, b) => {
-      if (liveSort === COL_DP) return dir * a.dp.localeCompare(b.dp)
-      if (liveSort === COL_AGENT) return dir * a.agent.localeCompare(b.agent) || a.dp.localeCompare(b.dp)
-      if (liveSort === COL_RM) {
-        if (!a.rm !== !b.rm) return a.rm ? -1 : 1
-        /* within an RM, the sheet's own order — the sort is stable */
-        return dir * a.rm.localeCompare(b.rm)
+    /* The RM groups: by name, or by agent then name when the Agen column is the
+       sort; an RM header click turns the group order around. Rows without an RM
+       go last. */
+    const groupCmp = (a: DisplayRow, b: DisplayRow) => {
+      if (!a.rm !== !b.rm) return a.rm ? -1 : 1
+      const gdir = liveSort === COL_RM || liveSort === COL_AGENT ? (liveDir === 'asc' ? 1 : -1) : 1
+      if (liveSort === COL_AGENT) {
+        const d = a.agent.localeCompare(b.agent)
+        if (d) return gdir * d
       }
-      if (liveSort === COL_STATUS) {
+      return (liveSort === COL_AGENT ? 1 : gdir) * a.rm.localeCompare(b.rm)
+    }
+    /* Inside a group. An RM or Agen sort orders the groups only, so the rows
+       under each keep the default order. */
+    const rowKey = liveSort === COL_RM || liveSort === COL_AGENT ? defaultKey : liveSort
+    const dir = rowKey === liveSort ? (liveDir === 'asc' ? 1 : -1) : -1
+    const rowCmp = (a: DisplayRow, b: DisplayRow) => {
+      if (rowKey === COL_DP) return dir * a.dp.localeCompare(b.dp)
+      if (rowKey === COL_STATUS) {
         const d = STATUS_RANK[statusOf(a)] - STATUS_RANK[statusOf(b)]
         if (d) return dir * d
       }
-      const key = liveSort === COL_STATUS ? kpi.day : liveSort
+      const key = rowKey === COL_STATUS ? kpi.day : rowKey
       const c = colKind.get(key)
       /* A zero row's 0,00% is "nothing was due", not the worst score in the
          region — so its percentages sink, whichever way the column turns. */
@@ -211,9 +228,10 @@ export default function DisplaySection({
       if (av == null) return 1
       if (bv == null) return -1
       return dir * (av - bv) || a.dp.localeCompare(b.dp)
-    })
+    }
+    return [...out].sort((a, b) => groupCmp(a, b) || rowCmp(a, b))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scoped, q, agentOff, rmOff, stOff, liveSort, liveDir, kpi, report])
+  }, [scoped, q, agentOff, rmOff, stOff, liveSort, liveDir, kpi, report, defaultKey])
 
   const zeroShown = (r: DisplayRow) =>
     showZero || zeroRms.has(r.rm || '—') || statusOf(r) !== 'idle'
@@ -231,7 +249,6 @@ export default function DisplaySection({
    * is where the tick to show them lives.
    */
   const items = useMemo((): Item[] => {
-    if (!grouped) return filtered.map((row) => ({ kind: 'row', row }))
     const out: Item[] = []
     let cur: Extract<Item, { kind: 'sep' }> | null = null
     for (const r of base) {
@@ -246,7 +263,7 @@ export default function DisplaySection({
     }
     return out
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [grouped, base, filtered])
+  }, [base, filtered])
 
   /* Forty drop points, and the headings that come with them. */
   const shownItems = useMemo(() => {
@@ -283,6 +300,9 @@ export default function DisplaySection({
   const pickAgent = (a: string) => {
     if (focusAgent === a) setAgentOff(new Set())
     else setAgentOff(new Set(agentList.filter((x) => x !== a)))
+    /* the RM list changes with the agent; an RM switched off under the last
+       agent would otherwise stay off out of sight */
+    setRmOff(new Set())
     setShowAll(false)
     tableRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
   }
@@ -574,7 +594,8 @@ export default function DisplaySection({
           </div>
           {allAgents && (
             <MultiSelect name="Agen" zh="代理区" allLabel="Semua agen"
-                         options={filterOpts.agent} off={agentOff} onChange={setAgentOff} />
+                         options={filterOpts.agent} off={agentOff}
+                         onChange={(next) => { setAgentOff(next); setRmOff(new Set()) }} />
           )}
           <MultiSelect name="RM" zh="区域经理" allLabel="Semua RM"
                        options={filterOpts.rm} off={rmOff} onChange={setRmOff} />
@@ -646,7 +667,7 @@ export default function DisplaySection({
                     const bad = live.filter((x) => statusOf(x) === 'bad').length
                     const open = showZero || zeroRms.has(it.rm)
                     return (
-                      <tr className="rmsep" key={`sep|${it.rm}`}>
+                      <tr className="rmsep" key={`sep|${it.agent}|${it.rm}`}>
                         <td colSpan={colCount}>
                           <span className="rmsep-in">
                             <b>{it.rm === '—' ? 'Tanpa RM' : it.rm}</b>
