@@ -1,12 +1,13 @@
 /**
- * The three "Display" tabs — per-DP detail reports for single categories.
+ * The "Display" tabs — per-DP detail reports for single categories.
  *
  *   Display Absensi 630         Persentase Absensi Tepat Waktu Sprinter
  *   Display 730 & 1200          Persentase 0730 & TTD 1200
  *   Display Ritase Keseluruhan  Persentase Keseluruhan TTD Berdasarkan Ritase
+ *   Display Retur               Monitoring Retur Agent (lower is better)
  *
  * They share one layout, which is what lets one parser and one page serve all
- * three: a title in A1, a two-row header (row 2 names the column, row 3 dates
+ * of them: a title in A1, a two-row header (row 2 names the column, row 3 dates
  * the ones that were merged across several days), a TOTAL row, a blank row, and
  * then one row per drop point — Agent, RM, Nama DP, figures.
  *
@@ -19,7 +20,7 @@
 import * as XLSX from 'xlsx'
 import { latin } from './jnt'
 
-export type DisplayId = 'absensi' | 'ttd730' | 'ritase'
+export type DisplayId = 'absensi' | 'ttd730' | 'ritase' | 'retur'
 export type DisplayColKind = 'int' | 'pct' | 'delta'
 
 /** A header the sheet merges across several columns — a band over them. */
@@ -91,6 +92,8 @@ export interface DisplayReport {
   date: Date | null
   /** the target the TOTAL row states, in percent */
   target: number | null
+  /** the headline is a rate to keep *under* the target (Retur), not over it */
+  lowerBetter: boolean
   /** the table: the sheet's visible columns, in order, and the bands over them */
   groups: DisplayGroup[]
   cols: DisplayCol[]
@@ -112,6 +115,7 @@ export function displayIdOf(sheetName: string): DisplayId | null {
   if (/absen/.test(n)) return 'absensi'
   if (/730|1200/.test(n)) return 'ttd730'
   if (/ritase/.test(n)) return 'ritase'
+  if (/retur/.test(n)) return 'retur'
   return null
 }
 
@@ -135,11 +139,16 @@ type Find = { one: string; nth?: number } | { grp: string; nth?: number; at: num
  */
 interface ColSpec { id: string; kind: DisplayColKind; find: Find }
 
+/** A count the sheet does not carry, made from two it does: `from[0] - from[1]`. */
+interface DeriveSpec { id: string; from: [string, string] }
+
 interface Spec {
   label: string
   zh: string
   cols: ColSpec[]
+  derive?: DeriveSpec[]
   kpis: DisplayKpi[]
+  lowerBetter?: boolean
 }
 
 const SPECS: Record<DisplayId, Spec> = {
@@ -264,10 +273,58 @@ const SPECS: Record<DisplayId, Spec> = {
       weekPrevRatio: ['wp_done', 'wp_due'],
     }],
   },
+
+  /* Retur = regist − void, and %Retur = Retur ÷ Total Delivery, for every
+     period — the sheet's own "Logic" note. The target is a ceiling. */
+  retur: {
+    label: 'Retur',
+    zh: '退件率',
+    lowerBetter: true,
+    cols: [
+      { id: 'd_deliv', kind: 'int', find: { one: 'total delivery' } },
+      { id: 'd_reg', kind: 'int', find: { one: 'jumlah regist retur' } },
+      { id: 'd_void', kind: 'int', find: { one: 'jumlah void retur' } },
+      { id: 'd_pct', kind: 'pct', find: { grp: '%retur', at: 0 } },
+      { id: 't_1', kind: 'pct', find: { grp: '%retur', at: 1 } },
+      { id: 't_2', kind: 'pct', find: { grp: '%retur', at: 2 } },
+      { id: 'd_delta', kind: 'delta', find: { one: 'perbandingan h-1' } },
+      { id: 'p_deliv', kind: 'int', find: { one: 'total delivery', nth: 1 } },
+      { id: 'p_reg', kind: 'int', find: { one: 'jumlah regist retur', nth: 1 } },
+      { id: 'p_void', kind: 'int', find: { one: 'jumlah void retur', nth: 1 } },
+      { id: 'm_deliv', kind: 'int', find: { one: 'total delivery bulanan' } },
+      { id: 'm_reg', kind: 'int', find: { one: 'jumlah regist retur bulanan' } },
+      { id: 'm_void', kind: 'int', find: { one: 'jumlah void retur bulanan' } },
+      { id: 'm_pct', kind: 'pct', find: { one: '%retur bulanan' } },
+      { id: 'w_pct', kind: 'pct', find: { grp: 'persentase mingguan', at: 0 } },
+      { id: 'w_prev', kind: 'pct', find: { grp: 'persentase mingguan', at: 1 } },
+      { id: 'w_delta', kind: 'delta', find: { one: 'perbandingan mingguan' } },
+      { id: 'w_deliv', kind: 'int', find: { one: 'total delivery mingguan', nth: 0 } },
+      { id: 'w_reg', kind: 'int', find: { one: 'jumlah regist retur mingguan', nth: 0 } },
+      { id: 'w_void', kind: 'int', find: { one: 'jumlah void retur mingguan', nth: 0 } },
+      { id: 'wp_deliv', kind: 'int', find: { one: 'total delivery mingguan', nth: 1 } },
+      { id: 'wp_reg', kind: 'int', find: { one: 'jumlah regist retur mingguan', nth: 1 } },
+      { id: 'wp_void', kind: 'int', find: { one: 'jumlah void retur mingguan', nth: 1 } },
+    ],
+    derive: [
+      { id: 'd_ret', from: ['d_reg', 'd_void'] },
+      { id: 'p_ret', from: ['p_reg', 'p_void'] },
+      { id: 'm_ret', from: ['m_reg', 'm_void'] },
+      { id: 'w_ret', from: ['w_reg', 'w_void'] },
+      { id: 'wp_ret', from: ['wp_reg', 'wp_void'] },
+    ],
+    kpis: [{
+      id: 'retur', label: '%Retur', zh: '退件率',
+      day: 'd_pct', prev: 't_1', prev2: 't_2', delta: 'd_delta', month: 'm_pct',
+      week: 'w_pct', weekPrev: 'w_prev', weekDelta: 'w_delta',
+      dayRatio: ['d_ret', 'd_deliv'], prevRatio: ['p_ret', 'p_deliv'],
+      monthRatio: ['m_ret', 'm_deliv'], weekRatio: ['w_ret', 'w_deliv'],
+      weekPrevRatio: ['wp_ret', 'wp_deliv'],
+    }],
+  },
 }
 
 /** Rail order, and the order the pages are numbered in. */
-export const DISPLAY_ORDER: DisplayId[] = ['absensi', 'ttd730', 'ritase']
+export const DISPLAY_ORDER: DisplayId[] = ['absensi', 'ttd730', 'ritase', 'retur']
 
 /* ------------------------------------------------------------ helpers */
 
@@ -280,6 +337,9 @@ const SHORT_ID = ['Jan', 'Feb', 'Mar', 'Apr', 'Mei', 'Jun', 'Jul', 'Agu', 'Sep',
 
 /** `23 Sep` */
 const shortDay = (d: Date) => `${d.getDate()} ${SHORT_ID[d.getMonth()]}`
+
+/** A written-out date in a header — "24 Sep 2026", "18 Sep" — as the Retur tab dates its columns. */
+const WORD_DATE = /\b\d{1,2}\s+(?:jan|feb|mar|apr|mei|may|jun|jul|agu|agt|aug|sep|okt|oct|nov|des|dec)[a-z]*\.?(?:\s+\d{4})?\b/gi
 
 /**
  * Header text as the specs name it: no Mandarin, no dates, one line, lower case.
@@ -294,6 +354,7 @@ function norm(s: unknown): string {
     .filter((l) => !HAS_CJK.test(l))
     .join(' ')
     .replace(/\d{1,2}\/\d{1,2}\/\d{2,4}/g, ' ')
+    .replace(WORD_DATE, ' ')
     .replace(/\s+-\s+/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
@@ -384,10 +445,13 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
     colAt.set(s.id, c)
     specKind.set(s.id, s.kind)
   }
+  const derived = (spec.derive ?? []).filter((d) => colAt.has(d.from[0]) && colAt.has(d.from[1]))
+  const derivedIds = new Set(derived.map((d) => d.id))
 
   /* A figure is kept only if everything it is made of was found. */
-  const has = (id?: string) => !id || colAt.has(id)
-  const hasR = (r?: Ratio) => !r || (colAt.has(r[0]) && colAt.has(r[1]))
+  const found = (id: string) => colAt.has(id) || derivedIds.has(id)
+  const has = (id?: string) => !id || found(id)
+  const hasR = (r?: Ratio) => !r || (found(r[0]) && found(r[1]))
   const kpis: DisplayKpi[] = []
   for (const k of spec.kpis) {
     if (!has(k.day) || !hasR(k.dayRatio)) continue
@@ -489,6 +553,10 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
   const readVals = (r: number) => {
     const vals: Record<string, number | null> = {}
     for (const [vid, c, k] of readAt) vals[vid] = num(at(r, c), k)
+    for (const d of derived) {
+      const a = vals[d.from[0]], b = vals[d.from[1]]
+      vals[d.id] = a == null && b == null ? null : (a ?? 0) - (b ?? 0)
+    }
     return vals
   }
 
@@ -531,6 +599,7 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
     title: latinTitle.replace(/^NM-/, '').replace(/\s+\d{1,2}\s+[A-Za-z]{3,}\.?\s+\d{4}\s*$/, '').trim() || spec.label,
     date,
     target: target ?? rows.find((r) => r.target != null)?.target ?? null,
+    lowerBetter: !!spec.lowerBetter,
     groups,
     cols,
     kpis,

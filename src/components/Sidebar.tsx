@@ -39,7 +39,7 @@ import type { Theme } from '../lib/theme'
 
 export type IconName =
   | 'grid' | 'pin' | 'clock' | 'check' | 'trend' | 'bars' | 'users' | 'db' | 'gear'
-  | 'logout' | 'collapse' | 'expand' | 'close' | 'menu' | 'sun' | 'moon'
+  | 'logout' | 'collapse' | 'expand' | 'close' | 'menu' | 'sun' | 'moon' | 'undo'
 
 export interface NavItem {
   id: string
@@ -106,6 +106,9 @@ function Icon({ name }: { name: IconName }) {
       )}
       {name === 'check' && (
         <g {...p}><circle cx="12" cy="12" r="8.6" /><path d="M8.2 12.3l2.6 2.6 5-5.4" /></g>
+      )}
+      {name === 'undo' && (
+        <g {...p}><path d="M9 14L4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></g>
       )}
       {name === 'trend' && (
         <g {...p}><path d="M3 16.5l5.5-5.5 3.5 3.5L21 5.5" /><path d="M15.5 5.5H21v5.5" /></g>

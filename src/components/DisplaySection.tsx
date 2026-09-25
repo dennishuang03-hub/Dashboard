@@ -90,12 +90,22 @@ export default function DisplaySection({
   const [kpiId, setKpiId] = useState(report.kpis[0].id)
   const kpi: DisplayKpi = report.kpis.find((k) => k.id === kpiId) ?? report.kpis[0]
 
+  /* Retur is a rate to keep under its target: lower is better, the target is
+     a ceiling, and a rise on yesterday is bad news. */
+  const low = report.lowerBetter
+  const GE = low ? '≤' : '≥'
+  const meets = (v: number, t: number) => (low ? v <= t + 1e-9 : v >= t - 1e-9)
+  const dCls = (v: number | null) => {
+    const c = deltaCls(v)
+    return low && c !== 'flat' ? (c === 'up' ? 'down' : 'up') : c
+  }
+
   const targetOf = (r: DisplayRow) => r.target ?? report.target ?? 90
   const statusOf = (r: DisplayRow): RowStatus => {
     if (!isActive(r, kpi)) return 'idle'
     const v = r.vals[kpi.day]
     if (v == null) return 'idle'
-    return v >= targetOf(r) - 1e-9 ? 'ok' : 'bad'
+    return meets(v, targetOf(r)) ? 'ok' : 'bad'
   }
 
   /* ------------------------------------------------------------ filters */
@@ -116,10 +126,12 @@ export default function DisplaySection({
   const [zeroRms, setZeroRms] = useState<ReadonlySet<string>>(() => new Set())
   /* Always grouped by RM: the list is read one regional manager at a time. The
      sort orders the drop points inside each RM — by default the day's
-     attendance percentage (Persentase Absensi), best first. */
+     attendance percentage (Persentase Absensi), best first — lowest first for
+     a lower-is-better report like Retur. */
   const defaultKey = report.cols.some((c) => c.id === 'd_pabs') ? 'd_pabs' : kpi.day
+  const defaultDir: SortDir = low ? 'asc' : 'desc'
   const [sortKey, setSortKey] = useState<string>(defaultKey)
-  const [sortDir, setSortDir] = useState<SortDir>('desc')
+  const [sortDir, setSortDir] = useState<SortDir>(defaultDir)
   const [showAll, setShowAll] = useState(false)
 
   const agentList = useMemo(() => [...new Set(scoped.map((r) => r.agent))], [scoped])
@@ -182,7 +194,7 @@ export default function DisplaySection({
      to the default order without forgetting what was asked for. */
   const sortGone = sortKey === COL_AGENT && !allAgents
   const liveSort = sortGone ? defaultKey : sortKey
-  const liveDir: SortDir = sortGone ? 'desc' : sortDir
+  const liveDir: SortDir = sortGone ? defaultDir : sortDir
 
   /** Every row the filters keep, zeros included, in table order. */
   const base = useMemo(() => {
@@ -210,7 +222,7 @@ export default function DisplaySection({
     /* Inside a group. An RM or Agen sort orders the groups only, so the rows
        under each keep the default order. */
     const rowKey = liveSort === COL_RM || liveSort === COL_AGENT ? defaultKey : liveSort
-    const dir = rowKey === liveSort ? (liveDir === 'asc' ? 1 : -1) : -1
+    const dir = (rowKey === liveSort ? liveDir : defaultDir) === 'asc' ? 1 : -1
     const rowCmp = (a: DisplayRow, b: DisplayRow) => {
       if (rowKey === COL_DP) return dir * a.dp.localeCompare(b.dp)
       if (rowKey === COL_STATUS) {
@@ -359,8 +371,8 @@ export default function DisplaySection({
     value: r.vals[kpi.day] ?? 0,
   })
   const ranked = useMemo(
-    () => [...active].sort((a, b) => (b.vals[kpi.day] ?? 0) - (a.vals[kpi.day] ?? 0)),
-    [active, kpi],
+    () => [...active].sort((a, b) => (low ? -1 : 1) * ((b.vals[kpi.day] ?? 0) - (a.vals[kpi.day] ?? 0))),
+    [active, kpi, low],
   )
   const topBars = ranked.slice(0, TOP_N).map(bar)
   const worstBars = ranked.slice(-TOP_N).reverse().map(bar)
@@ -382,7 +394,7 @@ export default function DisplaySection({
         below: rows.filter((r) => statusOf(r) === 'bad').length,
       })
     }
-    return out.sort((a, b) => b.value - a.value)
+    return out.sort((a, b) => (low ? a.value - b.value : b.value - a.value))
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [allAgents, report, kpi])
 
@@ -414,7 +426,7 @@ export default function DisplaySection({
     if (c.kind === 'delta') return v > 0.005 ? 'ok' : v < -0.005 ? 'bad' : ''
     if (!c.scored) return ''
     if (!isActive(r, kpi)) return 'mute'
-    return v >= targetOf(r) - 1e-9 ? 'ok' : 'bad'
+    return meets(v, targetOf(r)) ? 'ok' : 'bad'
   }
 
   const buildExport = (): ExportTable => {
@@ -442,7 +454,7 @@ export default function DisplaySection({
     return {
       title: report.title,
       meta: [
-        `Agen: ${focusAgent ?? (allAgents ? 'Semua agen' : agentLabel)} · ${dayLabel} · Target ≥ ${fmtPct(target)}%`,
+        `Agen: ${focusAgent ?? (allAgents ? 'Semua agen' : agentLabel)} · ${dayLabel} · Target ${GE} ${fmtPct(target)}%`,
         `${filtered.length} dari ${scoped.length} DP / CP${q.trim() ? ` · pencarian "${q.trim()}"` : ''} · status dinilai pada ${kpi.label}`,
       ],
       stem: fileStem(),
@@ -469,7 +481,7 @@ export default function DisplaySection({
           <h2>{report.title} <Zh>{report.zh}</Zh></h2>
           <span className="partsub">
             Rincian per drop point &amp; collection point — {scope}
-            <Zh>{allAgents ? '' : agentZh(agentLabel)}</Zh> · {dayLabel} · Target ≥ {fmtPct(target)}%
+            <Zh>{allAgents ? '' : agentZh(agentLabel)}</Zh> · {dayLabel} · Target {GE} {fmtPct(target)}%
           </span>
         </span>
         <span className="dpday">
@@ -482,25 +494,25 @@ export default function DisplaySection({
       <div className={`dxcards${multi ? ' multi' : ''}`}>
         {report.kpis.map((k) => {
           const s = summary(k)
-          const ok = s.day != null && s.day >= target
+          const ok = s.day != null && meets(s.day, target)
           const cls = `dxcard ${s.day == null ? 'na' : ok ? 'ok' : 'bad'}${multi && k.id === kpi.id ? ' on' : ''}`
           const body = (
             <>
               <span className="dxc-lab">{k.label}<Zh>{k.zh}</Zh></span>
               <span className="dxc-main">
                 <span className="dxc-val">{s.day == null ? '—' : `${fmtPct(s.day)}%`}</span>
-                <span className={`dxc-delta ${deltaCls(s.delta)}`} title="Dibanding hari sebelumnya, poin persentase">
+                <span className={`dxc-delta ${dCls(s.delta)}`} title="Dibanding hari sebelumnya, poin persentase">
                   {fmtPp(s.delta)}
                 </span>
               </span>
-              <span className="dxc-tgt">Target ≥ {fmtPct(target)}% · {dayLabel}</span>
+              <span className="dxc-tgt">Target {GE} {fmtPct(target)}% · {dayLabel}</span>
               <span className="dxc-foot">
                 <span><em>H-1</em>{s.prev == null ? '—' : `${fmtPct(s.prev)}%`}</span>
                 <span><em>Bulanan</em>{s.month == null ? '—' : `${fmtPct(s.month)}%`}</span>
                 {k.weekRatio && (
                   <span>
                     <em>Mingguan</em>{s.week == null ? '—' : `${fmtPct(s.week)}%`}
-                    {s.weekDelta != null && <i className={deltaCls(s.weekDelta)}> {fmtPp(s.weekDelta)}</i>}
+                    {s.weekDelta != null && <i className={dCls(s.weekDelta)}> {fmtPp(s.weekDelta)}</i>}
                   </span>
                 )}
               </span>
@@ -519,7 +531,7 @@ export default function DisplaySection({
       <div className="dpstats">
         <Stat n={scoped.length} lab="Total DP / CP" zh="网点总数" />
         <Stat n={counts.get('ok') ?? 0} lab="Sesuai target" zh="达标" tone="good"
-              hint={`${kpi.label} ≥ target pada ${dayLabel}.`} />
+              hint={`${kpi.label} ${GE} target pada ${dayLabel}.`} />
         <Stat n={counts.get('bad') ?? 0} lab="Di bawah target" zh="未达标" tone="bad"
               hint={`${kpi.label} di bawah target pada ${dayLabel}.`} />
         <Stat n={counts.get('idle') ?? 0} lab="Bernilai 0" zh="无数据" tone="mute"
@@ -540,7 +552,7 @@ export default function DisplaySection({
               : <span className="aghint">Klik agen untuk melihat DP/CP-nya di tabel</span>}
           </h3>
           <div className="body">
-            <AgentColumns bars={byAgent} target={target} focus={focusAgent} onPick={pickAgent} />
+            <AgentColumns bars={byAgent} target={target} lowerBetter={low} focus={focusAgent} onPick={pickAgent} />
           </div>
         </div>
       )}
@@ -548,12 +560,12 @@ export default function DisplaySection({
       <div className="row-dp">
         <div className="panel">
           <h3><span className="ptitle">{TOP_N} DP / CP Terbaik <Zh>前五名网点</Zh> · {kpi.label}</span></h3>
-          <div className="body"><HBarChart bars={topBars} targetLine={target} /></div>
+          <div className="body"><HBarChart bars={topBars} targetLine={target} lowerBetter={low} /></div>
         </div>
         <div className="panel">
           <h3><span className="ptitle">{TOP_N} DP / CP Terburuk <Zh>后五名网点</Zh> · {kpi.label}</span></h3>
           <div className="body">
-            <HBarChart bars={worstBars} targetLine={target} />
+            <HBarChart bars={worstBars} targetLine={target} lowerBetter={low} />
             {counts.get('idle') ? (
               <div className="chartnote">
                 {counts.get('idle')} DP/CP bernilai 0 tidak ikut diperingkat.
@@ -674,7 +686,7 @@ export default function DisplaySection({
                             {allAgents && <span>{it.agent}</span>}
                             <span>{live.length} DP/CP</span>
                             {pct != null && (
-                              <span className={pct >= target ? 'up' : 'down'}>{kpi.label} {fmtPct(pct)}%</span>
+                              <span className={meets(pct, target) ? 'up' : 'down'}>{kpi.label} {fmtPct(pct)}%</span>
                             )}
                             {bad > 0 && <span className="down">{bad} di bawah target</span>}
                             {it.zeros > 0 && (
@@ -710,20 +722,20 @@ export default function DisplaySection({
                           if (c.kind === 'delta') {
                             return (
                               <td key={c.id} className={`num${seam}`}>
-                                {live ? <span className={deltaCls(v)}>{fmtPp(v)}</span> : <span className="muted">—</span>}
+                                {live ? <span className={dCls(v)}>{fmtPp(v)}</span> : <span className="muted">—</span>}
                               </td>
                             )
                           }
                           const t = targetOf(r)
-                          const cls = !c.scored ? '' : !live ? ' hm off' : v >= t - 1e-9 ? ' hm ok' : ' hm bad'
+                          const cls = !c.scored ? '' : !live ? ' hm off' : meets(v, t) ? ' hm ok' : ' hm bad'
                           return (
-                            <td key={c.id} className={`num${cls}${seam}`} title={`${c.label} · target ≥ ${fmtPct(t)}%`}>
+                            <td key={c.id} className={`num${cls}${seam}`} title={`${c.label} · target ${GE} ${fmtPct(t)}%`}>
                               {fmtPct(v)}
                             </td>
                           )
                         })}
                         <td className="seam">
-                          <span className={STATUS_BADGE[st]} title={`${kpi.label}: ${fmtPct(r.vals[kpi.day] ?? null)}% · target ≥ ${fmtPct(targetOf(r))}%`}>
+                          <span className={STATUS_BADGE[st]} title={`${kpi.label}: ${fmtPct(r.vals[kpi.day] ?? null)}% · target ${GE} ${fmtPct(targetOf(r))}%`}>
                             {STATUS_LABEL[st]}
                           </span>
                         </td>
@@ -786,22 +798,25 @@ interface AgentBar { agent: string; value: number; sites: number; below: number 
  * agent sits in the 90s, and from zero the ten columns would be ten identical
  * slabs with the differences in the last few pixels.
  */
-function AgentColumns({ bars, target, focus, onPick }: {
+function AgentColumns({ bars, target, lowerBetter, focus, onPick }: {
   bars: AgentBar[]
   target: number
+  lowerBetter: boolean
   focus: string | null
   onPick: (agent: string) => void
 }) {
-  const lo = Math.max(0, Math.floor(Math.min(target, ...bars.map((b) => b.value)) - 3))
-  const hi = 100
+  /* a lower-is-better rate (Retur, a few percent) scales from zero up to
+     a little over its worst figure instead */
+  const lo = lowerBetter ? 0 : Math.max(0, Math.floor(Math.min(target, ...bars.map((b) => b.value)) - 3))
+  const hi = lowerBetter ? Math.max(target, ...bars.map((b) => b.value)) * 1.15 : 100
   const y = (v: number) => Math.max(2, Math.min(100, ((v - lo) / (hi - lo)) * 100))
   return (
     <div className="agchart" style={{ ['--ag-n' as string]: bars.length }}>
       <div className="agtarget" style={{ ['--ag-t' as string]: y(target) }}>
-        <span>≥ {fmtPct(target)}%</span>
+        <span>{lowerBetter ? '≤' : '≥'} {fmtPct(target)}%</span>
       </div>
       {bars.map((b) => {
-        const ok = b.value >= target
+        const ok = (lowerBetter ? b.value <= target : b.value >= target)
         const on = focus === b.agent
         return (
           <button

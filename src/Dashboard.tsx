@@ -42,7 +42,7 @@ const VIEW_DX = 'dx-'
 
 type View = typeof VIEW_AGEN | typeof VIEW_DP | `${typeof VIEW_DX}${DisplayId}`
 
-const DX_ICON: Record<DisplayId, IconName> = { absensi: 'users', ttd730: 'clock', ritase: 'check' }
+const DX_ICON: Record<DisplayId, IconName> = { absensi: 'users', ttd730: 'clock', ritase: 'check', retur: 'undo' }
 
 /** Below this the rail goes off-canvas and the hamburger appears. */
 const DRAWER_BP = 900
