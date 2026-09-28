@@ -19,6 +19,7 @@
  */
 import * as XLSX from 'xlsx'
 import { latin } from './jnt'
+import type { DpRow } from './jnt'
 
 export type DisplayId = 'absensi' | 'ttd730' | 'ritase' | 'retur'
 export type DisplayColKind = 'int' | 'pct' | 'delta'
@@ -74,6 +75,12 @@ export interface DisplayRow {
   /** Latin part of the Agent column — `JAKARTA雅加达` → `JAKARTA` */
   agent: string
   rm: string
+  /**
+   * The site's supervisor. The Display tabs do not carry one — it comes from the
+   * `Fr&Ag` reference tab by way of the DP rows, see `attachSupervisors`. `''`
+   * when that tab has no row for the site.
+   */
+  spv: string
   dp: string
   /** percent, e.g. 90 */
   target: number | null
@@ -585,6 +592,7 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
       /* the sheet writes "-" for a site with no RM; that is no RM, not an RM
          called "-" that would sort to the top of the list */
       rm: cRm != null ? text(r, cRm).trim().replace(/^[-–—\s]+$/, '') : '',
+      spv: '',
       dp,
       target: cTarget != null ? num(at(r, cTarget), 'pct') : null,
       vals: readVals(r),
@@ -617,6 +625,36 @@ export function parseDisplays(wb: XLSX.WorkBook): DisplayReport[] {
     if (rep) out.push(rep)
   }
   return out.sort((a, b) => DISPLAY_ORDER.indexOf(a.id) - DISPLAY_ORDER.indexOf(b.id))
+}
+
+/**
+ * Fill in each Display row's supervisor from the DP rows, which already carry it
+ * from the `Fr&Ag` reference tab.
+ *
+ * Joined on agent plus site name first — exact — and on the site name alone
+ * only when every agent using that name has the same supervisor. A guessed name
+ * on the wrong site is worse than a blank.
+ */
+export function attachSupervisors(reports: DisplayReport[], dps: DpRow[]): DisplayReport[] {
+  const norm = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim()
+  const byPair = new Map<string, string>()
+  const byName = new Map<string, string>()
+  for (const d of dps) {
+    if (!d.supervisor) continue
+    const name = norm(d.name)
+    byPair.set(`${norm(latin(d.agentLabel))}::${name}`, d.supervisor)
+    const prev = byName.get(name)
+    byName.set(name, prev == null || prev === d.supervisor ? d.supervisor : '')
+  }
+  if (!byPair.size) return reports
+  return reports.map((rep) => ({
+    ...rep,
+    rows: rep.rows.map((r) => {
+      const name = norm(r.dp)
+      const spv = byPair.get(`${norm(r.agent)}::${name}`) ?? byName.get(name) ?? ''
+      return spv ? { ...r, spv } : r
+    }),
+  }))
 }
 
 /* ------------------------------------------------------------ arithmetic */

@@ -48,6 +48,7 @@ const STATUS_RANK: Record<RowStatus, number> = { bad: 0, ok: 1, idle: 2 }
 const COL_DP = '__dp__'
 const COL_AGENT = '__agent__'
 const COL_RM = '__rm__'
+const COL_SPV = '__spv__'
 const COL_STATUS = '__status__'
 
 type SortDir = 'asc' | 'desc'
@@ -65,7 +66,7 @@ const deltaCls = (v: number | null) =>
   v == null || Math.abs(v) < 0.005 ? 'flat' : v > 0 ? 'up' : 'down'
 
 export default function DisplaySection({
-  report, part, agentKey, agentLabel, onError,
+  report, part, agentKey, agentLabel, onError, showSpv, onShowSpv, showAgent, onShowAgent,
 }: {
   report: DisplayReport
   /** the badge on the band — "B1", "B2", "B3" */
@@ -74,8 +75,17 @@ export default function DisplaySection({
   agentKey: string
   agentLabel: string
   onError: (msg: string) => void
+  /** the Supervisor column — held by the dashboard so it carries across pages */
+  showSpv: boolean
+  onShowSpv: (on: boolean) => void
+  /** the Agen column and the agent name beside each row, same arrangement */
+  showAgent: boolean
+  onShowAgent: (on: boolean) => void
 }) {
   const allAgents = !agentKey || agentKey === 'TOTAL'
+  /* The agent names in the table: only in the all-agents view — one agent's
+     page would repeat the same name down every row — and only while ticked. */
+  const agentCol = allAgents && showAgent
 
   /* ------------------------------------------------------------- scope */
 
@@ -190,9 +200,10 @@ export default function DisplaySection({
     return s
   }, [visCols])
 
-  /* The Agen column exists only in the all-agents view; a sort on it falls back
-     to the default order without forgetting what was asked for. */
-  const sortGone = sortKey === COL_AGENT && !allAgents
+  /* The Agen column exists only in the all-agents view, and the Supervisor
+     column only while it is switched on; a sort on either falls back to the
+     default order without forgetting what was asked for. */
+  const sortGone = (sortKey === COL_AGENT && !agentCol) || (sortKey === COL_SPV && !showSpv)
   const liveSort = sortGone ? defaultKey : sortKey
   const liveDir: SortDir = sortGone ? defaultDir : sortDir
 
@@ -203,7 +214,7 @@ export default function DisplaySection({
       if (agentOff.has(r.agent)) return false
       if (rmOff.has(r.rm || '—')) return false
       if (stOff.has(statusOf(r))) return false
-      if (needle && !`${r.dp} ${r.rm} ${r.agent}`.toLowerCase().includes(needle)) return false
+      if (needle && !`${r.dp} ${r.rm} ${r.spv} ${r.agent}`.toLowerCase().includes(needle)) return false
       return true
     })
     const colKind = new Map(report.cols.map((c) => [c.id, c]))
@@ -225,6 +236,11 @@ export default function DisplaySection({
     const dir = (rowKey === liveSort ? liveDir : defaultDir) === 'asc' ? 1 : -1
     const rowCmp = (a: DisplayRow, b: DisplayRow) => {
       if (rowKey === COL_DP) return dir * a.dp.localeCompare(b.dp)
+      if (rowKey === COL_SPV) {
+        /* sites with no named supervisor sink, both ways round */
+        if (!a.spv !== !b.spv) return a.spv ? -1 : 1
+        return dir * a.spv.localeCompare(b.spv) || a.dp.localeCompare(b.dp)
+      }
       if (rowKey === COL_STATUS) {
         const d = STATUS_RANK[statusOf(a)] - STATUS_RANK[statusOf(b)]
         if (d) return dir * d
@@ -323,7 +339,7 @@ export default function DisplaySection({
     if (sortKey === key && !sortGone) setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
     else {
       setSortKey(key)
-      setSortDir(key === COL_DP || key === COL_AGENT || key === COL_RM || key === COL_STATUS ? 'asc' : 'desc')
+      setSortDir(key === COL_DP || key === COL_AGENT || key === COL_RM || key === COL_SPV || key === COL_STATUS ? 'asc' : 'desc')
     }
   }
   const arrow = (key: string) => (liveSort === key ? (liveDir === 'asc' ? ' ▲' : ' ▼') : '')
@@ -344,7 +360,7 @@ export default function DisplaySection({
     const ro = new ResizeObserver(apply)
     ro.observe(row)
     return () => ro.disconnect()
-  }, [bands, allAgents])
+  }, [bands, agentCol])
 
   /* ------------------------------------------------------------ summaries */
 
@@ -431,8 +447,9 @@ export default function DisplaySection({
 
   const buildExport = (): ExportTable => {
     const cols: ExportCol[] = [{ head: 'DP / CP', width: 30 }]
-    if (allAgents) cols.push({ head: 'Agen', width: 14 })
+    if (agentCol) cols.push({ head: 'Agen', width: 14 })
     cols.push({ head: 'RM', width: 24 })
+    if (showSpv) cols.push({ head: 'Supervisor', width: 24 })
     for (const c of visCols) {
       const g = report.groups.find((x) => x.id === c.group)
       cols.push({ head: c.label, group: g?.label, kind: c.kind, width: c.kind === 'int' ? 13 : 14 })
@@ -441,8 +458,9 @@ export default function DisplaySection({
     const tone: Record<RowStatus, ExportTone> = { ok: 'ok', bad: 'bad', idle: 'mute' }
     const rows = filtered.map((r): ExportValue[] => {
       const row: ExportValue[] = [r.dp]
-      if (allAgents) row.push(r.agent)
+      if (agentCol) row.push(r.agent)
       row.push(r.rm || null)
+      if (showSpv) row.push(r.spv || null)
       for (const c of visCols) {
         const v = r.vals[c.id]
         row.push(v == null ? null : { v, tone: cellTone(r, c, v) })
@@ -467,7 +485,7 @@ export default function DisplaySection({
 
   /* --------------------------------------------------------------- render */
 
-  const colCount = 2 + (allAgents ? 1 : 0) + 1 + visCols.length
+  const colCount = 2 + (agentCol ? 1 : 0) + (showSpv ? 1 : 0) + 1 + visCols.length
   const multi = report.kpis.length > 1
   const counts = filterOpts.counts
   const rowCount = items.filter((it) => it.kind === 'row').length
@@ -595,9 +613,9 @@ export default function DisplaySection({
         <div className="dpfilters">
           <div className="dpsearchbox">
             <input
-              type="text" placeholder="Cari DP / CP atau RM…" value={q}
+              type="text" placeholder={showSpv ? 'Cari DP / CP, RM, atau Supervisor…' : 'Cari DP / CP atau RM…'} value={q}
               onChange={(e) => setQ(e.target.value)}
-              aria-label="Cari drop point atau RM"
+              aria-label={showSpv ? 'Cari drop point, RM, atau supervisor' : 'Cari drop point atau RM'}
             />
             {q && (
               <button type="button" className="dpsearchx" onClick={() => setQ('')}
@@ -622,6 +640,16 @@ export default function DisplaySection({
               ))}
             </div>
           )}
+          {allAgents && (
+            <label className={`zerotoggle${showAgent ? ' on' : ''}`} title="Tampilkan nama agen tiap DP/CP">
+              <input type="checkbox" checked={showAgent} onChange={(e) => onShowAgent(e.target.checked)} />
+              Tampilkan Agen
+            </label>
+          )}
+          <label className={`zerotoggle${showSpv ? ' on' : ''}`} title="Tampilkan nama supervisor (SPV) tiap DP/CP">
+            <input type="checkbox" checked={showSpv} onChange={(e) => onShowSpv(e.target.checked)} />
+            Tampilkan Supervisor
+          </label>
           <label className={`zerotoggle${showZero ? ' on' : ''}`} title="DP/CP yang tidak punya apa pun untuk dihitung hari itu">
             <input type="checkbox" checked={showZero} onChange={(e) => setShowZero(e.target.checked)} />
             Tampilkan DP/CP bernilai 0 <b>{zeroTotal}</b>
@@ -640,8 +668,9 @@ export default function DisplaySection({
               <thead>
                 <tr className="secrow" ref={secRowRef}>
                   <th className="sticky" />
-                  {allAgents && <th className="agentcol" />}
+                  {agentCol && <th className="agentcol" />}
                   <th className="rmcol" />
+                  {showSpv && <th className="spvcol" />}
                   {bands.map((b, i) => (
                     <th
                       key={b.id} colSpan={b.span}
@@ -654,10 +683,13 @@ export default function DisplaySection({
                 </tr>
                 <tr className="catrow">
                   <th className="sticky" onClick={() => sortOn(COL_DP)}>DP / CP{arrow(COL_DP)}<Zh>网点</Zh></th>
-                  {allAgents && (
+                  {agentCol && (
                     <th className="agentcol" onClick={() => sortOn(COL_AGENT)}>Agen{arrow(COL_AGENT)}<Zh>代理区</Zh></th>
                   )}
                   <th className="rmcol" onClick={() => sortOn(COL_RM)}>RM{arrow(COL_RM)}<Zh>区域经理</Zh></th>
+                  {showSpv && (
+                    <th className="spvcol" onClick={() => sortOn(COL_SPV)}>Supervisor{arrow(COL_SPV)}<Zh>主管</Zh></th>
+                  )}
                   {visCols.map((c) => (
                     <th
                       key={c.id}
@@ -683,7 +715,7 @@ export default function DisplaySection({
                         <td colSpan={colCount}>
                           <span className="rmsep-in">
                             <b>{it.rm === '—' ? 'Tanpa RM' : it.rm}</b>
-                            {allAgents && <span>{it.agent}</span>}
+                            {agentCol && <span>{it.agent}</span>}
                             <span>{live.length} DP/CP</span>
                             {pct != null && (
                               <span className={meets(pct, target) ? 'up' : 'down'}>{kpi.label} {fmtPct(pct)}%</span>
@@ -710,10 +742,13 @@ export default function DisplaySection({
                       <tr key={r.key} className={st === 'idle' ? 'k-closed' : ''}>
                         <td className="sticky dpcell" title={r.dp}>
                           <span className="dpname"><span className="dptext">{r.dp}</span></span>
-                          <span className="dpagent">{[allAgents ? r.agent : '', r.rm].filter(Boolean).join(' · ')}</span>
+                          <span className="dpagent">{[agentCol ? r.agent : '', r.rm, showSpv ? r.spv : ''].filter(Boolean).join(' · ')}</span>
                         </td>
-                        {allAgents && <td className="muted agentcol">{r.agent}<Zh>{agentZh(r.agent)}</Zh></td>}
+                        {agentCol && <td className="muted agentcol">{r.agent}<Zh>{agentZh(r.agent)}</Zh></td>}
                         <td className="rmcol" title={r.rm || undefined}>{r.rm || <span className="muted">—</span>}</td>
+                        {showSpv && (
+                          <td className="spvcol" title={r.spv || undefined}>{r.spv || <span className="muted">—</span>}</td>
+                        )}
                         {visCols.map((c) => {
                           const seam = seamIds.has(c.id) ? ' seam' : ''
                           const v = r.vals[c.id]

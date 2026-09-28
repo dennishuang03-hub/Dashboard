@@ -15,7 +15,7 @@ import JntLogo from './components/JntLogo'
 import Sidebar, { NavButton } from './components/Sidebar'
 import type { IconName, NavGroup, NavItem } from './components/Sidebar'
 import Zh from './components/Zh'
-import { parseDisplays } from './lib/display'
+import { attachSupervisors, parseDisplays } from './lib/display'
 import type { DisplayId, DisplayReport } from './lib/display'
 import type { Identity } from './lib/session'
 import type { Theme } from './lib/theme'
@@ -122,6 +122,12 @@ export default function Dashboard({
   /* The Display tabs — a separate parse, so a workbook without them still makes
      a whole dashboard and simply offers no sub-entries. */
   const [displays, setDisplays] = useState<DisplayReport[]>([])
+  /* The Supervisor column on the Display pages. Held here rather than in each
+     page so the choice carries from one Display page to the next. Off by
+     default, as on the DP/CP table. */
+  const [dxShowSpv, setDxShowSpv] = useState(false)
+  /* The agent name on the same pages — on by default, as it always was. */
+  const [dxShowAgent, setDxShowAgent] = useState(true)
   /* The toolbar picture is locked while it is being taken — a second press used
      to start a second capture and save the same file twice. */
   const [pngBusy, setPngBusy] = useState(false)
@@ -209,7 +215,9 @@ export default function Dashboard({
       /* A broken Display tab must not take the daily dashboard down with it. */
       let dx: DisplayReport[] = []
       const dxNames = names.filter(isDisplaySheet)
-      try { dx = dxNames.length ? parseDisplays(readWorkbookSheets(buf, dxNames, true)) : [] } catch { dx = [] }
+      try {
+        dx = dxNames.length ? attachSupervisors(parseDisplays(readWorkbookSheets(buf, dxNames, true)), mdl.dps) : []
+      } catch { dx = [] }
       setModel(mdl)
       setDisplays(dx)
       setFileName(name)
@@ -715,6 +723,8 @@ export default function Dashboard({
           key={dxReport.id} report={dxReport}
           part={`B${displays.indexOf(dxReport) + 1}`}
           agentKey={agentKey} agentLabel={current.label} onError={setErr}
+          showSpv={dxShowSpv} onShowSpv={setDxShowSpv}
+          showAgent={dxShowAgent} onShowAgent={setDxShowAgent}
         />
       )}
 
