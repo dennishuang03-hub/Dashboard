@@ -15,7 +15,7 @@ import { readdir, readFile, stat } from 'node:fs/promises'
 import { join } from 'node:path'
 import { json, requireSession } from './_lib/guard.js'
 import { adapt } from './_lib/adapt.js'
-import { partOf, splitWorkbook } from './_lib/xlsxsplit.js'
+import { partOf, sheetNamesOf, sheetsHeader, splitWorkbook } from './_lib/xlsxsplit.js'
 
 const XLSX_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
@@ -124,7 +124,8 @@ async function report(req: Request): Promise<Response> {
    * safely, so the worst case here is the traffic this route already had.
    */
   const part = partOf(new URL(req.url).searchParams.get('part'))
-  const body = splitWorkbook(bytes, part)
+  const { body, sent } = splitWorkbook(bytes, part)
+  const sheets = sheetsHeader(sheetNamesOf(body))
 
   return new Response(new Uint8Array(body), {
     status: 200,
@@ -133,7 +134,7 @@ async function report(req: Request): Promise<Response> {
       'Content-Length': String(body.byteLength),
       /* Which half this is, so a reader of the Network tab is not left
          wondering why the file is smaller than the one on the server. */
-      'X-Report-Part': part,
+      'X-Report-Part': sent,
       /* `private` keeps Vercel's shared CDN from ever holding a copy: this body
          is the answer to "who is asking", and a cached one would be served to
          someone who never asked. */
@@ -142,6 +143,8 @@ async function report(req: Request): Promise<Response> {
       /* The dashboard names its PNG and Excel exports after the source file, so
          the original filename has to survive the trip. */
       'X-Report-Filename': encodeURIComponent(found.name),
+      /* The tab names, so the browser can skip a whole read just to list them. */
+      ...(sheets ? { 'X-Report-Sheets': sheets } : {}),
     },
   })
 }

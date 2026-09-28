@@ -36,7 +36,24 @@
  */
 import { inflateRawSync } from 'node:zlib'
 
-export type ReportPart = 'daily' | 'full'
+/**
+ *   daily   everything but the OTPU tabs — what older builds of the page ask for
+ *   boot    what the first screen needs: daily minus the Display and RM tabs
+ *   extra   the Display and RM tabs alone, fetched once the first screen is up
+ *   full    the file untouched
+ *
+ * `boot` + `extra` is `daily`, split so the page can open on the first third of
+ * the download: the four Display tabs are most of the file and are only read
+ * when one of their pages is opened.
+ */
+export type ReportPart = 'daily' | 'boot' | 'extra' | 'full'
+
+/**
+ * The tabs `extra` carries and `boot` leaves out. The same tests as
+ * `isDisplaySheet` in `src/lib/jnt.ts` and `rmPeriodOf` in `src/lib/rm.ts` —
+ * change one and change the other.
+ */
+const LAZY_TAB_RE = /^\s*(display\b|rm\s+pencapaian\b)/i
 
 /**
  * Which tabs are the OTPU report — shown on a separate site, never sent here.
@@ -233,41 +250,72 @@ function sheetParts(entries: Entry[]): Map<string, string> | null {
 }
 
 /**
- * The requested half of `bytes`, or `bytes` unchanged when the split is not
- * safe to make.
+ * The requested part of `bytes`, and which part that turned out to be — `full`
+ * when the split was not safe to make and the original bytes went out instead,
+ * so the dashboard knows it already has everything and fetches nothing more.
  */
-export function splitWorkbook(bytes: Buffer, part: ReportPart): Buffer {
-  if (part === 'full') return bytes
+export function splitWorkbook(bytes: Buffer, part: ReportPart): { body: Buffer; sent: ReportPart } {
+  const whole = { body: bytes, sent: 'full' as ReportPart }
+  if (part === 'full') return whole
 
   const entries = readEntries(bytes)
-  if (!entries) return bytes
+  if (!entries) return whole
 
   let parts: Map<string, string> | null
   try {
     parts = sheetParts(entries)
   } catch {
-    return bytes
+    return whole
   }
-  if (!parts) return bytes
+  if (!parts) return whole
 
-  /* Worksheet entries to leave behind — the other half's. Only worksheets are
-     ever dropped: styles, shared strings, the workbook part and every rel go in
-     both halves, and together they are a fraction of either. */
+  /* Worksheet entries to leave behind. Styles, shared strings, the workbook
+     part and every rel go in every part, and together they are a fraction of
+     any of them. */
   const drop = new Set<string>()
   for (const [name, path] of parts) {
     if (OTPU_TAB_RE.test(name)) drop.add(path)
+    else if (part === 'boot' && LAZY_TAB_RE.test(name)) drop.add(path)
+    else if (part === 'extra' && !LAZY_TAB_RE.test(name)) drop.add(path)
   }
-  if (!drop.size) return bytes
+  /* The cached copies of the other workbooks this one links to. Nothing here
+     reads them, and they are a few hundred kilobytes of every download. */
+  if (part !== 'daily') {
+    for (const e of entries) if (/^xl\/externalLinks\//.test(e.name)) drop.add(e.name)
+  }
+  if (!drop.size) return { body: bytes, sent: part }
 
   const kept = entries.filter((e) => !drop.has(e.name))
   try {
-    return writeZip(kept)
+    return { body: writeZip(kept), sent: part }
   } catch {
-    return bytes
+    return whole
   }
 }
 
-/** `?part=` as one of the two understood values; anything else is `daily`. */
+/**
+ * The workbook's sheet names, in tab order, from the zip directory and
+ * `workbook.xml` alone — milliseconds, where the browser's own names-only read
+ * inflates the whole file first. Sent as `X-Report-Sheets` so the dashboard can
+ * choose which tabs to read without that extra pass. `null` when the file is not
+ * a shape this module reads; the browser then falls back to finding out itself.
+ */
+export function sheetNamesOf(bytes: Buffer): string[] | null {
+  const entries = readEntries(bytes)
+  if (!entries) return null
+  try {
+    const parts = sheetParts(entries)
+    return parts ? [...parts.keys()] : null
+  } catch {
+    return null
+  }
+}
+
+/** The names as a header value: JSON, percent-encoded so any tab name survives. */
+export const sheetsHeader = (names: string[] | null): string | null =>
+  names ? encodeURIComponent(JSON.stringify(names)) : null
+
+/** `?part=` as one of the understood values; anything else is `daily`. */
 export function partOf(raw: string | null): ReportPart {
-  return raw === 'full' ? raw : 'daily'
+  return raw === 'full' || raw === 'boot' || raw === 'extra' ? raw : 'daily'
 }

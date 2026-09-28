@@ -18,7 +18,7 @@
  * tab, which carries an RM column on every drop point — see `attachRetur`.
  */
 import * as XLSX from 'xlsx'
-import { latin } from './jnt'
+import { cellText, latin } from './jnt'
 import { ratioOf } from './display'
 import type { DisplayId, DisplayKpi, DisplayReport, DisplayRow, Ratio } from './display'
 
@@ -143,7 +143,7 @@ export function parseRmSheet(period: RmPeriod, sheet: string, ws: XLSX.WorkSheet
   if (!ws || !ws['!ref']) return null
   const range = XLSX.utils.decode_range(ws['!ref'])
   const at = (r: number, c: number) => ws[XLSX.utils.encode_cell({ r, c })] as XLSX.CellObject | undefined
-  const text = (r: number, c: number) => String(at(r, c)?.w ?? at(r, c)?.v ?? '').trim()
+  const text = (r: number, c: number) => cellText(at(r, c)).trim()
 
   /* The header row is the one with "RM" in its own cell. */
   let hr = -1

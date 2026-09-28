@@ -77,6 +77,28 @@ const DRAWER_BP = 900
 const REPORT_URL = '/api/report'
 
 /** `X-Report-Filename`, percent-decoded, or a sensible stand-in. */
+/**
+ * `X-Report-Sheets`: the tab names, as the server read them from the zip
+ * directory. `null` when absent or unreadable — the caller then reads the names
+ * from the workbook itself, which costs a pass over the whole file.
+ */
+function reportSheets(res: Response): string[] | null {
+  const raw = res.headers.get('X-Report-Sheets')
+  if (!raw) return null
+  try {
+    const v: unknown = JSON.parse(decodeURIComponent(raw))
+    return Array.isArray(v) && v.length && v.every((x) => typeof x === 'string') ? v : null
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Pass a value on after a short pause — long enough for a "Memuat" panel to
+ * paint before a read that holds the main thread for a moment.
+ */
+const afterPaint = <T,>(v: T): Promise<T> => new Promise((r) => setTimeout(() => r(v), 50))
+
 function reportName(res: Response): string {
   const raw = res.headers.get('X-Report-Filename')
   if (!raw) return 'laporan.xlsx'
@@ -130,8 +152,29 @@ export default function Dashboard({
   /* Each Display tab once read: absent while not yet read, `null` when the read
      failed. Read on first visit to the page — see the effect below. */
   const [dxRead, setDxRead] = useState<Partial<Record<DisplayId, DisplayReport | null>>>({})
-  /* The workbook bytes, kept for those later reads. */
-  const bufRef = useRef<ArrayBuffer | null>(null)
+  /*
+   * The bytes the Display and RM tabs are read from, for those later reads.
+   *
+   * On startup the server sends only what the first screen needs (`?part=boot`,
+   * a third of the file) and the Display and RM tabs follow as a second download
+   * (`?part=extra`), started in the background once the dashboard is up. This is
+   * that second download — a promise, so a page opened before it lands simply
+   * waits for it. For an uploaded file, or a server that sent everything, it is
+   * the same bytes as the first.
+   */
+  const extraRef = useRef<Promise<ArrayBuffer> | null>(null)
+  /* how to get them — set with each loaded file */
+  const extraFetch = useRef<(() => Promise<ArrayBuffer>) | null>(null)
+  /** The Display and RM tabs' bytes: fetched once, shared, retried after a failure. */
+  const getExtra = useCallback((): Promise<ArrayBuffer> => {
+    if (extraRef.current) return extraRef.current
+    const run = extraFetch.current
+    if (!run) return Promise.reject(new Error('Belum ada laporan.'))
+    const p = run()
+    extraRef.current = p
+    p.catch(() => { if (extraRef.current === p) extraRef.current = null })
+    return p
+  }, [])
   /* The RM Pencapaian tabs, by period, known from the sheet names — and the
      sheet Retur is computed from. Read together the first time the page is
      opened: absent while not yet read, `null` when nothing could be read. */
@@ -223,22 +266,28 @@ export default function Dashboard({
 
   /** One path in for both sources — an upload and the served report differ only
    *  in how the bytes arrive, never in how they are read. */
-  const loadBuffer = useCallback((buf: ArrayBuffer, name: string) => {
+  const loadBuffer = useCallback((
+    buf: ArrayBuffer, name: string,
+    /** the tab names, when the server sent them — saves a read of the file */
+    knownNames?: string[] | null,
+    /** where the Display and RM tabs are; the same bytes when omitted */
+    extra?: () => Promise<ArrayBuffer>,
+  ) => {
     try {
       /*
-       * Two reads, and the first one reads nothing.
+       * The names first, so the tabs this dashboard does not show (see
+       * `isIgnoredSheet`) are left out before paying to read any of them. They
+       * come from the server's header when it sent one; reading them from the
+       * file costs a pass over all of it.
        *
-       * The names come back for a fraction of the cost of the cells, and they
-       * are enough to leave out the tabs this dashboard does not show (see
-       * `isIgnoredSheet`) before paying to read any of them.
-       *
-       * The Display tabs are not read here at all — only listed, so the rail
-       * can offer them. Each is read the first time its page is opened.
+       * The Display and RM tabs are not read here at all — only listed, so the
+       * rail can offer them. Each is read the first time its page is opened.
        */
-      const names = readSheetNames(buf)
+      const names = knownNames ?? readSheetNames(buf)
       const wb = readWorkbookSheets(buf, names.filter((n) => !isIgnoredSheet(n) && !isDisplaySheet(n)))
       const mdl = parseWorkbook(wb)
-      bufRef.current = buf
+      extraRef.current = null
+      extraFetch.current = extra ?? (() => Promise.resolve(buf))
       setModel(mdl)
       setDxTabs(displayTabs(names))
       setDxRead({})
@@ -251,7 +300,8 @@ export default function Dashboard({
       setDateIdx(Math.max(0, mdl.dates.length - 1))
       setErr('')
     } catch (ex) {
-      bufRef.current = null
+      extraRef.current = null
+      extraFetch.current = null
       setModel(null)
       setDxTabs([])
       setDxRead({})
@@ -273,11 +323,12 @@ export default function Dashboard({
    * own page — it must not take the rest of the dashboard down with it.
    */
   useEffect(() => {
-    const buf = bufRef.current
-    if (!dxTab || !model || !buf || dxRead[dxTab.id] !== undefined) return
+    if (!dxTab || !model || dxRead[dxTab.id] !== undefined) return
     const tab = dxTab
     const dps = model.dps
-    const timer = setTimeout(() => {
+    let dead = false
+    getExtra().then(afterPaint).then((buf) => {
+      if (dead) return
       let rep: DisplayReport | null = null
       try {
         const wb = readWorkbookSheets(buf, [tab.sheet], true)
@@ -285,9 +336,9 @@ export default function Dashboard({
         if (rep) rep = attachSupervisors([rep], dps)[0]
       } catch { rep = null }
       setDxRead((prev) => ({ ...prev, [tab.id]: rep }))
-    }, 50)
-    return () => clearTimeout(timer)
-  }, [dxTab, dxRead, model])
+    }, () => { if (!dead) setDxRead((prev) => ({ ...prev, [tab.id]: null })) })
+    return () => { dead = true }
+  }, [dxTab, dxRead, model, getExtra])
 
   /**
    * Read the RM tabs the first time Pencapaian RM is opened — all three periods
@@ -296,10 +347,11 @@ export default function Dashboard({
    * the "Memuat" panel paints first.
    */
   useEffect(() => {
-    const buf = bufRef.current
-    if (!onRm || !buf || rmRead !== undefined) return
+    if (!onRm || rmRead !== undefined) return
     const { tabs, retur } = rmSheets
-    const timer = setTimeout(() => {
+    let dead = false
+    getExtra().then(afterPaint).then((buf) => {
+      if (dead) return
       let out: Partial<Record<RmPeriod, RmReport>> | null = null
       try {
         const names = [...Object.values(tabs), ...(retur ? [retur] : [])] as string[]
@@ -312,17 +364,18 @@ export default function Dashboard({
         }
       } catch { out = null }
       setRmRead(out)
-    }, 50)
-    return () => clearTimeout(timer)
-  }, [onRm, rmRead, rmSheets])
+    }, () => { if (!dead) setRmRead(null) })
+    return () => { dead = true }
+  }, [onRm, rmRead, rmSheets, getExtra])
 
   /* The four Display tabs for the pop-out's DP list. Without column styles —
      the pop-out reads figures, not which columns the sheet hides. */
   useEffect(() => {
-    const buf = bufRef.current
-    if (!rmDpWanted || !buf || rmDp !== undefined) return
+    if (!rmDpWanted || rmDp !== undefined) return
     const tabs = dxTabs
-    const timer = setTimeout(() => {
+    let dead = false
+    getExtra().then(afterPaint).then((buf) => {
+      if (dead) return
       let out: Partial<Record<DisplayId, DisplayReport>> | null = null
       try {
         const wb = readWorkbookSheets(buf, tabs.map((t) => t.sheet))
@@ -333,9 +386,9 @@ export default function Dashboard({
         }
       } catch { out = null }
       setRmDp(out)
-    }, 50)
-    return () => clearTimeout(timer)
-  }, [rmDpWanted, rmDp, dxTabs])
+    }, () => { if (!dead) setRmDp(null) })
+    return () => { dead = true }
+  }, [rmDpWanted, rmDp, dxTabs, getExtra])
 
   const handleFile = useCallback((f: File | undefined | null) => {
     if (!f) return
@@ -350,25 +403,46 @@ export default function Dashboard({
   useEffect(() => {
     let cancelled = false
 
+    /* One part of the report. A 401 means the session expired while the tab sat
+       open: the user goes back to the login screen rather than being shown a
+       read error about a file they are no longer allowed to read. */
+    const fetchPart = async (part: 'boot' | 'extra') => {
+      const res = await fetch(`${REPORT_URL}?part=${part}`, { credentials: 'same-origin' })
+      if (res.status === 401) {
+        if (!cancelled) onSignedOut()
+        throw new Error('Sesi berakhir.')
+      }
+      if (!res.ok) {
+        const why = await res.json().catch(() => null) as { error?: string } | null
+        throw new Error(why?.error || `${res.status} ${res.statusText}`)
+      }
+      return res
+    }
+
     ;(async () => {
       try {
-        const res = await fetch(REPORT_URL, { credentials: 'same-origin' })
-
-        /* The session expired while the tab sat open. Hand the user back to the
-           login screen rather than showing them a read error about a file they
-           are no longer allowed to read. */
-        if (res.status === 401) {
-          if (!cancelled) onSignedOut()
-          return
-        }
-
-        if (!res.ok) {
-          const why = await res.json().catch(() => null) as { error?: string } | null
-          throw new Error(why?.error || `${res.status} ${res.statusText}`)
+        let res: Response
+        try {
+          res = await fetchPart('boot')
+        } catch (ex) {
+          if ((ex as Error).message === 'Sesi berakhir.') return
+          throw ex
         }
 
         const buf = await res.arrayBuffer()
-        if (!cancelled) loadBuffer(buf, reportName(res))
+        /* Only a server that really split the file needs asking for the rest;
+           one that sent everything (an older deploy, or a file it could not
+           split safely) has already delivered it. */
+        const split = res.headers.get('X-Report-Part') === 'boot'
+        const extra = split
+          ? () => fetchPart('extra').then((r) => r.arrayBuffer())
+          : undefined
+        if (cancelled) return
+        loadBuffer(buf, reportName(res), reportSheets(res), extra)
+        /* Start the second download now, in the background, so the Display and
+           RM pages are usually ready by the time anyone opens one. Nothing is
+           read from it until then. */
+        if (split) setTimeout(() => { getExtra().catch(() => {}) }, 0)
       } catch (ex) {
         if (!cancelled) setErr(`Laporan di server tidak dapat dibaca: ${(ex as Error).message}`)
       } finally {
@@ -377,7 +451,7 @@ export default function Dashboard({
     })()
 
     return () => { cancelled = true }
-  }, [loadBuffer, onSignedOut])
+  }, [loadBuffer, onSignedOut, getExtra])
 
   /**
    * End the session on the server, not just in this tab.

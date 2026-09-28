@@ -2086,9 +2086,28 @@ export function averageRows(list: AgentRow[], label: string, area: string): Agen
  * `serialToDate`, which is exact, instead of relying on SheetJS's
  * timezone-sensitive conversion. `cellNF: true` keeps the number-format string
  * on `.z`, which is what tells us "this is a date" and "this is a percentage".
+ *
+ * `cellText: false` skips the formatted text (`.w`) SheetJS would otherwise
+ * write for every cell. Profiled on the September workbook, that formatting was
+ * two thirds of the whole read — ALL DP DATA alone is 120,000 numbers, each run
+ * through the number formatter — and the parsers read values, not text. The few
+ * places that want a cell as Excel prints it (a dated header) ask `cellText`.
  */
+const READ_OPTS: XLSX.ParsingOptions = { type: 'array', cellDates: false, cellNF: true, cellText: false }
+
 export function readWorkbook(buf: ArrayBuffer): XLSX.WorkBook {
-  return XLSX.read(new Uint8Array(buf), { type: 'array', cellDates: false, cellNF: true })
+  return XLSX.read(new Uint8Array(buf), READ_OPTS)
+}
+
+/** A cell as Excel prints it — `27/Sep` for a date serial — formatted on demand. */
+export function cellText(cell: XLSX.CellObject | undefined): string {
+  if (!cell || cell.v == null) return ''
+  if (cell.w != null) return cell.w
+  try {
+    return XLSX.utils.format_cell(cell)
+  } catch {
+    return String(cell.v)
+  }
 }
 
 /**
@@ -2129,9 +2148,7 @@ export function readWorkbookSheets(
   styles = false,
 ): XLSX.WorkBook {
   if (!names.length) return readWorkbook(buf)
-  return XLSX.read(new Uint8Array(buf), {
-    type: 'array', cellDates: false, cellNF: true, sheets: names, cellStyles: styles,
-  })
+  return XLSX.read(new Uint8Array(buf), { ...READ_OPTS, sheets: names, cellStyles: styles })
 }
 
 /* ------------------------------------------------------------- PNG export */

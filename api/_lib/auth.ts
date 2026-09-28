@@ -46,8 +46,8 @@ function scrypt(
 
 /* ------------------------------------------------------------------ config */
 
-/** 8 hours — a shift, not a month. A stolen laptop stops being a key by morning. */
-export const SESSION_TTL_S = 8 * 60 * 60
+/** 1 hours — a shift, not a month. A stolen laptop stops being a key by morning. */
+export const SESSION_TTL_S = 1 * 60 * 60
 
 export const SESSION_COOKIE = 'jt_session'
 

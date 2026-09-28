@@ -18,7 +18,7 @@
  * found is not offered at all, rather than drawn with holes.
  */
 import * as XLSX from 'xlsx'
-import { latin } from './jnt'
+import { cellText, latin } from './jnt'
 import type { DpRow } from './jnt'
 
 export type DisplayId = 'absensi' | 'ttd730' | 'ritase' | 'retur'
@@ -531,7 +531,7 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
        value is a serial number (46288) rather than "23/Sep". */
     const subs = Array.from({ length: h.span }, (_, i) => {
       const cell = at(hr + 1, h.c + i)
-      return String(cell?.w ?? cell?.v ?? '').trim()
+      return cellText(cell).trim()
     })
     /* One copy of the 0730 tab dates its three days 23/Sep, 22/Sep, 22/Sep. A
        repeated date is a typo in the sheet, so the days are counted back from

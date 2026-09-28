@@ -3,7 +3,7 @@ import type { Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import { readdirSync, readFileSync, statSync } from 'node:fs'
 import { join } from 'node:path'
-import { partOf, splitWorkbook } from './api/_lib/xlsxsplit.js'
+import { partOf, sheetNamesOf, sheetsHeader, splitWorkbook } from './api/_lib/xlsxsplit.js'
 
 /**
  * The API, stood in for while developing.
@@ -83,12 +83,14 @@ function devApi(): Plugin {
              thing worth watching locally: whether the page still has everything
              it needs when half the file does not arrive. */
           const part = partOf(new URL(req.url ?? '/', 'http://localhost').searchParams.get('part'))
-          const bytes = splitWorkbook(readFileSync(found.path), part)
+          const { body: bytes, sent } = splitWorkbook(readFileSync(found.path), part)
           res.statusCode = 200
           res.setHeader('Content-Type', XLSX_MIME)
           res.setHeader('Cache-Control', 'no-store')
-          res.setHeader('X-Report-Part', part)
+          res.setHeader('X-Report-Part', sent)
           res.setHeader('X-Report-Filename', encodeURIComponent(found.name))
+          const sheets = sheetsHeader(sheetNamesOf(bytes))
+          if (sheets) res.setHeader('X-Report-Sheets', sheets)
           return res.end(bytes)
         }
 
