@@ -14,7 +14,7 @@
  * the RM tabs and shows at once.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { agentZh } from '../lib/jnt'
+import { agentZh, exportPng } from '../lib/jnt'
 import { RM_PERIODS, dpColumnOf, dpScoreOf, rmDpLines, scoreOf, toneOf, verdictOf } from '../lib/rm'
 import type { RmDpLine, RmIndicator, RmPeriod, RmReport, RmRow } from '../lib/rm'
 import type { DisplayId, DisplayReport } from '../lib/display'
@@ -210,6 +210,31 @@ export default function RmDetail({
     return null
   })()
 
+  /*
+   * The whole pop-out as one picture, for the period on screen.
+   *
+   * `shoot-rmd` lays the pop-out out at its full height for the length of the
+   * shot — no scrolling body, no dimmed page, a fixed desk width — so the
+   * picture holds every DP/CP row rather than the part that happened to be in
+   * view. The controls (tabs, search, close, this button) are left out; the
+   * period is already named in the header and on each section title.
+   */
+  const [pngBusy, setPngBusy] = useState(false)
+  const [pngErr, setPngErr] = useState('')
+  const savePng = async () => {
+    if (!boxRef.current || pngBusy) return
+    setPngBusy(true)
+    setPngErr('')
+    const clean = (x: string) => x.replace(/[\\/:*?"<>|&]+/g, ' ').replace(/\s+/g, ' ').trim()
+    try {
+      await exportPng(boxRef.current, `${clean(`Pencapaian RM ${row.rm} ${row.region} ${periodName} ${rep.periodLabel}`)}.png`, 'shoot-rmd')
+    } catch (ex) {
+      setPngErr((ex as Error).message)
+    } finally {
+      setPngBusy(false)
+    }
+  }
+
   return (
     <div className="rmd-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div className="rmd" role="dialog" aria-modal="true" aria-labelledby="rmd-title" ref={boxRef} tabIndex={-1}>
@@ -225,10 +250,27 @@ export default function RmDetail({
           <span className={`rmd-verdict v-${verdict}`}>
             {s.of ? <><b>{s.met} / {s.of}</b> KPI sesuai target</> : 'Tidak ada data'}
           </span>
+          <button
+            className={`btn tiny act act-png rmd-png${pngBusy ? ' is-busy' : ''}`}
+            onClick={savePng} disabled={pngBusy}
+            title={`Simpan seluruh detail RM ini (${periodName.toLowerCase()}) sebagai gambar PNG`}
+          >
+            <BtnIcon name={pngBusy ? 'spin' : 'image'} />
+            <span>{pngBusy ? 'Menyimpan…' : 'Simpan PNG'}</span>
+          </button>
           <button className="rmd-close" onClick={onClose} aria-label="Tutup detail" title="Tutup (Esc)">
             <BtnIcon name="close" />
           </button>
         </header>
+
+        {pngErr && (
+          <div className="err errbar rmd-err" role="alert">
+            <span className="errmsg">{pngErr}</span>
+            <button className="errclose" onClick={() => setPngErr('')} aria-label="Tutup pesan" title="Tutup pesan">
+              <BtnIcon name="close" />
+            </button>
+          </div>
+        )}
 
         <div className="rmd-body">
           {/* 1 — every period at once */}

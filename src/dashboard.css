@@ -931,7 +931,7 @@ button.dxcard:focus-visible{outline:2px solid var(--jt-red-lit);outline-offset:2
 table.dxgrid thead th.dxkey{box-shadow:inset 0 -3px 0 var(--amber)}
 .dxsection .dpfilters .act-clear{margin-left:auto}
 
-/* ---------- Display tables: the dated columns, in amber ----------
+/* ---------- Display tables: the dated columns, in orange (#FF9F38) ----------
 
    A header the sheet merges across several dates is a band, and the date
    headings under it are amber instead of red — one colour for every dated run,
@@ -943,16 +943,16 @@ table.dxgrid thead th.dxkey{box-shadow:inset 0 -3px 0 var(--amber)}
    dates keeps three neighbouring days from running together. */
 /* `.secband` too, to outrank the red accent every band gets */
 table.dxgrid thead tr.secrow th.secband.dxband{
-  --band:linear-gradient(180deg,#4A3808 0%,#2F2306 100%);
-  color:#FFD466;border-bottom-color:rgba(245,184,46,.28);
-  box-shadow:inset 0 3px 0 #F5B82E;
+  --band:linear-gradient(180deg,#4A2A08 0%,#2E1A05 100%);
+  color:#FFC27A;border-bottom-color:rgba(255,159,56,.3);
+  box-shadow:inset 0 3px 0 #FF9F38;
 }
 table.dxgrid thead tr.catrow th.dxdate{
-  background:#F5B82E;color:#1E1600;text-align:center;
+  background:#FF9F38;color:#1E1000;text-align:center;
   border-left:1px solid rgba(30,22,0,.18);
 }
 table.dxgrid thead tr.catrow th.dxdate.seam{border-left:2px solid #4A4A4A}
-table.dxgrid thead tr.catrow th.dxdate:hover{background:#FFC84A}
+table.dxgrid thead tr.catrow th.dxdate:hover{background:#FFB15E}
 /* the column the page is judged on: a red underline, which amber cannot hide */
 table.dxgrid thead tr.catrow th.dxdate.dxkey{box-shadow:inset 0 -3px 0 var(--jt-red)}
 
@@ -2772,13 +2772,13 @@ body.shoot-table .dptable .body table.dpgrid{min-width:100% !important}
 [data-theme="light"] .dxcards.multi .dxcard.on{border-color:#9AA3B2}
 /* the amber outranks the light theme's red gradient on every heading */
 [data-theme="light"] table.dxgrid thead tr.secrow th.secband.dxband{
-  --band:linear-gradient(180deg,#FFF6DC 0%,#FFE9B0 100%);
-  color:#6B4D00;border-bottom-color:#EFC766;box-shadow:inset 0 3px 0 #E0A21A;
+  --band:linear-gradient(180deg,#FFF3E4 0%,#FFE0BD 100%);
+  color:#7A3E00;border-bottom-color:#FFC58A;box-shadow:inset 0 3px 0 #FF9F38;
 }
 [data-theme="light"] table.dxgrid thead tr.catrow th.dxdate{
-  background:linear-gradient(180deg,#FFCB47 0%,#F5B82E 100%);color:#241A00;
+  background:linear-gradient(180deg,#FFAE55 0%,#FF9F38 100%);color:#241300;
 }
-[data-theme="light"] table.dxgrid thead tr.catrow th.dxdate:hover{background:#FFD466}
+[data-theme="light"] table.dxgrid thead tr.catrow th.dxdate:hover{background:#FFB15E}
 [data-theme="light"] table.dxgrid tbody tr.rmsep td{background:#EEF2F8}
 [data-theme="light"] .rmzero,[data-theme="light"] .zerotoggle{border-color:#B8C0CE}
 [data-theme="light"] .rmzero.on,[data-theme="light"] .zerotoggle.on{border-color:#B47607;color:#8A5A00}
@@ -3508,3 +3508,52 @@ body.shooting .wrap{pointer-events:none !important}
   .rmd-tabs{top:-12px}
   .rmd-sum .l{min-width:150px;white-space:normal}
 }
+
+/* ---------- Pencapaian RM in a PNG ----------
+
+   The page shot (toolbar button): the filter bar is controls, and `.shooting`
+   already hides the controls inside it — the empty panel around them goes too,
+   and so does each card's "Detail ›" hint, which means nothing in a picture.
+
+   The pop-out shot (its own button, `shoot-rmd`): laid out whole for the length
+   of the capture. It is a fixed overlay with a scrolling body on screen; in the
+   picture it is a plain block at a desk width with every row showing, pinned to
+   the top of the document where the capture measures from. */
+body.shooting .rmbar,
+body.shooting .rmc-more{display:none !important}
+
+body.shoot-rmd .rmd-scrim{
+  position:absolute !important;inset:0 auto auto 0 !important;display:block !important;
+  padding:0 !important;background:none !important;animation:none !important;
+}
+body.shoot-rmd .rmd{
+  width:1080px !important;height:auto !important;max-height:none !important;
+  border:none !important;border-radius:0 !important;box-shadow:none !important;animation:none !important;
+}
+body.shoot-rmd .rmd-body,
+body.shoot-rmd .rmd-scroll{overflow:visible !important}
+body.shoot-rmd .rmd-sum .l,
+body.shoot-rmd .rmd-dp .l{position:static !important}
+body.shoot-rmd .rmd-head{padding-right:18px !important}
+body.shoot-rmd .rmd-close,
+body.shoot-rmd .rmd-err{display:none !important}
+
+/* the header's PNG button sits before the close button, which is pinned */
+.rmd-png{flex:none}
+.rmd-err{margin:12px 18px 0}
+/* A picture is laid out at desk width whatever the device (`.wrap` is pinned to
+   1480px while shooting), but the phone rules above key off the *viewport* and
+   stay on — one card per row turned 85 RMs into a 21,000px strip. The grids take
+   their desk layout back for the length of the shot. */
+body.shooting .rmgrid{grid-template-columns:repeat(auto-fill,minmax(250px,1fr)) !important}
+body.shooting .rmstats{grid-template-columns:repeat(auto-fit,minmax(158px,1fr)) !important}
+body.shooting .rmlegend{margin-left:auto !important}
+/* The pinned name column is opaque (rows pan under it), so it has to carry the
+   zebra stripe itself — left at the card colour it showed as a white block on
+   every other row. */
+.rmd-sum tbody tr:nth-child(even) > .l,
+.rmd-dp tbody tr:nth-child(even) > .l{background:#242424}
+[data-theme="light"] .rmd-sum tbody tr:nth-child(even) > .l,
+[data-theme="light"] .rmd-dp tbody tr:nth-child(even) > .l{background:#F7F9FC}
+.rmd-dp tbody tr:hover > .l,
+[data-theme="light"] .rmd-dp tbody tr:hover > .l{background:var(--card-2)}
