@@ -11,12 +11,15 @@ import type { AxisLabel } from './components/Charts'
 import BtnIcon from './components/BtnIcon'
 import DisplaySection from './components/DisplaySection'
 import DpSection from './components/DpSection'
+import RmSection from './components/RmSection'
 import JntLogo from './components/JntLogo'
 import Sidebar, { NavButton } from './components/Sidebar'
 import type { IconName, NavGroup, NavItem } from './components/Sidebar'
 import Zh from './components/Zh'
 import { attachSupervisors, displayTabs, parseDisplaySheet } from './lib/display'
 import type { DisplayId, DisplayReport, DisplayTab } from './lib/display'
+import { attachRetur, parseRmSheet, rmTabs } from './lib/rm'
+import type { RmPeriod, RmReport } from './lib/rm'
 import type { Identity } from './lib/session'
 import type { Theme } from './lib/theme'
 import './dashboard.css'
@@ -39,8 +42,10 @@ const VIEW_DP = 'dp'
  * disagree about which report an entry means.
  */
 const VIEW_DX = 'dx-'
+/** Pencapaian RM — the per-regional-manager cards, from the "RM Pencapaian" tabs. */
+const VIEW_RM = 'rm'
 
-type View = typeof VIEW_AGEN | typeof VIEW_DP | `${typeof VIEW_DX}${DisplayId}`
+type View = typeof VIEW_AGEN | typeof VIEW_DP | typeof VIEW_RM | `${typeof VIEW_DX}${DisplayId}`
 
 const DX_ICON: Record<DisplayId, IconName> = { absensi: 'users', ttd730: 'clock', ritase: 'check', retur: 'undo' }
 
@@ -127,6 +132,19 @@ export default function Dashboard({
   const [dxRead, setDxRead] = useState<Partial<Record<DisplayId, DisplayReport | null>>>({})
   /* The workbook bytes, kept for those later reads. */
   const bufRef = useRef<ArrayBuffer | null>(null)
+  /* The RM Pencapaian tabs, by period, known from the sheet names — and the
+     sheet Retur is computed from. Read together the first time the page is
+     opened: absent while not yet read, `null` when nothing could be read. */
+  const [rmSheets, setRmSheets] = useState<{ tabs: Partial<Record<RmPeriod, string>>; retur: string | null }>(
+    { tabs: {}, retur: null })
+  const [rmRead, setRmRead] = useState<Partial<Record<RmPeriod, RmReport>> | null | undefined>(undefined)
+  /* The Display tabs again, for the drop points in an RM's detail pop-out — read
+     the first time a pop-out asks for them, not when the page opens: most visits
+     look at the cards and never open one. */
+  const [rmDp, setRmDp] = useState<Partial<Record<DisplayId, DisplayReport>> | null | undefined>(undefined)
+  const [rmDpWanted, setRmDpWanted] = useState(false)
+  const needRmDp = useCallback(() => setRmDpWanted(true), [])
+  const hasRm = Object.keys(rmSheets.tabs).length > 0
   /* The Supervisor column on the Display pages. Held here rather than in each
      page so the choice carries from one Display page to the next. Off by
      default, as on the DP/CP table. */
@@ -155,7 +173,10 @@ export default function Dashboard({
     ? dxTabs.find((t) => `${VIEW_DX}${t.id}` === viewWanted) ?? null
     : null
   const dxReport = dxTab ? dxRead[dxTab.id] ?? null : null
-  const view: View = viewWanted.startsWith(VIEW_DX) && !dxTab ? VIEW_DP : viewWanted
+  const view: View = viewWanted.startsWith(VIEW_DX) && !dxTab ? VIEW_DP
+    : viewWanted === VIEW_RM && !hasRm ? VIEW_AGEN
+      : viewWanted
+  const onRm = view === VIEW_RM
   /** desktop: icons only. Two separate states — see the note in Sidebar.tsx. */
   const [mini, setMini] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -221,6 +242,10 @@ export default function Dashboard({
       setModel(mdl)
       setDxTabs(displayTabs(names))
       setDxRead({})
+      setRmSheets({ tabs: rmTabs(names), retur: displayTabs(names).find((t) => t.id === 'retur')?.sheet ?? null })
+      setRmRead(undefined)
+      setRmDp(undefined)
+      setRmDpWanted(false)
       setFileName(name)
       setAgentKey('TOTAL')
       setDateIdx(Math.max(0, mdl.dates.length - 1))
@@ -230,6 +255,10 @@ export default function Dashboard({
       setModel(null)
       setDxTabs([])
       setDxRead({})
+      setRmSheets({ tabs: {}, retur: null })
+      setRmRead(undefined)
+      setRmDp(undefined)
+      setRmDpWanted(false)
       setErr((ex as Error).message)
     }
   }, [])
@@ -259,6 +288,54 @@ export default function Dashboard({
     }, 50)
     return () => clearTimeout(timer)
   }, [dxTab, dxRead, model])
+
+  /**
+   * Read the RM tabs the first time Pencapaian RM is opened — all three periods
+   * at once, since the page switches between them in place, and Display Retur
+   * alongside, which is where each RM's Retur comes from. Same pause as above so
+   * the "Memuat" panel paints first.
+   */
+  useEffect(() => {
+    const buf = bufRef.current
+    if (!onRm || !buf || rmRead !== undefined) return
+    const { tabs, retur } = rmSheets
+    const timer = setTimeout(() => {
+      let out: Partial<Record<RmPeriod, RmReport>> | null = null
+      try {
+        const names = [...Object.values(tabs), ...(retur ? [retur] : [])] as string[]
+        const wb = readWorkbookSheets(buf, names)
+        let ret: DisplayReport | null = null
+        try { ret = retur ? parseDisplaySheet('retur', retur, wb.Sheets[retur]) : null } catch { ret = null }
+        for (const [p, sheet] of Object.entries(tabs) as [RmPeriod, string][]) {
+          const rep = parseRmSheet(p, sheet, wb.Sheets[sheet])
+          if (rep) (out ??= {})[p] = attachRetur(rep, ret)
+        }
+      } catch { out = null }
+      setRmRead(out)
+    }, 50)
+    return () => clearTimeout(timer)
+  }, [onRm, rmRead, rmSheets])
+
+  /* The four Display tabs for the pop-out's DP list. Without column styles —
+     the pop-out reads figures, not which columns the sheet hides. */
+  useEffect(() => {
+    const buf = bufRef.current
+    if (!rmDpWanted || !buf || rmDp !== undefined) return
+    const tabs = dxTabs
+    const timer = setTimeout(() => {
+      let out: Partial<Record<DisplayId, DisplayReport>> | null = null
+      try {
+        const wb = readWorkbookSheets(buf, tabs.map((t) => t.sheet))
+        for (const t of tabs) {
+          let rep: DisplayReport | null = null
+          try { rep = parseDisplaySheet(t.id, t.sheet, wb.Sheets[t.sheet]) } catch { rep = null }
+          if (rep) (out ??= {})[t.id] = rep
+        }
+      } catch { out = null }
+      setRmDp(out)
+    }, 50)
+    return () => clearTimeout(timer)
+  }, [rmDpWanted, rmDp, dxTabs])
 
   const handleFile = useCallback((f: File | undefined | null) => {
     if (!f) return
@@ -382,6 +459,8 @@ export default function Dashboard({
      */
     const pick = view === VIEW_AGEN
       ? { stem: `jnt-agen-${stamp}`, cls: 'shoot-main' }
+      : onRm
+        ? { stem: `jnt-pencapaian-rm-${stamp}`, cls: 'shoot-rm' }
       : dxReport
         ? { stem: `jnt-dp-${dxReport.id}-${dxReport.date ? isoDay(dxReport.date) : 'laporan'}`, cls: 'shoot-dp' }
         : { stem: `jnt-dp-cp-${stamp}`, cls: 'shoot-dp' }
@@ -511,6 +590,20 @@ export default function Dashboard({
         }),
       ],
     },
+    /* Offered only when the file carries the RM tabs. */
+    ...(hasRm ? [{
+      id: 'rm',
+      label: 'Regional Manager',
+      items: [{
+        id: VIEW_RM, label: 'Pencapaian RM', zh: 'RM达成率', icon: 'award' as IconName,
+        hint: rmRead
+          ? (() => {
+            const r = Object.values(rmRead)[0]
+            return r ? `${r.rows.length} RM · ${r.indicators.length} indikator` : 'Harian · Mingguan · Bulanan'
+          })()
+          : 'Harian · Mingguan · Bulanan',
+      }],
+    }] : []),
   ]
 
   const onAgen = view === VIEW_AGEN
@@ -546,7 +639,7 @@ export default function Dashboard({
             than a standing offer. */}
         {/* The Display reports are a one-day snapshot with their own date on the
             band, so the day picker would describe a scope that is not on screen. */}
-        {!dxTab && (
+        {!dxTab && !onRm && (
         <Field label="Tanggal laporan · 报表日期">
           <select value={di} onChange={(e) => setDateIdx(Number(e.target.value))}>
             {dates.map((d, i) => (
@@ -558,6 +651,8 @@ export default function Dashboard({
           </select>
         </Field>
         )}
+        {/* The RM page has its own regional filter — RMs are not agents. */}
+        {!onRm && (
         <Field label={`Agen · 代理区 — ${model.region}`}>
           <select className="agentsel" value={agentKey} onChange={(e) => setAgentKey(e.target.value)}>
             <option value="TOTAL">SEMUA AGEN ({model.rows.length})</option>
@@ -569,6 +664,7 @@ export default function Dashboard({
             ))}
           </select>
         </Field>
+        )}
         {/*
           The right-hand end, grouped rather than left as four loose flex items
           after a `.spacer`.
@@ -598,7 +694,7 @@ export default function Dashboard({
           >
             <BtnIcon name={pngBusy ? 'spin' : 'image'} />
             <span>
-              {pngBusy ? 'Menyimpan…' : view !== VIEW_AGEN ? 'Simpan PNG · Ringkasan' : 'Simpan PNG'}
+              {pngBusy ? 'Menyimpan…' : view !== VIEW_AGEN && !onRm ? 'Simpan PNG · Ringkasan' : 'Simpan PNG'}
             </span>
           </button>
           {/* "Cetak / PDF" used to sit here. The print stylesheet it drove is
@@ -772,6 +868,18 @@ export default function Dashboard({
           showAgent={dxShowAgent} onShowAgent={setDxShowAgent}
         />
       )}
+
+      {/* Part C: Pencapaian RM. */}
+      {onRm && rmRead === undefined && (
+        <div className="dropzone"><h2>Memuat Pencapaian RM… <Zh>正在加载</Zh></h2></div>
+      )}
+      {onRm && rmRead === null && (
+        <div className="dropzone">
+          <h2>Pencapaian RM tidak dapat dibaca <Zh>无法读取</Zh></h2>
+          <p>Periksa sheet <b>{Object.values(rmSheets.tabs).join(', ')}</b> di file laporan.</p>
+        </div>
+      )}
+      {onRm && rmRead && <RmSection reports={rmRead} part="C" dpTabs={rmDp} onNeedDps={needRmDp} />}
 
       {/* The destination exists in the rail whether or not the file has anything
           behind it, so the empty case has to be answered here rather than by an

@@ -39,7 +39,7 @@ import type { Theme } from '../lib/theme'
 
 export type IconName =
   | 'grid' | 'pin' | 'clock' | 'check' | 'trend' | 'bars' | 'users' | 'db' | 'gear'
-  | 'logout' | 'collapse' | 'expand' | 'close' | 'menu' | 'sun' | 'moon' | 'undo'
+  | 'logout' | 'collapse' | 'expand' | 'close' | 'menu' | 'sun' | 'moon' | 'undo' | 'award'
 
 export interface NavItem {
   id: string
@@ -162,6 +162,10 @@ function Icon({ name }: { name: IconName }) {
       )}
       {name === 'moon' && (
         <g {...p}><path d="M20.5 14.2A8.6 8.6 0 0 1 9.8 3.5a8.6 8.6 0 1 0 10.7 10.7z" /></g>
+      )}
+      {/* A rosette: the per-RM achievement page. */}
+      {name === 'award' && (
+        <g {...p}><circle cx="12" cy="9" r="5.6" /><path d="M8.6 13.4L7.2 21l4.8-2.6 4.8 2.6-1.4-7.6" /></g>
       )}
       {name === 'menu' && (
         <g {...p}><path d="M4 7h16" /><path d="M4 12h16" /><path d="M4 17h16" /></g>

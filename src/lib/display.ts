@@ -298,6 +298,10 @@ const SPECS: Record<DisplayId, Spec> = {
       { id: 'p_deliv', kind: 'int', find: { one: 'total delivery', nth: 1 } },
       { id: 'p_reg', kind: 'int', find: { one: 'jumlah regist retur', nth: 1 } },
       { id: 'p_void', kind: 'int', find: { one: 'jumlah void retur', nth: 1 } },
+      /* H-2's counts — the third point of the Pencapaian RM trend */
+      { id: 'p2_deliv', kind: 'int', find: { one: 'total delivery', nth: 2 } },
+      { id: 'p2_reg', kind: 'int', find: { one: 'jumlah regist retur', nth: 2 } },
+      { id: 'p2_void', kind: 'int', find: { one: 'jumlah void retur', nth: 2 } },
       { id: 'm_deliv', kind: 'int', find: { one: 'total delivery bulanan' } },
       { id: 'm_reg', kind: 'int', find: { one: 'jumlah regist retur bulanan' } },
       { id: 'm_void', kind: 'int', find: { one: 'jumlah void retur bulanan' } },
@@ -315,6 +319,7 @@ const SPECS: Record<DisplayId, Spec> = {
     derive: [
       { id: 'd_ret', from: ['d_reg', 'd_void'] },
       { id: 'p_ret', from: ['p_reg', 'p_void'] },
+      { id: 'p2_ret', from: ['p2_reg', 'p2_void'] },
       { id: 'm_ret', from: ['m_reg', 'm_void'] },
       { id: 'w_ret', from: ['w_reg', 'w_void'] },
       { id: 'wp_ret', from: ['wp_reg', 'wp_void'] },

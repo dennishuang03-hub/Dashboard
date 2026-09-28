@@ -206,9 +206,9 @@ export const REGION_LABEL = 'Jawa & Bali'
  * `api/_lib/xlsxsplit.ts` and never sends them; change one and change the other.
  */
 const IGNORED_SHEET_RE = /^\s*otpu\s*[-_ ]*(agen|seller)/i
-/* The RM Pencapaian tabs (per regional manager) are not shown here yet. Named so
-   they are skipped rather than read as drop-point tabs — "RM Pencapaian Harian"
-   is shaped enough like one to be merged into the DP/CP list as 101 extra rows. */
+/* The RM Pencapaian tabs (per regional manager) are read by `lib/rm.ts` for the
+   Pencapaian RM page, not by this parser. Named so they are skipped here rather
+   than read as drop-point tabs — "RM Pencapaian Harian" is shaped enough like one to be merged into the DP/CP list as 101 extra rows. */
 const UNUSED_SHEET_RE = /^\s*rm\s+pencapaian\b/i
 export const isIgnoredSheet = (name: string): boolean =>
   IGNORED_SHEET_RE.test(name) || UNUSED_SHEET_RE.test(name)
