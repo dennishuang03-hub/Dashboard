@@ -15,8 +15,8 @@ import JntLogo from './components/JntLogo'
 import Sidebar, { NavButton } from './components/Sidebar'
 import type { IconName, NavGroup, NavItem } from './components/Sidebar'
 import Zh from './components/Zh'
-import { attachSupervisors, parseDisplays } from './lib/display'
-import type { DisplayId, DisplayReport } from './lib/display'
+import { attachSupervisors, displayTabs, parseDisplaySheet } from './lib/display'
+import type { DisplayId, DisplayReport, DisplayTab } from './lib/display'
 import type { Identity } from './lib/session'
 import type { Theme } from './lib/theme'
 import './dashboard.css'
@@ -121,7 +121,12 @@ export default function Dashboard({
   const [model, setModel] = useState<Model | null>(null)
   /* The Display tabs — a separate parse, so a workbook without them still makes
      a whole dashboard and simply offers no sub-entries. */
-  const [displays, setDisplays] = useState<DisplayReport[]>([])
+  const [dxTabs, setDxTabs] = useState<DisplayTab[]>([])
+  /* Each Display tab once read: absent while not yet read, `null` when the read
+     failed. Read on first visit to the page — see the effect below. */
+  const [dxRead, setDxRead] = useState<Partial<Record<DisplayId, DisplayReport | null>>>({})
+  /* The workbook bytes, kept for those later reads. */
+  const bufRef = useRef<ArrayBuffer | null>(null)
   /* The Supervisor column on the Display pages. Held here rather than in each
      page so the choice carries from one Display page to the next. Off by
      default, as on the DP/CP table. */
@@ -146,10 +151,11 @@ export default function Dashboard({
   const [viewWanted, setView] = useState<View>(VIEW_AGEN)
   /* A Display page whose tab is missing from a newly loaded file falls back to
      the DP/CP page it lives under, rather than to a page with nothing behind it. */
-  const dxReport = viewWanted.startsWith(VIEW_DX)
-    ? displays.find((r) => `${VIEW_DX}${r.id}` === viewWanted) ?? null
+  const dxTab = viewWanted.startsWith(VIEW_DX)
+    ? dxTabs.find((t) => `${VIEW_DX}${t.id}` === viewWanted) ?? null
     : null
-  const view: View = viewWanted.startsWith(VIEW_DX) && !dxReport ? VIEW_DP : viewWanted
+  const dxReport = dxTab ? dxRead[dxTab.id] ?? null : null
+  const view: View = viewWanted.startsWith(VIEW_DX) && !dxTab ? VIEW_DP : viewWanted
   /** desktop: icons only. Two separate states — see the note in Sidebar.tsx. */
   const [mini, setMini] = useState(false)
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -205,31 +211,54 @@ export default function Dashboard({
        * are enough to leave out the tabs this dashboard does not show (see
        * `isIgnoredSheet`) before paying to read any of them.
        *
-       * The Display tabs are read on their own, with `styles` on: which of
-       * their columns are hidden is how the table decides what to show, and
-       * SheetJS only reports that when it reads the column styles too.
+       * The Display tabs are not read here at all — only listed, so the rail
+       * can offer them. Each is read the first time its page is opened.
        */
       const names = readSheetNames(buf)
       const wb = readWorkbookSheets(buf, names.filter((n) => !isIgnoredSheet(n) && !isDisplaySheet(n)))
       const mdl = parseWorkbook(wb)
-      /* A broken Display tab must not take the daily dashboard down with it. */
-      let dx: DisplayReport[] = []
-      const dxNames = names.filter(isDisplaySheet)
-      try {
-        dx = dxNames.length ? attachSupervisors(parseDisplays(readWorkbookSheets(buf, dxNames, true)), mdl.dps) : []
-      } catch { dx = [] }
+      bufRef.current = buf
       setModel(mdl)
-      setDisplays(dx)
+      setDxTabs(displayTabs(names))
+      setDxRead({})
       setFileName(name)
       setAgentKey('TOTAL')
       setDateIdx(Math.max(0, mdl.dates.length - 1))
       setErr('')
     } catch (ex) {
+      bufRef.current = null
       setModel(null)
-      setDisplays([])
+      setDxTabs([])
+      setDxRead({})
       setErr((ex as Error).message)
     }
   }, [])
+
+  /**
+   * Read a Display tab the first time its page is opened.
+   *
+   * With `styles` on: which of its columns are hidden is how the table decides
+   * what to show, and SheetJS only reports that when it reads the column styles
+   * too. The read blocks the page for a moment, so it waits a beat first to let
+   * the "Memuat" panel paint. A broken tab lands as `null` and says so on its
+   * own page — it must not take the rest of the dashboard down with it.
+   */
+  useEffect(() => {
+    const buf = bufRef.current
+    if (!dxTab || !model || !buf || dxRead[dxTab.id] !== undefined) return
+    const tab = dxTab
+    const dps = model.dps
+    const timer = setTimeout(() => {
+      let rep: DisplayReport | null = null
+      try {
+        const wb = readWorkbookSheets(buf, [tab.sheet], true)
+        rep = parseDisplaySheet(tab.id, tab.sheet, wb.Sheets[tab.sheet])
+        if (rep) rep = attachSupervisors([rep], dps)[0]
+      } catch { rep = null }
+      setDxRead((prev) => ({ ...prev, [tab.id]: rep }))
+    }, 50)
+    return () => clearTimeout(timer)
+  }, [dxTab, dxRead, model])
 
   const handleFile = useCallback((f: File | undefined | null) => {
     if (!f) return
@@ -470,10 +499,16 @@ export default function Dashboard({
         },
         /* Indented under Data per DP/CP: the same drop points, one category
            each, in more depth. Offered only for the tabs the file carries. */
-        ...displays.map((r): NavItem => ({
-          id: `${VIEW_DX}${r.id}`, label: r.label, zh: r.zh, icon: DX_ICON[r.id], sub: true,
-          hint: `${r.rows.length.toLocaleString('id-ID')} titik · ${r.kpis.map((k) => k.label).join(' & ')}`,
-        })),
+        ...dxTabs.map((t): NavItem => {
+          /* The site count is known only once the tab has been read. */
+          const r = dxRead[t.id]
+          return {
+            id: `${VIEW_DX}${t.id}`, label: t.label, zh: t.zh, icon: DX_ICON[t.id], sub: true,
+            hint: r
+              ? `${r.rows.length.toLocaleString('id-ID')} titik · ${r.kpis.map((k) => k.label).join(' & ')}`
+              : t.kpiLabels.join(' & '),
+          }
+        }),
       ],
     },
   ]
@@ -511,7 +546,7 @@ export default function Dashboard({
             than a standing offer. */}
         {/* The Display reports are a one-day snapshot with their own date on the
             band, so the day picker would describe a scope that is not on screen. */}
-        {!dxReport && (
+        {!dxTab && (
         <Field label="Tanggal laporan · 报表日期">
           <select value={di} onChange={(e) => setDateIdx(Number(e.target.value))}>
             {dates.map((d, i) => (
@@ -718,10 +753,20 @@ export default function Dashboard({
 
       {/* Parts B1–B3: the Display reports. Keyed by report so switching between
           them starts each with its own filters rather than the last one's. */}
-      {dxReport && (
+      {dxTab && !dxReport && (
+        dxRead[dxTab.id] === undefined
+          ? <div className="dropzone"><h2>Memuat {dxTab.label}… <Zh>正在加载</Zh></h2></div>
+          : (
+            <div className="dropzone">
+              <h2>{dxTab.label} tidak dapat dibaca <Zh>无法读取</Zh></h2>
+              <p>Periksa sheet <b>{dxTab.sheet}</b> di file laporan.</p>
+            </div>
+          )
+      )}
+      {dxTab && dxReport && (
         <DisplaySection
           key={dxReport.id} report={dxReport}
-          part={`B${displays.indexOf(dxReport) + 1}`}
+          part={`B${dxTabs.indexOf(dxTab) + 1}`}
           agentKey={agentKey} agentLabel={current.label} onError={setErr}
           showSpv={dxShowSpv} onShowSpv={setDxShowSpv}
           showAgent={dxShowAgent} onShowAgent={setDxShowAgent}

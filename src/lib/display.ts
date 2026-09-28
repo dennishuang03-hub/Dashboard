@@ -615,14 +615,31 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
   }
 }
 
-/** Every Display tab the workbook carries, in rail order. */
-export function parseDisplays(wb: XLSX.WorkBook): DisplayReport[] {
-  const out: DisplayReport[] = []
-  for (const name of wb.SheetNames) {
-    const id = displayIdOf(name)
-    if (!id || out.some((r) => r.id === id)) continue
-    const rep = parseDisplaySheet(id, name, wb.Sheets[name])
-    if (rep) out.push(rep)
+/** A Display tab the workbook carries, known from its name before any cell is read. */
+export interface DisplayTab {
+  id: DisplayId
+  sheet: string
+  label: string
+  zh: string
+  /** the headline figures the spec looks for — the rail's hint until the tab is read */
+  kpiLabels: string[]
+}
+
+/**
+ * Every Display tab the workbook carries, in rail order, from the sheet names
+ * alone.
+ *
+ * The tabs themselves are read one at a time, the first time their page is
+ * opened: reading all four with column styles cost more than a second and a
+ * half of every load, for pages most visits never open.
+ */
+export function displayTabs(sheetNames: string[]): DisplayTab[] {
+  const out: DisplayTab[] = []
+  for (const sheet of sheetNames) {
+    const id = displayIdOf(sheet)
+    if (!id || out.some((t) => t.id === id)) continue
+    const spec = SPECS[id]
+    out.push({ id, sheet, label: spec.label, zh: spec.zh, kpiLabels: spec.kpis.map((k) => k.label) })
   }
   return out.sort((a, b) => DISPLAY_ORDER.indexOf(a.id) - DISPLAY_ORDER.indexOf(b.id))
 }
