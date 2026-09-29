@@ -54,6 +54,17 @@ export type ReportPart = 'daily' | 'boot' | 'extra' | 'full'
  * change one and change the other.
  */
 const LAZY_TAB_RE = /^\s*(display\b|rm\s+pencapaian\b)/i
+/** …except the drop-point readings tab, which the first screen needs — it was
+ *  "ALL DP DATA" and became "Display ALL DP" on 28 September. Same test as
+ *  `isAllDpSheet` in `src/lib/jnt.ts`. */
+const ALL_DP_TAB_RE = /^\s*(display\s+)?all\s+dp\b/i
+const isLazyTab = (name: string) => LAZY_TAB_RE.test(name) && !ALL_DP_TAB_RE.test(name)
+/**
+ * Working tabs nothing on the dashboard reads — "Helper RM 0730", and a tab
+ * named with a time alone ("06.30"). Left out of every split part. Same test as
+ * `WORKING_SHEET_RE` in `src/lib/jnt.ts`.
+ */
+const WORKING_TAB_RE = /^\s*helper\b|^\s*\d{1,2}[.:]\d{2}\s*$/i
 
 /**
  * Which tabs are the OTPU report — shown on a separate site, never sent here.
@@ -275,8 +286,9 @@ export function splitWorkbook(bytes: Buffer, part: ReportPart): { body: Buffer; 
   const drop = new Set<string>()
   for (const [name, path] of parts) {
     if (OTPU_TAB_RE.test(name)) drop.add(path)
-    else if (part === 'boot' && LAZY_TAB_RE.test(name)) drop.add(path)
-    else if (part === 'extra' && !LAZY_TAB_RE.test(name)) drop.add(path)
+    else if (part !== 'daily' && WORKING_TAB_RE.test(name)) drop.add(path)
+    else if (part === 'boot' && isLazyTab(name)) drop.add(path)
+    else if (part === 'extra' && !isLazyTab(name)) drop.add(path)
   }
   /* The cached copies of the other workbooks this one links to. Nothing here
      reads them, and they are a few hundred kilobytes of every download. */

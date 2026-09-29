@@ -319,6 +319,21 @@ export default function DpSection({
 
   /* -------------------------------------------------------------- scoring */
 
+  /*
+   * Whether the workbook says anything about business model at all.
+   *
+   * The 28 September file dropped the Model Bisnis column from Fr&Ag, and with
+   * it the only place the model was stated. Without this every site wore a "?"
+   * plate, the filter offered one option ("Tanpa model bisnis", all of them) and
+   * the export carried a column of dashes. So the plate, the filter and the
+   * export column all step aside when no site has a model, and come back on
+   * their own the day a file states one again.
+   */
+  const hasBiz = useMemo(() => model.dps.some((d) => d.bizModel), [model])
+  /** the code chip, unless the site's name already is its code (CIL05B) */
+  const codeOf = (dp: { dpCode: string; label: string }) =>
+    dp.dpCode && dp.dpCode.toUpperCase() !== dp.label.toUpperCase() ? dp.dpCode : ''
+
   const scored = useMemo<Scored[]>(() => {
     const pool = allAgents ? model.dps : model.dps.filter((d) => d.agentKey === agentKey)
     return pool.map((dp) => {
@@ -1004,7 +1019,7 @@ export default function DpSection({
     const cols: ExportCol[] = [
       { head: 'DP / CP', width: 34 },
       { head: 'Kode', width: 12 },
-      { head: 'Model Bisnis', width: 12 },
+      ...(hasBiz ? [{ head: 'Model Bisnis', width: 12 }] : []),
     ]
     if (showAgent) cols.push({ head: 'Agen', width: 22 })
     if (showRm) cols.push({ head: 'RM', width: 22 })
@@ -1021,7 +1036,8 @@ export default function DpSection({
     const statusTone: Record<DpStatus, ExportTone> = { urgent: 'bad', perhatian: 'warn', stable: 'ok', '': '' }
 
     const rows = filtered.map((s): ExportValue[] => {
-      const row: ExportValue[] = [s.dp.label, s.dp.dpCode || null, BIZ_MODEL_LABEL[s.dp.bizModel]]
+      const row: ExportValue[] = [s.dp.label, s.dp.dpCode || null]
+      if (hasBiz) row.push(BIZ_MODEL_LABEL[s.dp.bizModel])
       if (showAgent) row.push(s.dp.agentLabel)
       if (showRm) row.push(s.dp.regionalManager || null)
       if (showSpv) row.push(s.dp.supervisor || null)
@@ -1318,11 +1334,13 @@ export default function DpSection({
             options={filterOpts.type} off={typeOff} onChange={setTypeOff}
             disabled={basketOn}
           />
+          {hasBiz && (
           <MultiSelect
             name="Model bisnis" zh="商业模式" allLabel="Semua model bisnis"
             options={filterOpts.biz} off={bizOff} onChange={setBizOff}
             disabled={basketOn}
           />
+          )}
           <div className="seg">
             <button className={mode === 'day' ? 'on' : ''} onClick={() => setMode('day')}>
               {day.date ? fmtDate(day.date) : 'Harian'}
@@ -1592,19 +1610,21 @@ export default function DpSection({
                             the name is already prefixed CP_ where that matters, so
                             the two letters are better spent on the thing the name
                             does not tell you */}
+                        {hasBiz && (
                         <span
                           className={`ptag ${s.dp.bizModel || 'unknown'}`}
                           title={`${BIZ_MODEL_LABEL[s.dp.bizModel]} · ${s.dp.isCp ? 'Collection point' : 'Drop point'}`}
                         >
                           {BIZ_MODEL_TAG[s.dp.bizModel]}
                         </span>
+                        )}
                         <span className="dptext">{s.dp.label}</span>
                         {/* The site’s own code, beside the name rather than in a
                             column of its own: it is an identifier you match against
                             another system once you have already found the row, not a
                             figure you scan down — a column would cost the indicators
                             width on every row to say the same thing louder. */}
-                        {s.dp.dpCode && <span className="dpcode">{s.dp.dpCode}</span>}
+                        {codeOf(s.dp) && <span className="dpcode">{codeOf(s.dp)}</span>}
                       </span>
                       {/* Agent and supervisor, folded into the pinned cell — shown
                           only on a phone, where their own columns below are
@@ -1732,7 +1752,7 @@ export default function DpSection({
         {' '}<b>Urgent</b> {DP_STATUS_RANGE.urgent}. Yang dihitung adalah <i>berapa yang meleset</i>,
         bukan berapa yang ada nilainya — jadi DP <b>Delivery</b>, yang beberapa kategorinya memang
         nol karena tidak dijalankan, tidak dihukum untuk kategori yang tidak ada di sana.
-        {' '}Tanda <b>FR</b> / <b>AG</b> di depan nama adalah model bisnisnya: Franchise atau Agent.
+        {hasBiz && <>{' '}Tanda <b>FR</b> / <b>AG</b> di depan nama adalah model bisnisnya: Franchise atau Agent.</>}
         {' '}Tiga hal dikeluarkan dari peringkat lima terbaik dan lima terburuk: <b>Pickup</b>,
         {' '}<b>Tutup</b>, dan <b>DP/CP yang bernilai tepat 0,00% pada kategori yang sedang diperingkat</b>
         {' '}— itu berarti kategorinya tidak berjalan hari itu, bukan performanya nol, jadi kalau ikut

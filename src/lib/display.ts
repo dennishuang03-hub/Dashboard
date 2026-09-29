@@ -82,6 +82,8 @@ export interface DisplayRow {
    */
   spv: string
   dp: string
+  /** the site's own code (JKT41W); `''` when the tab has no Kode DP column */
+  code: string
   /** percent, e.g. 90 */
   target: number | null
   /** by column id; pct and delta columns in percent (0.9262 → 92.62) */
@@ -138,7 +140,10 @@ export function displayIdOf(sheetName: string): DisplayId | null {
  * Header text is compared after stripping the Mandarin line and any dates, so
  * "总人数\nTotal Orang\n22/09/2026" is `total orang`, occurrence 1.
  */
-type Find = { one: string; nth?: number } | { grp: string; nth?: number; at: number }
+type Find = ({ one: string; nth?: number } | { grp: string; nth?: number; at: number }) & {
+  /** where to look when this header is not found — a column the sheet has since renamed */
+  alt?: Find
+}
 
 /**
  * A figure the headline arithmetic needs, by id — found whether or not the
@@ -214,9 +219,11 @@ const SPECS: Record<DisplayId, Spec> = {
       { id: 't1200_2', kind: 'pct', find: { grp: 'ttd sebelum 1200', at: 2 } },
       { id: 'm_rit1', kind: 'int', find: { one: 'seharusnya ttd rit-1 bulanan' } },
       { id: 'm_0730n', kind: 'int', find: { one: 'persentase keluar gudang 0730 bulanan' } },
-      { id: 'm_0730', kind: 'pct', find: { one: 'persentase bulanan', nth: 0 } },
+      /* "Persentase Bulanan 0730" from 28 September; before that the two monthly
+         columns were both "Persentase Bulanan", told apart by position */
+      { id: 'm_0730', kind: 'pct', find: { one: 'persentase bulanan 0730', alt: { one: 'persentase bulanan', nth: 0 } } },
       { id: 'm_1200n', kind: 'int', find: { one: 'ttd sebelum 1200 bulanan' } },
-      { id: 'm_1200', kind: 'pct', find: { one: 'persentase bulanan', nth: 1 } },
+      { id: 'm_1200', kind: 'pct', find: { one: 'persentase bulanan 1200', alt: { one: 'persentase bulanan', nth: 1 } } },
       { id: 'w_1200', kind: 'pct', find: { grp: 'persentase mingguan ttd 1200', at: 0 } },
       { id: 'w_1200p', kind: 'pct', find: { grp: 'persentase mingguan ttd 1200', at: 1 } },
       { id: 'w_delta', kind: 'delta', find: { one: 'perbandingan mingguan' } },
@@ -428,13 +435,16 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
   }
 
   const locate = (f: Find): number | null => {
+    let c: number | null
     if ('one' in f) {
       const hits = heads.filter((h) => h.span === 1 && h.name === f.one)
-      return hits[f.nth ?? 0]?.c ?? null
+      c = hits[f.nth ?? 0]?.c ?? null
+    } else {
+      const hits = heads.filter((h) => h.span > 1 && h.name === f.grp)
+      const h = hits[f.nth ?? 0]
+      c = h && f.at < h.span ? h.c + f.at : null
     }
-    const hits = heads.filter((h) => h.span > 1 && h.name === f.grp)
-    const h = hits[f.nth ?? 0]
-    return h && f.at < h.span ? h.c + f.at : null
+    return c ?? (f.alt ? locate(f.alt) : null)
   }
 
   const title = String(at(range.s.r, range.s.c)?.v ?? '')
@@ -488,7 +498,21 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
   const idCol = (re: RegExp) => heads.find((h) => re.test(h.name))?.c ?? null
   const cAgent = idCol(/^agent$/)
   const cRm = idCol(/^rm$/)
-  const cDp = idCol(/nama dp/)
+  /*
+   * The site's name and its own code ("网点代码 Kode DP", from 28 September).
+   *
+   * Both are found on the raw header text, not the cleaned `name`: the code's
+   * header is one line mixing Mandarin and Latin, and the clean-up drops any
+   * line with Mandarin in it, so it came out empty. And "Display 730 & 1200"
+   * heads *both* columns "网点名称 Nama DP" — the first holds the codes
+   * (JKT41W), the second the names — so when "Nama DP" appears twice the last
+   * one is the name and the one before it is the code.
+   */
+  const rawAt = (c: number) => text(hr, c)
+  const nameHeads = heads.filter((h) => /nama\s*dp/i.test(rawAt(h.c)))
+  const cDp = nameHeads.length ? nameHeads[nameHeads.length - 1].c : null
+  const cCode = heads.find((h) => /kode\s*dp|网点代码|网点编码/i.test(rawAt(h.c)))?.c
+    ?? (nameHeads.length > 1 ? nameHeads[nameHeads.length - 2].c : null)
   const cTarget = idCol(/^target$/)
   if (cDp == null) return null
 
@@ -509,7 +533,7 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
   const lines = (raw: string) => raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
   const latinOf = (raw: string) => lines(raw).filter((l) => !HAS_CJK.test(l)).join(' ')
   const zhOf = (raw: string) => lines(raw).filter((l) => HAS_CJK.test(l)).join(' ')
-  const skip = new Set([cAgent, cRm, cDp, cTarget].filter((c): c is number => c != null))
+  const skip = new Set([cAgent, cRm, cDp, cCode, cTarget].filter((c): c is number => c != null))
 
   /* How a column prints, from its number format in the first rows that have one. */
   const kindAt = (c: number, name: string): DisplayColKind => {
@@ -599,6 +623,7 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
       rm: cRm != null ? text(r, cRm).trim().replace(/^[-–—\s]+$/, '') : '',
       spv: '',
       dp,
+      code: cCode != null ? text(r, cCode).trim() : '',
       target: cTarget != null ? num(at(r, cTarget), 'pct') : null,
       vals: readVals(r),
     })

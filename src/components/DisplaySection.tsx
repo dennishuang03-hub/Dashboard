@@ -214,7 +214,7 @@ export default function DisplaySection({
       if (agentOff.has(r.agent)) return false
       if (rmOff.has(r.rm || '—')) return false
       if (stOff.has(statusOf(r))) return false
-      if (needle && !`${r.dp} ${r.rm} ${r.spv} ${r.agent}`.toLowerCase().includes(needle)) return false
+      if (needle && !`${r.dp} ${r.code} ${r.rm} ${r.spv} ${r.agent}`.toLowerCase().includes(needle)) return false
       return true
     })
     const colKind = new Map(report.cols.map((c) => [c.id, c]))
@@ -446,7 +446,10 @@ export default function DisplaySection({
   }
 
   const buildExport = (): ExportTable => {
+    /* the site code column only when the sheet has one (from 28 September) */
+    const hasCode = report.rows.some((r) => r.code)
     const cols: ExportCol[] = [{ head: 'DP / CP', width: 30 }]
+    if (hasCode) cols.push({ head: 'Kode DP', width: 12 })
     if (agentCol) cols.push({ head: 'Agen', width: 14 })
     cols.push({ head: 'RM', width: 24 })
     if (showSpv) cols.push({ head: 'Supervisor', width: 24 })
@@ -458,6 +461,7 @@ export default function DisplaySection({
     const tone: Record<RowStatus, ExportTone> = { ok: 'ok', bad: 'bad', idle: 'mute' }
     const rows = filtered.map((r): ExportValue[] => {
       const row: ExportValue[] = [r.dp]
+      if (hasCode) row.push(r.code || null)
       if (agentCol) row.push(r.agent)
       row.push(r.rm || null)
       if (showSpv) row.push(r.spv || null)
@@ -740,8 +744,15 @@ export default function DisplaySection({
                   const live = isActive(r, kpi)
                   return (
                       <tr key={r.key} className={st === 'idle' ? 'k-closed' : ''}>
-                        <td className="sticky dpcell" title={r.dp}>
-                          <span className="dpname"><span className="dptext">{r.dp}</span></span>
+                        <td className="sticky dpcell" title={r.code ? `${r.dp} · ${r.code}` : r.dp}>
+                          <span className="dpname">
+                            <span className="dptext">{r.dp}</span>
+                            {/* the site's own code, as on the DP/CP page — unless
+                                the name already is the code */}
+                            {r.code && r.code.toUpperCase() !== r.dp.toUpperCase() && (
+                              <span className="dpcode">{r.code}</span>
+                            )}
+                          </span>
                           <span className="dpagent">{[agentCol ? r.agent : '', r.rm, showSpv ? r.spv : ''].filter(Boolean).join(' · ')}</span>
                         </td>
                         {agentCol && <td className="muted agentcol">{r.agent}<Zh>{agentZh(r.agent)}</Zh></td>}

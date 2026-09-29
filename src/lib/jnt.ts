@@ -210,8 +210,33 @@ const IGNORED_SHEET_RE = /^\s*otpu\s*[-_ ]*(agen|seller)/i
    Pencapaian RM page, not by this parser. Named so they are skipped here rather
    than read as drop-point tabs — "RM Pencapaian Harian" is shaped enough like one to be merged into the DP/CP list as 101 extra rows. */
 const UNUSED_SHEET_RE = /^\s*rm\s+pencapaian\b/i
+/*
+ * Working tabs, not report tabs.
+ *
+ *   "Helper RM 0730"  the workings behind the RM Pencapaian Mingguan figure —
+ *                     read by `lib/rm.ts` for the per-DP weekly 07:30, never here.
+ *                     Read here it became an agent called "46266" and three
+ *                     extra "07:30 KELUAR GUDANG" cards.
+ *   "06.30"           a single-category drop-point tab (a time and nothing else).
+ *                     Every site it lists is already in "Display ALL DP", so
+ *                     reading it too would list each site twice; in the
+ *                     28 September file it is also blank — every value "-".
+ *
+ * The time-only pattern is anchored at both ends, so the summary tab
+ * "06.30, 07.30, & 12.00" is not caught by it. Same tests as the server's in
+ * `api/_lib/xlsxsplit.ts`, which leaves these tabs out of the download.
+ */
+const WORKING_SHEET_RE = /^\s*helper\b|^\s*\d{1,2}[.:]\d{2}\s*$/i
 export const isIgnoredSheet = (name: string): boolean =>
-  IGNORED_SHEET_RE.test(name) || UNUSED_SHEET_RE.test(name)
+  IGNORED_SHEET_RE.test(name) || UNUSED_SHEET_RE.test(name) || WORKING_SHEET_RE.test(name)
+
+/**
+ * The combined drop-point readings tab — "ALL DP DATA" until 28 September 2026,
+ * "Display ALL DP" from then on. It is the one "Display …" tab that is *data*
+ * for this parser rather than a report for `lib/display.ts`, so it is excepted
+ * by name from `isDisplaySheet` below.
+ */
+export const isAllDpSheet = (name: string): boolean => /^\s*(display\s+)?all\s+dp\b/i.test(name)
 
 /**
  * The per-DP "Display" tabs, which `lib/display.ts` reads into reports of their
@@ -219,7 +244,8 @@ export const isIgnoredSheet = (name: string): boolean =>
  * is merged into the DP/CP list as 1,707 extra sites. Same test as
  * `displayIdOf` there, kept here so this file does not import that one.
  */
-export const isDisplaySheet = (name: string): boolean => /^\s*display\b/i.test(name)
+export const isDisplaySheet = (name: string): boolean =>
+  /^\s*display\b/i.test(name) && !isAllDpSheet(name)
 
 export type Status = 'ok' | 'warn' | 'bad' | 'na'
 
@@ -893,14 +919,25 @@ function parseOneSheet(ws: XLSX.WorkSheet, sheetIdx: number): RawSheet {
   let totalRow: RawRow | null = null
   let lastArea = '', blanks = 0
 
+  const TOTAL_RE = /合计|^total$|^jumlah|grand\s*total|keseluruhan|^sum$/i
   for (let R = dataStart; R < m.length; R++) {
     const name = txt(m[R][agentCol])
     const nc = numCount(R)
+    /* The Total row closes the table. Since 28 September the summary tabs keep
+       working notes a few rows under it — a date ("9/1/26"), "G19: D5 (no
+       agent" — and the date, a number in the agent column, was read as an agent
+       called "46266". The total can be named in the agent column or only in the
+       Area column ("合计 Total"), so both are checked. */
+    const areaHere = areaCol >= 0 ? txt(m[R][areaCol]) : ''
+    if (totalRow && !TOTAL_RE.test(name)) break
+    if (!name && TOTAL_RE.test(areaHere)) break
     if (!name && nc === 0) { if (++blanks > 8) break; continue }
     blanks = 0
     if (!name || nc === 0) continue
+    /* an agent is a name; a bare number or date in that column is not one */
+    if (/^[\d\s.,/:-]+$/.test(name)) continue
 
-    const isTotal = /合计|^total$|^jumlah|grand\s*total|keseluruhan|^sum$/i.test(name)
+    const isTotal = TOTAL_RE.test(name)
     const isTargetRow = /^target$|^目标$|^standar/i.test(name)
     if (isTargetRow) continue                          // a whole-row target is handled by targetCol
 
@@ -1163,6 +1200,10 @@ function findDpHeader(m: Cell[][], lastC: number): DpHeaderHit | null {
     for (let C = 0; C <= maxC; C++) {
       const s = txt(row[C])
       if (!s || !DP_HEADER_RE.test(s)) continue
+      /* "网点代码 Kode DP" says 网点 too. From 28 September it sits immediately
+         left of the name on "Display ALL DP", so without this the site codes
+         were read as the site names. */
+      if (DP_CODE_HEADER_RE.test(s)) continue
       if (!loose) loose = { headerRow: R, dpCol: C }
       if (!isHeaderLabel(s)) continue
       if (!plain) plain = { headerRow: R, dpCol: C }
@@ -1209,8 +1250,10 @@ interface RawDpSheet { rows: DpRow[]; kpiCount: number; dates: { key: string; da
  * sheet by hand every morning.
  */
 export interface BizModelEntry {
-  /** Kode Agent, normalised — `AGENT40` */
+  /** Kode Agent, normalised — `AGENT40`; the agent's name when there is no code */
   agentCode: string
+  /** the agent's name, Latin part, normalised — `JAKARTA` */
+  agentName: string
   /** drop-point name, normalised */
   name: string
   model: BizModel
@@ -1262,14 +1305,34 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
       if (MODEL_HEADER_RE.test(txt(m[R][C]))) { modelCol = C; break }
     }
   }
-  if (modelCol < 0) return null           // no business-model column: not this kind of tab
-
   let agentCol = -1, codeCol = -1
   for (let C = 0; C < dpCol; C++) {
     const s = txt(m[headerRow][C])
     if (!s) continue
     if (CODE_HEADER_RE.test(s)) { if (codeCol < 0) codeCol = C }
     else if (AGENT_HEADER_RE.test(s)) { if (agentCol < 0) agentCol = C }
+  }
+
+  /*
+   * A "Kode Agent" column that holds site codes.
+   *
+   * From 28 September the `Fr&Ag` tab heads its code column "代理区编码 Kode
+   * Agent" but fills it with each site's own code (JKT07T, not AGENT40).
+   * Joined as an agent code it matched nothing and every site fell back to the
+   * weaker name-only match. So the column is judged by what it holds: if most of
+   * its values are not agent-shaped it is the site code, which is the most exact
+   * key the join has.
+   */
+  let codeIsDp = false
+  if (codeCol >= 0) {
+    let filled = 0, agentish = 0
+    for (let R = headerRow + 1; R < Math.min(m.length, headerRow + 200); R++) {
+      const s = txt(m[R]?.[codeCol] ?? null)
+      if (!s || DP_HEADER_RE.test(s)) continue
+      filled++
+      if (/^ag(ent)?[\s_-]*\d+$/i.test(s)) agentish++
+    }
+    codeIsDp = filled >= 5 && agentish * 2 < filled
   }
 
   /*
@@ -1286,10 +1349,11 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
      Header-only for the same reason the supervisor is: a site code is a short
      opaque string with no shape to verify, and a content pass looking for one
      would be claimed by the first column of short opaque strings it met. */
-  const dpCodeCol = findValueCol(
+  const dpCodeCol = codeIsDp ? codeCol : findValueCol(
     m, lastC, headerRow + 4, DP_CODE_HEADER_RE, null,
     (C) => C === dpCol || C === modelCol || C === agentCol || C === codeCol,
   )
+  if (codeIsDp) codeCol = -1
 
   const claimed = (C: number) =>
     C === dpCol || C === modelCol || C === agentCol || C === codeCol || C === dpCodeCol
@@ -1306,6 +1370,12 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
     m, lastC, headerRow + 4, SERVICE_HEADER_RE, null,
     (C) => claimed(C) || C === rmCol || C === spvCol,
   )
+
+  /* A reference tab says something about each site — its business model, its
+     RM, its supervisor. With none of those it is not this kind of tab. (Model
+     Bisnis used to be required; the 28 September file dropped that column and
+     kept the RM and supervisor.) */
+  if (modelCol < 0 && rmCol < 0 && spvCol < 0) return null
 
   const headerText = txt(m[headerRow][dpCol])
   const entries: BizModelEntry[] = []
@@ -1325,7 +1395,7 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
     for (let C = dpCol + 1; C <= lastC; C++) if (cellNum(m[R][C]) != null) nums++
     if (nums >= 2) return null
 
-    const model = bizModelOf(txt(m[R][modelCol]))
+    const model = modelCol >= 0 ? bizModelOf(txt(m[R][modelCol])) : ''
     const supervisor = spvCol >= 0 ? txt(m[R][spvCol]).trim() : ''
     const regionalManager = rmCol >= 0 ? txt(m[R][rmCol]).trim() : ''
     const service = svcCol >= 0 ? serviceKindOf(txt(m[R][svcCol])) : ''
@@ -1342,6 +1412,7 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
 
     entries.push({
       agentCode: normKey(lastCode) || normKey(agent),
+      agentName: normKey(latin(agent)),
       name: normKey(name),
       model,
       supervisor,
@@ -1374,9 +1445,17 @@ function parseBizModelSheet(ws: XLSX.WorkSheet): BizModelEntry[] | null {
 function indexBizModels(entries: BizModelEntry[]) {
   const byPair = new Map<string, BizModelEntry>()
   const seen = new Map<string, BizModelEntry>()
+  /* The site code, when the tab carries one, is the most exact key of all —
+     one code, one site. A code listed twice is left out rather than guessed. */
+  const byCode = new Map<string, BizModelEntry | null>()
 
   for (const e of entries) {
     byPair.set(`${e.agentCode}::${e.name}`, e)
+    if (e.agentName) byPair.set(`${e.agentName}::${e.name}`, e)
+    if (e.dpCode) {
+      const k = normKey(e.dpCode)
+      byCode.set(k, byCode.has(k) ? null : e)
+    }
     const prev = seen.get(e.name)
     if (!prev) { seen.set(e.name, e); continue }
     seen.set(e.name, {
@@ -1389,7 +1468,7 @@ function indexBizModels(entries: BizModelEntry[]) {
     })
   }
 
-  return { byPair, byName: seen }
+  return { byPair, byName: seen, byCode }
 }
 
 /**
@@ -1418,12 +1497,15 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
   if (!hit) throw new Error('tidak ada judul kolom "Nama Drop point"')
   const { headerRow, dpCol } = hit
 
-  /* 1b — identity columns to its left */
-  let agentCol = -1, codeCol = -1
+  /* 1b — identity columns to its left. The site's own code ("网点代码 Kode DP",
+     on "Display ALL DP" from 28 September) is a code column too, and must not
+     be taken for the agent's. */
+  let agentCol = -1, codeCol = -1, dpCodeCol = -1
   for (let C = 0; C < dpCol; C++) {
     const s = txt(m[headerRow][C])
     if (!s) continue
-    if (CODE_HEADER_RE.test(s)) { if (codeCol < 0) codeCol = C }
+    if (DP_CODE_HEADER_RE.test(s)) { if (dpCodeCol < 0) dpCodeCol = C }
+    else if (CODE_HEADER_RE.test(s)) { if (codeCol < 0) codeCol = C }
     else if (AGENT_HEADER_RE.test(s)) { if (agentCol < 0) agentCol = C }
   }
 
@@ -1469,7 +1551,7 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
      silently come back empty: nothing downstream can reconstruct it. */
   const svcCol = findValueCol(
     m, lastC, dataStart, SERVICE_HEADER_RE, isServiceWord,
-    (C) => C === dpCol || C === modelCol || C === agentCol || C === codeCol,
+    (C) => C === dpCol || C === modelCol || C === agentCol || C === codeCol || C === dpCodeCol,
   )
 
   /* 2b — close every hole in the header block (see parseOneSheet, step 2b) */
@@ -1530,7 +1612,7 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
     const probeEnd = Math.min(m.length, dataStart + 60)
     let bestCol = -1, bestHits = 0
     for (let C = 0; C <= lastC; C++) {
-      if (cols[C] || C === dpCol || C === agentCol || C === codeCol || C === svcCol) continue
+      if (cols[C] || C === dpCol || C === agentCol || C === codeCol || C === svcCol || C === dpCodeCol) continue
       let hits = 0, filled = 0
       for (let R = dataStart; R < probeEnd; R++) {
         const s = txt(m[R]?.[C] ?? null)
@@ -1593,11 +1675,12 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
       isCp: /^cp[\s_-]/i.test(name.trim()),
       bizModel: modelCol >= 0 ? bizModelOf(txt(m[R][modelCol])) : '',
       service: svcCol >= 0 ? serviceKindOf(txt(m[R][svcCol])) : '',
-      /* both filled in from the Fr&Ag reference tab once every sheet has been
-         read — see the join in `parseWorkbook` */
+      /* filled in from the Fr&Ag reference tab once every sheet has been read —
+         see the join in `parseWorkbook`. The site code is read here first when
+         the readings tab carries it, and the join only fills a blank. */
       supervisor: '',
       regionalManager: '',
-      dpCode: '',
+      dpCode: dpCodeCol >= 0 ? txt(m[R][dpCodeCol]).trim() : '',
       sheet: sheetName,
       vals,
     })
@@ -1927,10 +2010,13 @@ export function parseWorkbook(wb: XLSX.WorkBook): Model {
    * across.
    */
   if (bizEntries.length) {
-    const { byPair, byName } = indexBizModels(bizEntries)
+    const { byPair, byName, byCode } = indexBizModels(bizEntries)
     for (const d of dps) {
       const key = normKey(d.name)
-      const e = byPair.get(`${d.agentCode}::${key}`) ?? byName.get(key)
+      const e = (d.dpCode ? byCode.get(normKey(d.dpCode)) : null)
+        ?? byPair.get(`${d.agentCode}::${key}`)
+        ?? byPair.get(`${normKey(latin(d.agentLabel))}::${key}`)
+        ?? byName.get(key)
       if (!e) continue
       if (!d.bizModel) d.bizModel = e.model
       if (!d.service) d.service = e.service
