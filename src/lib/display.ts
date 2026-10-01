@@ -18,7 +18,7 @@
  * found is not offered at all, rather than drawn with holes.
  */
 import * as XLSX from 'xlsx'
-import { cellText, latin } from './jnt'
+import { cellDate, cellText, latin } from './jnt'
 import type { DpRow } from './jnt'
 
 export type DisplayId = 'absensi' | 'ttd730' | 'ritase' | 'retur'
@@ -449,14 +449,6 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
 
   const title = String(at(range.s.r, range.s.c)?.v ?? '')
   const latinTitle = title.split(/\n/).map((l) => l.trim()).find((l) => /[a-z]{4}/i.test(l) && !HAS_CJK.test(l)) ?? ''
-  const date = titleDate(latinTitle)
-  const day = (back: number) => {
-    if (!date) return back ? `H-${back}` : 'Hari ini'
-    const d = new Date(date)
-    d.setDate(d.getDate() - back)
-    return shortDay(d)
-  }
-
   /* The spec's columns are the arithmetic's inputs — found whether or not the
      sheet shows them, since most of the counts are in hidden columns. */
   const colAt = new Map<string, number>()
@@ -466,6 +458,29 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
     if (c == null) continue
     colAt.set(s.id, c)
     specKind.set(s.id, s.kind)
+  }
+
+  /*
+   * The day the figures are for.
+   *
+   * The A1 title is typed by hand and is sometimes left over from an earlier
+   * day — the 30 September workbook had three tabs still titled "28 Sep 2026"
+   * over 30 September figures. The headline column's own date (the newest day
+   * under its band, a real Excel date such as "30/Sep") moves with the data, so
+   * it wins; the title is only the fallback when that cell is not a date.
+   * Text cells are skipped: "30/Sep" typed as text carries no year.
+   */
+  const dayCol = colAt.get(spec.kpis[0].day)
+  const dayHead = dayCol == null ? undefined : at(hr + 1, dayCol)
+  const headDate = dayHead && typeof dayHead.v !== 'string'
+    ? cellDate({ v: dayHead.v, z: String(dayHead.z ?? '') })
+    : null
+  const date = headDate ?? titleDate(latinTitle)
+  const day = (back: number) => {
+    if (!date) return back ? `H-${back}` : 'Hari ini'
+    const d = new Date(date)
+    d.setDate(d.getDate() - back)
+    return shortDay(d)
   }
   const derived = (spec.derive ?? []).filter((d) => colAt.has(d.from[0]) && colAt.has(d.from[1]))
   const derivedIds = new Set(derived.map((d) => d.id))
