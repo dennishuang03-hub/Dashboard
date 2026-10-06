@@ -19,7 +19,7 @@
  */
 import * as XLSX from 'xlsx'
 import { cellDate, cellText, latin } from './jnt'
-import type { DpRow } from './jnt'
+import type { DpKind, DpRow } from './jnt'
 
 export type DisplayId = 'absensi' | 'ttd730' | 'ritase' | 'retur'
 export type DisplayColKind = 'int' | 'pct' | 'delta'
@@ -77,10 +77,16 @@ export interface DisplayRow {
   rm: string
   /**
    * The site's supervisor. The Display tabs do not carry one — it comes from the
-   * `Fr&Ag` reference tab by way of the DP rows, see `attachSupervisors`. `''`
+   * `Fr&Ag` reference tab by way of the DP rows, see `attachDpInfo`. `''`
    * when that tab has no row for the site.
    */
   spv: string
+  /**
+   * The site's Jenis Layanan (Pickup Delivery / Pickup / Tutup …). Not in the
+   * Display tabs either — joined from the DP rows like `spv`, see
+   * `attachDpInfo`. `''` when no DP row matches.
+   */
+  service: DpKind
   dp: string
   /** the site's own code (JKT41W); `''` when the tab has no Kode DP column */
   code: string
@@ -637,6 +643,7 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
          called "-" that would sort to the top of the list */
       rm: cRm != null ? text(r, cRm).trim().replace(/^[-–—\s]+$/, '') : '',
       spv: '',
+      service: '',
       dp,
       code: cCode != null ? text(r, cCode).trim() : '',
       target: cTarget != null ? num(at(r, cTarget), 'pct') : null,
@@ -690,31 +697,39 @@ export function displayTabs(sheetNames: string[]): DisplayTab[] {
 }
 
 /**
- * Fill in each Display row's supervisor from the DP rows, which already carry it
- * from the `Fr&Ag` reference tab.
+ * Fill in each Display row's supervisor and Jenis Layanan from the DP rows,
+ * which already carry them (the supervisor from the `Fr&Ag` reference tab).
  *
  * Joined on agent plus site name first — exact — and on the site name alone
- * only when every agent using that name has the same supervisor. A guessed name
- * on the wrong site is worse than a blank.
+ * only when every agent using that name agrees. A guessed value on the wrong
+ * site is worse than a blank. The service is tried on the site code first,
+ * which is unique where the name is not.
  */
-export function attachSupervisors(reports: DisplayReport[], dps: DpRow[]): DisplayReport[] {
+export function attachDpInfo(reports: DisplayReport[], dps: DpRow[]): DisplayReport[] {
   const norm = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim()
-  const byPair = new Map<string, string>()
-  const byName = new Map<string, string>()
-  for (const d of dps) {
-    if (!d.supervisor) continue
-    const name = norm(d.name)
-    byPair.set(`${norm(latin(d.agentLabel))}::${name}`, d.supervisor)
-    const prev = byName.get(name)
-    byName.set(name, prev == null || prev === d.supervisor ? d.supervisor : '')
+  const lookup = <T extends string>(pick: (d: DpRow) => T) => {
+    const byPair = new Map<string, T>()
+    const byName = new Map<string, T | ''>()
+    for (const d of dps) {
+      const v = pick(d)
+      if (!v) continue
+      const name = norm(d.name)
+      byPair.set(`${norm(latin(d.agentLabel))}::${name}`, v)
+      const prev = byName.get(name)
+      byName.set(name, prev == null || prev === v ? v : '')
+    }
+    return (r: DisplayRow): T | '' => byPair.get(`${norm(r.agent)}::${norm(r.dp)}`) ?? byName.get(norm(r.dp)) ?? ''
   }
-  if (!byPair.size) return reports
+  const spvOf = lookup((d) => d.supervisor)
+  const svcOf = lookup((d) => d.service)
+  const byCode = new Map<string, DpKind>()
+  for (const d of dps) if (d.dpCode && d.service) byCode.set(norm(d.dpCode), d.service)
   return reports.map((rep) => ({
     ...rep,
     rows: rep.rows.map((r) => {
-      const name = norm(r.dp)
-      const spv = byPair.get(`${norm(r.agent)}::${name}`) ?? byName.get(name) ?? ''
-      return spv ? { ...r, spv } : r
+      const spv = spvOf(r)
+      const service = (r.code && byCode.get(norm(r.code))) || svcOf(r)
+      return spv || service ? { ...r, spv: spv || r.spv, service: service || r.service } : r
     }),
   }))
 }

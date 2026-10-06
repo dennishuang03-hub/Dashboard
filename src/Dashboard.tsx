@@ -16,7 +16,7 @@ import JntLogo from './components/JntLogo'
 import Sidebar, { NavButton } from './components/Sidebar'
 import type { IconName, NavGroup, NavItem } from './components/Sidebar'
 import Zh from './components/Zh'
-import { attachSupervisors, displayTabs, parseDisplaySheet } from './lib/display'
+import { attachDpInfo, displayTabs, parseDisplaySheet } from './lib/display'
 import type { DisplayId, DisplayReport, DisplayTab } from './lib/display'
 import { attachRetur, parseRmSheet, rmTabs } from './lib/rm'
 import type { RmPeriod, RmReport } from './lib/rm'
@@ -333,7 +333,7 @@ export default function Dashboard({
       try {
         const wb = readWorkbookSheets(buf, [tab.sheet], true)
         rep = parseDisplaySheet(tab.id, tab.sheet, wb.Sheets[tab.sheet])
-        if (rep) rep = attachSupervisors([rep], dps)[0]
+        if (rep) rep = attachDpInfo([rep], dps)[0]
       } catch { rep = null }
       setDxRead((prev) => ({ ...prev, [tab.id]: rep }))
     }, () => { if (!dead) setDxRead((prev) => ({ ...prev, [tab.id]: null })) })

@@ -13,9 +13,9 @@
  * alone), so it disagrees with its own table.
  */
 import { useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { agentZh, exportPng, isoDay } from '../lib/jnt'
+import { agentZh, exportPng, isoDay, isRankable } from '../lib/jnt'
 import { fmtDayLong, isActive, ratioOf } from '../lib/display'
-import type { DisplayCol, DisplayKpi, DisplayReport, DisplayRow } from '../lib/display'
+import type { DisplayCol, DisplayId, DisplayKpi, DisplayReport, DisplayRow } from '../lib/display'
 import type { ExportCol, ExportTable, ExportTone, ExportValue } from '../lib/tableExport'
 import { HBarChart } from './Charts'
 import type { HBar } from './Charts'
@@ -26,6 +26,12 @@ import type { MsOption } from './MultiSelect'
 import Zh from './Zh'
 
 const TOP_N = 5
+/**
+ * Fewest due on the day for a site to be ranked best / worst. Absensi counts
+ * sprinters (a site has tens); the others count parcels (a site has thousands),
+ * where a handful due is a site barely running, not a result to rank.
+ */
+const RANK_MIN_DUE: Record<DisplayId, number> = { absensi: 5, ttd730: 50, ritase: 50, retur: 50 }
 const PAGE = 40
 
 /**
@@ -379,19 +385,47 @@ export default function DisplaySection({
   }
 
   const target = report.target ?? 90
+  const dueOf = (r: DisplayRow) => r.vals[kpi.dayRatio[1]] ?? 0
   const active = useMemo(() => scoped.filter((r) => isActive(r, kpi) && r.vals[kpi.day] != null), [scoped, kpi])
+  /*
+   * Who may appear in the best / worst five, beyond having something due:
+   *
+   *   - Tutup and Pickup sites are out, the same rule as the DP section
+   *     (`isRankable`): a pickup-only site's 0,00% on a delivery figure is not
+   *     a delivery result.
+   *   - Sites with fewer than RANK_MIN_DUE due are out: a few missed parcels
+   *     read 0,00% and would otherwise own the worst five.
+   *
+   * The table still shows and scores them; only the rankings skip them.
+   */
+  const minDue = RANK_MIN_DUE[report.id]
+  const rankable = useMemo(
+    () => active.filter((r) => isRankable(r.service) && dueOf(r) >= minDue),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [active, kpi],
+  )
+  const unranked = active.length - rankable.length
 
   const bar = (r: DisplayRow): HBar => ({
     name: r.dp,
     sub: allAgents ? `${r.agent}${r.rm ? ` · ${r.rm}` : ''}` : r.rm,
     value: r.vals[kpi.day] ?? 0,
   })
-  const ranked = useMemo(
-    () => [...active].sort((a, b) => (low ? -1 : 1) * ((b.vals[kpi.day] ?? 0) - (a.vals[kpi.day] ?? 0))),
-    [active, kpi, low],
-  )
-  const topBars = ranked.slice(0, TOP_N).map(bar)
-  const worstBars = ranked.slice(-TOP_N).reverse().map(bar)
+  /* Ties are common at the ends — on a bad day dozens of sites sit at 0,00% —
+     and sheet order would pick whichever came last. The site with more due
+     (the ratio's denominator) is the bigger result either way, so it ranks
+     further out: first among the best, first among the worst. */
+  const byScore = (a: DisplayRow, b: DisplayRow) => (low ? -1 : 1) * ((b.vals[kpi.day] ?? 0) - (a.vals[kpi.day] ?? 0))
+  const topBars = useMemo(
+    () => [...rankable].sort((a, b) => byScore(a, b) || dueOf(b) - dueOf(a)).slice(0, TOP_N),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rankable, kpi, low],
+  ).map(bar)
+  const worstBars = useMemo(
+    () => [...rankable].sort((a, b) => byScore(b, a) || dueOf(b) - dueOf(a)).slice(0, TOP_N),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [rankable, kpi, low],
+  ).map(bar)
 
   const byAgent = useMemo(() => {
     if (!allAgents) return []
@@ -588,9 +622,12 @@ export default function DisplaySection({
           <h3><span className="ptitle">{TOP_N} DP / CP Terburuk <Zh>后五名网点</Zh> · {kpi.label}</span></h3>
           <div className="body">
             <HBarChart bars={worstBars} targetLine={target} lowerBetter={low} />
-            {counts.get('idle') ? (
+            {counts.get('idle') || unranked ? (
               <div className="chartnote">
-                {counts.get('idle')} DP/CP bernilai 0 tidak ikut diperingkat.
+                {[
+                  counts.get('idle') ? `${counts.get('idle')} DP/CP bernilai 0` : '',
+                  unranked ? `${unranked} DP/CP Tutup, Pickup, atau kurang dari ${minDue} ${report.id === 'absensi' ? 'orang' : 'paket'}` : '',
+                ].filter(Boolean).join(' dan ')} tidak ikut diperingkat.
               </div>
             ) : null}
           </div>
