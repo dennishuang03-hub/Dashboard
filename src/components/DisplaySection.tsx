@@ -26,6 +26,13 @@ import type { MsOption } from './MultiSelect'
 import Zh from './Zh'
 
 const TOP_N = 5
+/** Reports that drop the best-five panel and show the worst ten instead, split
+ *  five and five across the two panels. */
+const WORST_ONLY: ReadonlySet<DisplayId> = new Set<DisplayId>(['absensi', 'ritase', 'retur'])
+/** Reports with one worst card per headline figure instead of best / worst —
+ *  0730 on the left, 1200 on the right. */
+const WORST_PER_KPI: ReadonlySet<DisplayId> = new Set<DisplayId>(['ttd730'])
+const WORST_N = 10
 /**
  * Fewest due on the day for a site to be ranked best / worst. Absensi counts
  * sprinters (a site has tens); the others count parcels (a site has thousands),
@@ -70,6 +77,43 @@ const fmtPp = (v: number | null) =>
   v == null ? '—' : `${v > 0 ? '▲ +' : v < 0 ? '▼ ' : '▬ '}${v.toFixed(2).replace('.', ',')}`
 const deltaCls = (v: number | null) =>
   v == null || Math.abs(v) < 0.005 ? 'flat' : v > 0 ? 'up' : 'down'
+
+/**
+ * One headline figure's worst drop points: the worst five on load, the worst
+ * ten behind "More". `bars` holds all ten, already numbered.
+ */
+function WorstCard({ label, bars, target, lowerBetter, note }: {
+  label: string
+  bars: HBar[]
+  target: number
+  lowerBetter: boolean
+  note: string
+}) {
+  const [more, setMore] = useState(false)
+  const n = more ? WORST_N : TOP_N
+  return (
+    <div className="panel">
+      <h3>
+        <span className="ptitle">
+          {n} DP / CP Terburuk <Zh>{more ? '后十名网点' : '后五名网点'}</Zh> · {label}
+        </span>
+        {bars.length > TOP_N && (
+          <button
+            type="button" className="btn tiny act act-clear" onClick={() => setMore(!more)}
+            aria-expanded={more}
+          >
+            <BtnIcon name={more ? 'collapse' : 'list'} />
+            <span>{more ? 'Less' : 'More'}</span>
+          </button>
+        )}
+      </h3>
+      <div className="body">
+        <HBarChart bars={bars.slice(0, n)} targetLine={target} lowerBetter={lowerBetter} />
+        {note && <div className="chartnote">{note}</div>}
+      </div>
+    </div>
+  )
+}
 
 export default function DisplaySection({
   report, part, agentKey, agentLabel, onError, showSpv, onShowSpv, showAgent, onShowAgent,
@@ -421,11 +465,44 @@ export default function DisplaySection({
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [rankable, kpi, low],
   ).map(bar)
+  const worstOnly = WORST_ONLY.has(report.id)
   const worstBars = useMemo(
-    () => [...rankable].sort((a, b) => byScore(b, a) || dueOf(b) - dueOf(a)).slice(0, TOP_N),
+    () => [...rankable].sort((a, b) => byScore(b, a) || dueOf(b) - dueOf(a)).slice(0, worstOnly ? WORST_N : TOP_N),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [rankable, kpi, low],
-  ).map(bar)
+    [rankable, kpi, low, worstOnly],
+  ).map((r, i) => {
+    const b = bar(r)
+    return worstOnly ? { ...b, rank: i + 1 } : b
+  })
+  /* both halves of the worst ten on one axis, so they line up */
+  const worstScale = worstBars.map((b) => b.value)
+
+  /* The same worst ranking, once per headline figure — each card ranks on its
+     own figure, whichever one the KPI switcher above has picked. */
+  const perKpi = WORST_PER_KPI.has(report.id)
+  const worstByKpi = useMemo(() => {
+    if (!perKpi) return []
+    return report.kpis.map((k) => {
+      const due = (r: DisplayRow) => r.vals[k.dayRatio[1]] ?? 0
+      const score = (r: DisplayRow) => r.vals[k.day] ?? 0
+      const act = scoped.filter((r) => isActive(r, k) && r.vals[k.day] != null)
+      const rk = act.filter((r) => isRankable(r.service) && due(r) >= minDue)
+      const bars = [...rk]
+        .sort((a, b) => (low ? -1 : 1) * (score(a) - score(b)) || due(b) - due(a))
+        .slice(0, WORST_N)
+        .map((r, i): HBar => ({ ...bar(r), value: score(r), rank: i + 1 }))
+      const idle = scoped.length - act.length
+      const unranked = act.length - rk.length
+      const note = idle || unranked
+        ? `${[
+          idle ? `${idle} DP/CP bernilai 0` : '',
+          unranked ? `${unranked} DP/CP Tutup, Pickup, atau kurang dari ${minDue} paket` : '',
+        ].filter(Boolean).join(' dan ')} tidak ikut diperingkat.`
+        : ''
+      return { k, bars, note }
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [perKpi, report, scoped, minDue, low, allAgents])
 
   const byAgent = useMemo(() => {
     if (!allAgents) return []
@@ -526,6 +603,14 @@ export default function DisplaySection({
   const colCount = 2 + (agentCol ? 1 : 0) + (showSpv ? 1 : 0) + 1 + visCols.length
   const multi = report.kpis.length > 1
   const counts = filterOpts.counts
+  const rankNote = counts.get('idle') || unranked ? (
+    <div className="chartnote">
+      {[
+        counts.get('idle') ? `${counts.get('idle')} DP/CP bernilai 0` : '',
+        unranked ? `${unranked} DP/CP Tutup, Pickup, atau kurang dari ${minDue} ${report.id === 'absensi' ? 'orang' : 'paket'}` : '',
+      ].filter(Boolean).join(' dan ')} tidak ikut diperingkat.
+    </div>
+  ) : null
   const rowCount = items.filter((it) => it.kind === 'row').length
   const shownRows = shownItems.filter((it) => it.kind === 'row').length
 
@@ -613,6 +698,33 @@ export default function DisplaySection({
         </div>
       )}
 
+      {perKpi ? (
+        <div className="row-dp">
+          {worstByKpi.map(({ k, bars, note }) => (
+            <WorstCard key={k.id} label={k.label} bars={bars} target={target} lowerBetter={low} note={note} />
+          ))}
+        </div>
+      ) : worstOnly ? (
+        /* One card for the worst ten: 1–5 and 6–10 side by side inside it. */
+        <div className="panel worstcard">
+          <h3><span className="ptitle">{WORST_N} DP / CP Terburuk <Zh>后十名网点</Zh> · {kpi.label}</span></h3>
+          <div className="body">
+            <div className="worstsplit">
+              <div className="worstcol">
+                <div className="worstcap">Peringkat 1–{TOP_N}</div>
+                <HBarChart bars={worstBars.slice(0, TOP_N)} targetLine={target} lowerBetter={low} scaleValues={worstScale} />
+              </div>
+              {worstBars.length > TOP_N && (
+                <div className="worstcol">
+                  <div className="worstcap">Peringkat {TOP_N + 1}–{WORST_N}</div>
+                  <HBarChart bars={worstBars.slice(TOP_N)} targetLine={target} lowerBetter={low} scaleValues={worstScale} />
+                </div>
+              )}
+            </div>
+            {rankNote}
+          </div>
+        </div>
+      ) : (
       <div className="row-dp">
         <div className="panel">
           <h3><span className="ptitle">{TOP_N} DP / CP Terbaik <Zh>前五名网点</Zh> · {kpi.label}</span></h3>
@@ -622,17 +734,11 @@ export default function DisplaySection({
           <h3><span className="ptitle">{TOP_N} DP / CP Terburuk <Zh>后五名网点</Zh> · {kpi.label}</span></h3>
           <div className="body">
             <HBarChart bars={worstBars} targetLine={target} lowerBetter={low} />
-            {counts.get('idle') || unranked ? (
-              <div className="chartnote">
-                {[
-                  counts.get('idle') ? `${counts.get('idle')} DP/CP bernilai 0` : '',
-                  unranked ? `${unranked} DP/CP Tutup, Pickup, atau kurang dari ${minDue} ${report.id === 'absensi' ? 'orang' : 'paket'}` : '',
-                ].filter(Boolean).join(' dan ')} tidak ikut diperingkat.
-              </div>
-            ) : null}
+            {rankNote}
           </div>
         </div>
       </div>
+      )}
 
       <div className="panel dptable" ref={tableRef}>
         <h3>

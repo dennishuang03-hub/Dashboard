@@ -40,6 +40,8 @@ import Zh from './Zh'
 import type { ExportCol, ExportTable, ExportTone, ExportValue } from '../lib/tableExport'
 
 const TOP_N = 5
+/** The worst-ranking charts list this many, split TOP_N per card. */
+const WORST_N = 10
 
 /**
  * Sentinel category: rank on how many of the scored KPIs the site met, rather
@@ -303,17 +305,14 @@ export default function DpSection({
     return out
   }, [catRuns])
 
-  const [topCat, setTopCat] = useState('')
   const [worstCat, setWorstCat] = useState('')
   const [tableCat, setTableCat] = useState('')
 
-  /* "Semua KPI" is not a category, so it cannot resolve to a `Kpi` — the two
+  /* "Semua KPI" is not a category, so it cannot resolve to a `Kpi` — the
      ranking charts carry a flag instead, and their `Kpi` goes null. */
-  const topTotal = topCat === TOTAL_CAT
   const worstTotal = worstCat === TOTAL_CAT
 
   // resolved rather than stored, so a newly loaded file falls back on its own
-  const topK = topTotal ? null : (catKpis.find((k) => k.label === topCat) ?? defaultCat)
   const worstK = worstTotal ? null : (catKpis.find((k) => k.label === worstCat) ?? defaultCat)
   const tableK = catKpis.find((k) => k.label === tableCat) ?? defaultCat
 
@@ -519,7 +518,7 @@ export default function DpSection({
     // "worst" means furthest from meeting the target, which flips for RETUR
     const best = (a: number, b: number) => (k.lowerBetter ? a - b : b - a)
     rows.sort((x, y) => (worst ? best(y.v, x.v) : best(x.v, y.v)))
-    return rows.slice(0, TOP_N)
+    return rows.slice(0, WORST_N)
   }
 
   /** How many delivery-running sites the zero rule above kept out of a ranking. */
@@ -563,7 +562,7 @@ export default function DpSection({
       // equal counts: the one further from its targets is the worse site
       return worst ? a.margin - b.margin : b.margin - a.margin
     })
-    return rows.slice(0, TOP_N).map((s) => {
+    return rows.slice(0, WORST_N).map((s) => {
       const missed = s.scored - s.onTarget
       return {
         name: s.dp.label,
@@ -576,12 +575,10 @@ export default function DpSection({
     })
   }
 
-  const topBars = useMemo(
-    () => (topTotal ? rankTotal(false) : rank(topK, false)),
-    [rankable, topK, topTotal, allAgents],
-  )
+  /* Worst ten only, numbered — the first five on the left card, the next five
+     on the right. */
   const worstBars = useMemo(
-    () => (worstTotal ? rankTotal(true) : rank(worstK, true)),
+    () => (worstTotal ? rankTotal(true) : rank(worstK, true)).map((b, i) => ({ ...b, rank: i + 1 })),
     [rankable, worstK, worstTotal, allAgents],
   )
 
@@ -1195,35 +1192,36 @@ export default function DpSection({
             across the whole scorecard and stays put. */}
       </div>
 
-      <div className="row-dp">
-        <div className="panel">
-          <h3>
-            <span className="ptitle">{TOP_N} DP / CP Terbaik <Zh>前五名网点</Zh></span>
-            {catSelect(topTotal ? TOTAL_CAT : (topK?.label ?? ''), setTopCat, 'grafik lima terbaik', true)}
-          </h3>
-          <div className="body">
-            <HBarChart
-              bars={topBars}
-              targetLine={topK ? dpTargetFor(scored[0]?.dp ?? model.dps[0], topK) : null}
-              lowerBetter={topK?.lowerBetter}
-            />
-            {topTotal ? <TotalNote worst={false} /> : <ZeroNote n={zeroCount(topK)} />}
+      {/* One card for the worst ten: 1–5 and 6–10 side by side inside it. */}
+      <div className="panel worstcard">
+        <h3>
+          <span className="ptitle">{WORST_N} DP / CP Terburuk <Zh>后十名网点</Zh></span>
+          {catSelect(worstTotal ? TOTAL_CAT : (worstK?.label ?? ''), setWorstCat, 'grafik sepuluh terburuk', true)}
+        </h3>
+        <div className="body">
+          <div className="worstsplit">
+            <div className="worstcol">
+              <div className="worstcap">Peringkat 1–{TOP_N}</div>
+              <HBarChart
+                bars={worstBars.slice(0, TOP_N)}
+                targetLine={worstK ? dpTargetFor(scored[0]?.dp ?? model.dps[0], worstK) : null}
+                lowerBetter={worstK?.lowerBetter}
+                scaleValues={worstBars.map((b) => b.value)}
+              />
+            </div>
+            {worstBars.length > TOP_N && (
+              <div className="worstcol">
+                <div className="worstcap">Peringkat {TOP_N + 1}–{WORST_N}</div>
+                <HBarChart
+                  bars={worstBars.slice(TOP_N)}
+                  targetLine={worstK ? dpTargetFor(scored[0]?.dp ?? model.dps[0], worstK) : null}
+                  lowerBetter={worstK?.lowerBetter}
+                  scaleValues={worstBars.map((b) => b.value)}
+                />
+              </div>
+            )}
           </div>
-        </div>
-
-        <div className="panel">
-          <h3>
-            <span className="ptitle">{TOP_N} DP / CP Terburuk <Zh>后五名网点</Zh></span>
-            {catSelect(worstTotal ? TOTAL_CAT : (worstK?.label ?? ''), setWorstCat, 'grafik lima terburuk', true)}
-          </h3>
-          <div className="body">
-            <HBarChart
-              bars={worstBars}
-              targetLine={worstK ? dpTargetFor(scored[0]?.dp ?? model.dps[0], worstK) : null}
-              lowerBetter={worstK?.lowerBetter}
-            />
-            {worstTotal ? <TotalNote worst /> : <ZeroNote n={zeroCount(worstK)} />}
-          </div>
+          {worstTotal ? <TotalNote worst /> : <ZeroNote n={zeroCount(worstK)} />}
         </div>
       </div>
 

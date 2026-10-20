@@ -1040,6 +1040,24 @@ body.shooting .rmzero,body.shooting .zerotoggle{display:none !important}
 
 .row-dp{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px}
 @media (max-width:900px){ .row-dp{grid-template-columns:1fr} }
+/* the worst-ten card: one panel, ranks 1–5 and 6–10 side by side inside it */
+.panel.worstcard{margin-bottom:10px}
+/* Both columns exactly the same width — each chart scales its SVG to its column,
+   so any width difference shows up as smaller type and shorter rows. The divider
+   is drawn in the gap rather than as padding for the same reason. */
+.worstsplit{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1fr);column-gap:48px;row-gap:20px}
+.worstcol{min-width:0;position:relative}
+.worstcol + .worstcol::before{
+  content:'';position:absolute;left:-24px;top:0;bottom:0;border-left:1px solid var(--line);
+}
+.worstcap{
+  font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
+  color:var(--ink-3);margin:0 0 6px;padding-bottom:6px;border-bottom:1px solid var(--line);
+}
+@media (max-width:900px){
+  .worstsplit{grid-template-columns:minmax(0,1fr)}
+  .worstcol + .worstcol::before{left:0;right:0;top:-10px;bottom:auto;border-left:0;border-top:1px solid var(--line)}
+}
 /* caption under a ranking chart — explains an exclusion, so it stays visible in
    the PNG and the print sheet rather than being treated as chrome */
 .chartnote{
@@ -1843,6 +1861,11 @@ body.shooting .wrap{width:1480px;max-width:none;padding:14px 16px}
    viewport is already baked in by the time the clone exists. The layout has to
    be correct in the live document, which is what these do. */
 body.shooting .row-dp{grid-template-columns:1fr 1fr !important}
+body.shooting .worstsplit{grid-template-columns:minmax(0,1fr) minmax(0,1fr) !important}
+body.shooting .worstcol + .worstcol::before{
+  left:-24px !important;right:auto !important;top:0 !important;bottom:0 !important;
+  border-top:0 !important;border-left:1px solid var(--line) !important;
+}
 body.shooting .dpstats{grid-template-columns:repeat(auto-fit,minmax(150px,1fr)) !important}
 /* A panel body that scrolls sideways photographs as its visible slice, and at a
    pinned width there is nothing to scroll to anyway. */

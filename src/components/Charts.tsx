@@ -387,6 +387,9 @@ export interface HBar {
   label?: string
   /** forces the bar's colour when there is no target line to judge it against */
   bad?: boolean
+  /** position in the ranking — when any bar has one, the labels move to the far
+   *  left behind a column of rank numbers */
+  rank?: number
 }
 
 /**
@@ -433,6 +436,9 @@ interface HBarProps {
   rowH?: number
   /** Truthful magnitude: zero-anchored bars, or dots when the values cluster. */
   honest?: boolean
+  /** values the scale is fitted to instead of `bars` — lets two charts showing
+   *  halves of one ranking share an axis, so their bars and target line align */
+  scaleValues?: number[]
 }
 
 /**
@@ -450,12 +456,16 @@ export function HBarChart(props: HBarProps) {
 }
 
 function HBarChartSvg({
-  bars, targetLine, lowerBetter = false, w = 560, rowH = 30, honest = false,
+  bars, targetLine, lowerBetter = false, w = 560, rowH = 30, honest = false, scaleValues,
 }: HBarProps) {
   if (!bars.length) return EMPTY
 
-  const P = { t: 8, r: 62, b: 22, l: 176 }
-  const vals = bars.map((b) => b.value)
+  /* Ranked: a badge column at x 0–22, names left-aligned from RANK_X, so the
+     list reads from the panel's left edge instead of floating right-aligned. */
+  const ranked = bars.some((b) => b.rank != null)
+  const RANK_X = 32
+  const P = { t: 8, r: 62, b: 22, l: ranked ? 208 : 176 }
+  const vals = scaleValues?.length ? scaleValues : bars.map((b) => b.value)
   const dataLo = Math.min(...vals)
   const dataHi = Math.max(...vals)
 
@@ -505,12 +515,25 @@ function HBarChartSvg({
         const fill = ok ? 'var(--c-ok)' : 'var(--c-bad)'
         return (
           <g key={`${b.name}-${i}`}>
-            <line x1={P.l} y1={y + rowH - 0.5} x2={w - P.r} y2={y + rowH - 0.5} stroke="var(--c-grid)" />
-            <text x={P.l - 10} y={b.sub ? cy - 2 : cy + 4} textAnchor="end" fontSize={11.5} fill="var(--c-axis)" fontWeight={500}>
-              {clip(b.name, 24)}
+            <line x1={ranked ? 0 : P.l} y1={y + rowH - 0.5} x2={w - P.r} y2={y + rowH - 0.5} stroke="var(--c-grid)" />
+            {ranked && b.rank != null && (
+              <g>
+                {/* tinted in the bar's own status colour, so the badge and the
+                    bar beside it read as one row */}
+                <rect x={0} y={cy - 10} width={22} height={20} rx={5} fill={fill} opacity={0.16} />
+                <text x={11} y={cy + 4} textAnchor="middle" fontSize={11.5} fill={ink} fontWeight={800}>
+                  {b.rank}
+                </text>
+              </g>
+            )}
+            <text
+              x={ranked ? RANK_X : P.l - 10} y={b.sub ? cy - 2 : cy + 4} textAnchor={ranked ? 'start' : 'end'}
+              fontSize={11.5} fill="var(--c-axis)" fontWeight={500}
+            >
+              {clip(b.name, ranked ? 22 : 24)}
             </text>
             {b.sub && (
-              <text x={P.l - 10} y={cy + 10} textAnchor="end" fontSize={9.5} fill="var(--c-axis-2)">
+              <text x={ranked ? RANK_X : P.l - 10} y={cy + 10} textAnchor={ranked ? 'start' : 'end'} fontSize={9.5} fill="var(--c-axis-2)">
                 {clip(b.sub, 28)}
               </text>
             )}
