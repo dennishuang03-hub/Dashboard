@@ -39,8 +39,7 @@ import TermDropdown from './TermDropdown'
 import Zh from './Zh'
 import type { ExportCol, ExportTable, ExportTone, ExportValue } from '../lib/tableExport'
 
-const TOP_N = 5
-/** The worst-ranking charts list this many, split TOP_N per card. */
+/** The worst-ranking charts list this many, one chart per section. */
 const WORST_N = 10
 
 /**
@@ -305,15 +304,16 @@ export default function DpSection({
     return out
   }, [catRuns])
 
-  const [worstCat, setWorstCat] = useState('')
+  /* One worst-ten chart per section, keyed by section id, so the left half only
+     ever offers Ketepatan Waktu and the right half Penyelesaian & Kualitas. */
+  const [worstCats, setWorstCats] = useState<Record<string, string>>({})
   const [tableCat, setTableCat] = useState('')
 
-  /* "Semua KPI" is not a category, so it cannot resolve to a `Kpi` — the
-     ranking charts carry a flag instead, and their `Kpi` goes null. */
-  const worstTotal = worstCat === TOTAL_CAT
+  /* the worst-ten halves follow the table's section split, not the visibility
+     switches — hiding a column should not take its chart away */
+  const worstRuns = useMemo(() => runsOf(catKpis), [catKpis])
 
   // resolved rather than stored, so a newly loaded file falls back on its own
-  const worstK = worstTotal ? null : (catKpis.find((k) => k.label === worstCat) ?? defaultCat)
   const tableK = catKpis.find((k) => k.label === tableCat) ?? defaultCat
 
   /* -------------------------------------------------------------- scoring */
@@ -575,12 +575,16 @@ export default function DpSection({
     })
   }
 
-  /* Worst ten only, numbered — the first five on the left card, the next five
-     on the right. */
-  const worstBars = useMemo(
-    () => (worstTotal ? rankTotal(true) : rank(worstK, true)).map((b, i) => ({ ...b, rank: i + 1 })),
-    [rankable, worstK, worstTotal, allAgents],
-  )
+  /* Worst ten per section, numbered. "Semua KPI" is not a category, so it
+     cannot resolve to a `Kpi` — that half carries a flag instead and its `Kpi`
+     goes null. */
+  const worstPanels = useMemo(() => worstRuns.map((run) => {
+    const cat = worstCats[run.id] ?? ''
+    const total = cat === TOTAL_CAT
+    const k = total ? null : (run.kpis.find((x) => x.label === cat) ?? run.kpis[0] ?? null)
+    const bars = (total ? rankTotal(true) : rank(k, true)).map((b, i) => ({ ...b, rank: i + 1 }))
+    return { run, total, k, bars }
+  }), [worstRuns, worstCats, rankable, allAgents])
 
   /* below-target count per agent, for the region-wide view */
   const byAgent = useMemo(() => {
@@ -1106,7 +1110,9 @@ export default function DpSection({
 
   /* a plain function, not a nested component: React would remount a component
      declared inside render on every keystroke and the select would lose focus */
-  const catSelect = (cur: string, onChange: (v: string) => void, id: string, withTotal = false) => (
+  const catSelect = (
+    cur: string, onChange: (v: string) => void, id: string, withTotal = false, opts: Kpi[] = catKpis,
+  ) => (
     <select
       className="hsel" value={cur} aria-label={`Kategori yang ditampilkan pada ${id}`}
       onChange={(e) => onChange(e.target.value)}
@@ -1114,7 +1120,7 @@ export default function DpSection({
       {withTotal && (
         <option value={TOTAL_CAT}>{SCORE_TOTAL} INDIKATOR · jumlah sesuai target</option>
       )}
-      {catKpis.map((k) => <option key={k.label} value={k.label}>{k.label}</option>)}
+      {opts.map((k) => <option key={k.label} value={k.label}>{k.label}</option>)}
     </select>
   )
 
@@ -1192,36 +1198,35 @@ export default function DpSection({
             across the whole scorecard and stays put. */}
       </div>
 
-      {/* One card for the worst ten: 1–5 and 6–10 side by side inside it. */}
+      {/* One card for the worst ten, split by section: Ketepatan Waktu on the
+          left, Penyelesaian & Kualitas on the right, each with its own picker
+          and its own full 1–10. */}
       <div className="panel worstcard">
         <h3>
           <span className="ptitle">{WORST_N} DP / CP Terburuk <Zh>后十名网点</Zh></span>
-          {catSelect(worstTotal ? TOTAL_CAT : (worstK?.label ?? ''), setWorstCat, 'grafik sepuluh terburuk', true)}
         </h3>
         <div className="body">
           <div className="worstsplit">
-            <div className="worstcol">
-              <div className="worstcap">Peringkat 1–{TOP_N}</div>
-              <HBarChart
-                bars={worstBars.slice(0, TOP_N)}
-                targetLine={worstK ? dpTargetFor(scored[0]?.dp ?? model.dps[0], worstK) : null}
-                lowerBetter={worstK?.lowerBetter}
-                scaleValues={worstBars.map((b) => b.value)}
-              />
-            </div>
-            {worstBars.length > TOP_N && (
-              <div className="worstcol">
-                <div className="worstcap">Peringkat {TOP_N + 1}–{WORST_N}</div>
+            {worstPanels.map(({ run, total, k, bars }) => (
+              <div className="worstcol" key={run.id}>
+                <div className="worstcap withsel">
+                  <span>{run.label} <Zh>{run.zh}</Zh></span>
+                  {catSelect(
+                    total ? TOTAL_CAT : (k?.label ?? ''),
+                    (v) => setWorstCats((prev) => ({ ...prev, [run.id]: v })),
+                    `grafik sepuluh terburuk ${run.label}`, true, run.kpis,
+                  )}
+                </div>
                 <HBarChart
-                  bars={worstBars.slice(TOP_N)}
-                  targetLine={worstK ? dpTargetFor(scored[0]?.dp ?? model.dps[0], worstK) : null}
-                  lowerBetter={worstK?.lowerBetter}
-                  scaleValues={worstBars.map((b) => b.value)}
+                  bars={bars}
+                  targetLine={k ? dpTargetFor(scored[0]?.dp ?? model.dps[0], k) : null}
+                  lowerBetter={k?.lowerBetter}
+                  scaleValues={bars.map((b) => b.value)}
                 />
+                {total ? <TotalNote worst /> : <ZeroNote n={zeroCount(k)} />}
               </div>
-            )}
+            ))}
           </div>
-          {worstTotal ? <TotalNote worst /> : <ZeroNote n={zeroCount(worstK)} />}
         </div>
       </div>
 

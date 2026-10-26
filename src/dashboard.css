@@ -710,15 +710,15 @@ tbody td .zh{opacity:.9}
 .panel > h3 .ptitle{flex:1;min-width:0}
 /* in-header control (the bar-chart KPI switcher): normal case and weight, so it
    reads as something you can click rather than as part of the heading */
-.panel > h3 .hsel{
+.panel > h3 .hsel,.worstcap .hsel{
   flex:none;max-width:60%;font-family:inherit;font-size:13px;font-weight:700;
   text-transform:none;letter-spacing:0;color:#fff;background:rgba(255,255,255,.12);
   border:1.5px solid rgba(255,255,255,.28);border-radius:7px;padding:5px 9px;cursor:pointer;
 }
-.panel > h3 .hsel:hover{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.45)}
+.panel > h3 .hsel:hover,.worstcap .hsel:hover{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.45)}
 /* the popup list is rendered by the OS in its own colours — force dark text so
    the options are not white-on-white once the menu opens */
-.panel > h3 .hsel option{color:var(--ink);background:var(--card-2)}
+.panel > h3 .hsel option,.worstcap .hsel option{color:var(--ink);background:var(--card-2)}
 /* re-round the bottom corners now that the panel no longer clips */
 .panel .body table tbody tr:last-child td:first-child{border-bottom-left-radius:var(--radius)}
 .panel .body table tbody tr:last-child td:last-child{border-bottom-right-radius:var(--radius)}
@@ -1054,6 +1054,8 @@ body.shooting .rmzero,body.shooting .zerotoggle{display:none !important}
   font-size:11px;font-weight:700;letter-spacing:.6px;text-transform:uppercase;
   color:var(--ink-3);margin:0 0 6px;padding-bottom:6px;border-bottom:1px solid var(--line);
 }
+/* section name on the left, that section's own picker on the right */
+.worstcap.withsel{display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap}
 @media (max-width:900px){
   .worstsplit{grid-template-columns:minmax(0,1fr)}
   .worstcol + .worstcol::before{left:0;right:0;top:-10px;bottom:auto;border-left:0;border-top:1px solid var(--line)}
@@ -1969,8 +1971,8 @@ body.shooting .panel .body{overflow:visible !important;max-height:none !importan
 
 /* the KPI switcher photographs as an empty box; the chosen KPI is what matters,
    so it is flattened to plain text for the shot */
-body.shooting .panel > h3 .hsel,
-body.shooting .panel > h3 .hsel:hover{
+body.shooting .panel > h3 .hsel,body.shooting .worstcap .hsel,
+body.shooting .panel > h3 .hsel:hover,body.shooting .worstcap .hsel:hover{
   border-color:transparent;background:transparent;
   -webkit-appearance:none;appearance:none;padding-left:0;
 }
@@ -2760,10 +2762,10 @@ body.shoot-table .dptable .body table.dpgrid{min-width:100% !important}
   box-shadow:inset 0 1px 0 #fff;
 }
 [data-theme="light"] .panel.red > h3{color:#fff}
-[data-theme="light"] .panel > h3 .hsel{
+[data-theme="light"] .panel > h3 .hsel,[data-theme="light"] .worstcap .hsel{
   color:var(--ink);background:#fff;border-color:var(--line);
 }
-[data-theme="light"] .panel > h3 .hsel:hover{background:#fff;border-color:#B9C2D0}
+[data-theme="light"] .panel > h3 .hsel:hover,[data-theme="light"] .worstcap .hsel:hover{background:#fff;border-color:#B9C2D0}
 [data-theme="light"] .btn.tiny{
   background:#fff;color:var(--ink);border-color:var(--line);
 }
@@ -3095,7 +3097,7 @@ body.shoot-table .dptable .body table.dpgrid{min-width:100% !important}
   .dpscroll{overflow:visible !important;max-height:none !important}
   .chartscroll{overflow:visible !important}
   table.dpgrid thead th,table.dpgrid th.sticky,table.dpgrid td.sticky{position:static !important}
-  .panel > h3 .hsel{border-color:transparent;background:transparent;-webkit-appearance:none;appearance:none;padding-left:0}
+  .panel > h3 .hsel,.worstcap .hsel{border-color:transparent;background:transparent;-webkit-appearance:none;appearance:none;padding-left:0}
 
   /* THE page-break fix: a panel that straddled a break printed its header on one
      page and its chart on the next, which is why charts looked missing */
