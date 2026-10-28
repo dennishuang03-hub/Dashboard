@@ -3576,6 +3576,128 @@ body.shoot-rmd .rmd-head{padding-right:18px !important}
 body.shoot-rmd .rmd-close,
 body.shoot-rmd .rmd-err{display:none !important}
 
+/* ---------- Pencapaian RM: "Unduh semua RM" ----------
+   The button sits at the right of the filter bar and opens a dialog: pick the
+   RMs, then a loading screen while each one is photographed. While that runs
+   the backdrop is opaque (`.covering`) — the pop-outs being opened and
+   captured underneath it are machinery, not something to watch. The dialog is
+   outside every captured element, so it never appears in a picture. */
+.rmbar .rmbatch-btn{margin-left:auto}
+.rmbar .act-clear + .rmbatch-btn{margin-left:0}
+
+.rmb-scrim{
+  position:fixed;inset:0;z-index:1100;display:flex;align-items:center;justify-content:center;
+  padding:24px;background:rgba(0,0,0,.62);animation:rmd-fade .16s ease-out;
+}
+.rmb-scrim.covering{background:var(--bg)}
+.rmb{
+  display:flex;flex-direction:column;width:min(560px,100%);max-height:calc(100vh - 48px);
+  background:var(--card);color:var(--ink);border:1px solid var(--line);border-radius:16px;
+  box-shadow:0 24px 70px rgba(0,0,0,.45);overflow:hidden;outline:none;
+  animation:rmd-rise .22s var(--ease-out-quint);
+}
+.rmb-head{
+  display:flex;align-items:center;gap:12px;padding:16px 18px;
+  background:var(--jt-red);color:#fff;
+}
+.rmb-titles{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.rmb-head h2{margin:0;font-size:17px;font-weight:800;letter-spacing:.2px}
+.rmb-sub{font-size:12.5px;font-weight:600;opacity:.9}
+.rmb-head .rmd-close{position:static}
+
+.rmb-tools{display:flex;align-items:center;gap:12px;padding:14px 18px 10px;flex-wrap:wrap}
+.rmb-tools .dpsearchbox{flex:1 1 200px;min-width:0}
+.rmb-all{display:flex;align-items:center;gap:8px;font-size:13.5px;font-weight:800;cursor:pointer;white-space:nowrap}
+.rmb-all b,.rmb-reghead b{font-weight:700;color:var(--ink-3);font-variant-numeric:tabular-nums}
+
+.rmb-list{overflow-y:auto;min-height:0;padding:0 12px 10px;border-top:1px solid var(--line)}
+.rmb-reg{padding-top:8px}
+.rmb-reghead{
+  position:sticky;top:0;z-index:1;display:flex;align-items:center;gap:9px;
+  padding:7px 8px;background:var(--card);cursor:pointer;
+  font-size:12px;font-weight:800;letter-spacing:.5px;text-transform:uppercase;color:var(--ink-2);
+  border-bottom:1px solid var(--line);
+}
+.rmb-reghead span{flex:1}
+.rmb-row{
+  display:flex;align-items:center;gap:9px;padding:6px 8px 6px 26px;border-radius:6px;cursor:pointer;
+  font-size:13.5px;font-weight:600;
+}
+.rmb-row:hover{background:var(--card-3)}
+.rmb-row .rmc-dot{flex:none;width:8px;height:8px}
+.rmb-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rmb-score{flex:none;font-size:12px;font-weight:700;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.rmb-row.unticked .rmb-name{color:var(--ink-3)}
+.rmb-reg.solo .rmb-row{padding-left:8px}
+.rmb-row.unticked .rmc-dot{opacity:.35}
+.rmb-empty{padding:18px 8px;color:var(--ink-3);font-size:13px;text-align:center}
+
+.rmb-foot{
+  display:flex;align-items:center;flex-wrap:wrap;gap:8px;padding:12px 18px;border-top:1px solid var(--line);
+}
+.rmb-note{flex:1 1 100%;min-width:0;font-size:12px;color:var(--ink-3);line-height:1.4}
+.rmb-foot .rmb-btn:first-of-type{margin-left:auto}
+.rmb-btn{
+  display:inline-flex;align-items:center;gap:7px;flex:none;
+  border:1.5px solid var(--line);border-radius:8px;padding:8px 14px;
+  font-family:inherit;font-size:13.5px;font-weight:800;cursor:pointer;
+  background:transparent;color:var(--ink);
+}
+.rmb-btn.ghost:hover{border-color:var(--ink-3)}
+.rmb-btn.primary{background:var(--jt-red);border-color:var(--jt-red);color:#fff}
+.rmb-btn.primary:hover:not(:disabled){background:#FF4438;border-color:#FF4438}
+.rmb-btn.send{background:#25D366;border-color:#25D366;color:#052813}
+.rmb-btn.send:hover:not(:disabled){background:#3BE07A;border-color:#3BE07A}
+.rmb-btn:disabled{opacity:.45;cursor:not-allowed}
+.rmb-btn:focus-visible{outline:2px solid var(--jt-red-lit);outline-offset:2px}
+
+/* the loading face, and the done face that replaces it */
+.rmb-run{
+  display:flex;flex-direction:column;align-items:center;gap:14px;
+  padding:30px 26px 24px;text-align:center;overflow-y:auto;min-height:0;
+}
+
+/* after "Unduh & Kirim ke Group": each agent's send, as it happens */
+.rmb-send{width:100%;display:flex;flex-direction:column;gap:6px;text-align:left}
+.rmb-sendhead{
+  display:flex;align-items:baseline;gap:8px;padding-bottom:4px;
+  font-size:12.5px;font-weight:600;color:var(--ink-3);line-height:1.4;
+}
+.rmb-sendhead b{margin-left:auto;flex:none;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.rmb-sendname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rmb-sendn{flex:none;font-size:12px;font-weight:600;color:var(--ink-3)}
+.rmb-loader{position:relative;width:92px;height:92px;display:grid;place-items:center}
+.rmb-ring{
+  position:absolute;inset:0;border-radius:50%;
+  border:6px solid var(--card-3);border-top-color:var(--jt-red);border-right-color:var(--jt-red);
+  animation:rmb-spin .9s linear infinite;
+}
+@keyframes rmb-spin{to{transform:rotate(360deg)}}
+.rmb-pct{font-size:20px;font-weight:800;font-variant-numeric:tabular-nums}
+.rmb-runtxt{display:flex;flex-direction:column;gap:4px;max-width:100%}
+.rmb-runtxt b{font-size:15px;font-weight:800}
+.rmb-runtxt span{font-size:13px;font-weight:600;color:var(--ink-3);overflow-wrap:anywhere}
+.rmb-track{width:100%;height:8px;border-radius:99px;background:var(--card-3);overflow:hidden}
+.rmb-track > span{display:block;height:100%;border-radius:inherit;background:var(--jt-red);transition:width .35s ease}
+.rmb-hint{margin:0;font-size:12px;color:var(--ink-3);line-height:1.45}
+.rmb-fail{margin:0;font-size:12.5px;font-weight:600;color:var(--jt-red-lit);line-height:1.45}
+.rmb-badge{
+  width:64px;height:64px;border-radius:50%;display:grid;place-items:center;
+  animation:rmd-rise .25s var(--ease-out-quint);
+}
+.rmb-badge .bico{width:30px;height:30px}
+.rmb-badge.ok{background:rgba(46,213,115,.15);color:var(--green)}
+.rmb-badge.bad{background:rgba(255,68,56,.14);color:var(--jt-red-lit)}
+@media (prefers-reduced-motion:reduce){
+  .rmb-ring{animation-duration:2.4s}
+  .rmb-scrim,.rmb,.rmb-badge{animation:none}
+}
+@media (max-width:600px){
+  .rmb-scrim{padding:0;align-items:stretch}
+  .rmb{width:100%;max-height:none;border-radius:0}
+  .rmb-note{display:none}
+}
+
 /* the header's PNG button sits before the close button, which is pinned */
 .rmd-png{flex:none}
 .rmd-err{margin:12px 18px 0}

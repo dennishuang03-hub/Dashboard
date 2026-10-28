@@ -69,7 +69,7 @@ function Trend({ ind, values, labels }: { ind: RmIndicator; values: (number | nu
 }
 
 export default function RmDetail({
-  rowKey, reports, initialPeriod, dpTabs, onNeedDps, onClose,
+  rowKey, reports, initialPeriod, dpTabs, onNeedDps, onClose, onAutoShot, offstage = false,
 }: {
   /** the RM, by the key its rows share across the three tabs */
   rowKey: string
@@ -80,6 +80,10 @@ export default function RmDetail({
   dpTabs: Partial<Record<DisplayId, DisplayReport>> | null | undefined
   onNeedDps: () => void
   onClose: () => void
+  /** batch mode: called once with the pop-out, when it is ready to photograph */
+  onAutoShot?: (el: HTMLElement) => void
+  /** batch mode: drawn under the download dialog, so it leaves focus and the keyboard alone */
+  offstage?: boolean
 }) {
   const periods = RM_PERIODS.filter((p) => reports[p.id])
   const [period, setPeriod] = useState<RmPeriod>(initialPeriod)
@@ -101,6 +105,7 @@ export default function RmDetail({
   const boxRef = useRef<HTMLDivElement>(null)
   useEffect(() => { if (dpTabs === undefined) onNeedDps() }, [dpTabs, onNeedDps])
   useEffect(() => {
+    if (offstage) return
     const back = document.activeElement as HTMLElement | null
     boxRef.current?.focus()
     const prev = document.body.style.overflow
@@ -125,7 +130,7 @@ export default function RmDetail({
       document.body.style.overflow = prev
       back?.focus()
     }
-  }, [onClose])
+  }, [onClose, offstage])
 
   /* ------------------------------------------------ drop points */
 
@@ -235,8 +240,20 @@ export default function RmDetail({
     }
   }
 
+  /*
+   * Batch mode ("Unduh semua RM"): the page opens each RM in turn and wants the
+   * pop-out handed back once it has something to photograph. That is one frame
+   * after the drop points are in — `undefined` means they are still loading;
+   * `null` (unreadable) still has a summary worth keeping.
+   */
+  useEffect(() => {
+    if (!onAutoShot || dpTabs === undefined) return
+    const id = requestAnimationFrame(() => { if (boxRef.current) onAutoShot(boxRef.current) })
+    return () => cancelAnimationFrame(id)
+  }, [onAutoShot, dpTabs])
+
   return (
-    <div className="rmd-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
+    <div className="rmd-scrim" aria-hidden={offstage || undefined} onMouseDown={(e) => { if (e.target === e.currentTarget) onClose() }}>
       <div className="rmd" role="dialog" aria-modal="true" aria-labelledby="rmd-title" ref={boxRef} tabIndex={-1}>
         <header className="rmd-head">
           <span className="rmd-id">

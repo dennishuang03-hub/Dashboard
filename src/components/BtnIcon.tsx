@@ -7,7 +7,7 @@
  * bold label beside them, and `currentColor` so each button's hover colour
  * reaches the icon without a second rule.
  */
-export type BtnIconName = 'image' | 'pdf' | 'sheet' | 'spin' | 'list' | 'collapse' | 'check' | 'clear' | 'retry' | 'close' | 'calendar'
+export type BtnIconName = 'image' | 'pdf' | 'sheet' | 'spin' | 'list' | 'collapse' | 'check' | 'clear' | 'retry' | 'close' | 'calendar' | 'send'
 
 export default function BtnIcon({ name }: { name: BtnIconName }) {
   const p = {
@@ -62,6 +62,9 @@ export default function BtnIcon({ name }: { name: BtnIconName }) {
       )}
       {name === 'calendar' && (
         <g {...p}><rect x="2" y="3.2" width="12" height="10.8" rx="1.8" /><path d="M2 6.8h12M5.4 1.8v2.6M10.6 1.8v2.6" /></g>
+      )}
+      {name === 'send' && (
+        <g {...p}><path d="M14 2L7 9M14 2l-4.4 12-2.6-5-5-2.6z" /></g>
       )}
     </svg>
   )

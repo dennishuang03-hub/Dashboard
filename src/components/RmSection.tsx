@@ -11,15 +11,18 @@
  * a column added to the workbook later becomes one more line on every card
  * without a change here.
  */
-import { useCallback, useMemo, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
-import { agentZh } from '../lib/jnt'
+import { agentZh, capturePng, saveBlob } from '../lib/jnt'
 import { RM_PERIODS, scoreOf, toneOf, verdictOf } from '../lib/rm'
 import type { RmFigure, RmIndicator, RmPeriod, RmReport, RmRow, RmTone, RmVerdict } from '../lib/rm'
 import type { DisplayId, DisplayReport } from '../lib/display'
 import BtnIcon from './BtnIcon'
+import RmBatchDialog from './RmBatchDialog'
+import type { BatchResult } from './RmBatchDialog'
 import RmDetail from './RmDetail'
 import Zh from './Zh'
+import { zipStore } from '../lib/zip'
 
 type SortKey = 'sheet' | 'name' | 'best' | 'worst'
 type StatusKey = '' | 'ok' | 'warn' | 'bad'
@@ -28,6 +31,20 @@ const VERDICT_LABEL: Record<Exclude<StatusKey, ''>, string> = {
   ok: 'Semua KPI sesuai target',
   warn: 'Sebagian besar sesuai',
   bad: 'Mayoritas di bawah target',
+}
+
+/** A file or folder name Windows will accept. */
+const clean = (x: string) => x.replace(/[\\/:*?"<>|&]+/g, ' ').replace(/\s+/g, ' ').trim()
+
+/** "Unduh semua RM": the RMs to photograph, which one is on screen, and where they go. */
+interface Batch {
+  rows: RmRow[]
+  i: number
+  period: RmPeriod
+  /** the folder inside the ZIP, and the ZIP's own name */
+  folder: string
+  /** "Unduh & Kirim ke Group": keep the pictures per agent for the share sheet too */
+  send: boolean
 }
 
 const fmt = (v: number | null) => (v == null ? '—' : `${v.toFixed(2)}%`)
@@ -101,6 +118,71 @@ export default function RmSection({ reports, part, dpTabs, onNeedDps }: {
     return m
   }, [scored])
 
+  /*
+   * "Unduh semua RM" — every RM's detail pop-out as a PNG, in one folder, in one
+   * ZIP.
+   *
+   * The picture has to be the real pop-out, so the page opens each RM in turn
+   * (keyed, so each is a fresh pop-out on the page's period), the pop-out says
+   * when it is ready (`onAutoShot`), it is photographed exactly as Simpan PNG
+   * would, and the next one opens. A browser cannot write a folder on its own;
+   * a ZIP holding one is the nearest thing that downloads without a prompt.
+   *
+   * One RM failing does not stop the rest — it is named at the end instead.
+   */
+  const [batchOpen, setBatchOpen] = useState(false)
+  const [batch, setBatch] = useState<Batch | null>(null)
+  const [result, setResult] = useState<BatchResult | null>(null)
+  const shots = useRef<{ name: string; file: string; agent: string; data: Blob }[]>([])
+  const failed = useRef<string[]>([])
+  const stopped = useRef(false)
+
+  const onShot = useCallback(async (el: HTMLElement) => {
+    if (!batch) return
+    const row = batch.rows[batch.i]
+    try {
+      const data = await capturePng(el, 'shoot-rmd')
+      const n = String(batch.i + 1).padStart(String(batch.rows.length).length, '0')
+      const file = `${n} ${clean(row.rm)} - ${clean(row.region)}.png`
+      shots.current.push({ name: `${batch.folder}/${file}`, file, agent: row.region, data })
+    } catch {
+      failed.current.push(row.rm)
+    }
+    if (stopped.current) return
+    if (batch.i + 1 < batch.rows.length) {
+      setBatch({ ...batch, i: batch.i + 1 })
+      return
+    }
+    const done = shots.current
+    shots.current = []
+    const zip = `${batch.folder}.zip`
+    /* one share per agent, in sheet order — each agent has its own group */
+    const groups = batch.send ? [...done.reduce((m, x) => {
+      m.set(x.agent, [...(m.get(x.agent) ?? []), new File([x.data], x.file, { type: 'image/png' })])
+      return m
+    }, new Map<string, File[]>())].map(([agent, files]) => ({ agent, files })) : undefined
+    const base = { ok: done.length, failed: [...failed.current], zip: done.length ? zip : '', groups }
+    try {
+      if (done.length) saveBlob(await zipStore(done), zip)
+      setResult(base)
+    } catch (ex) {
+      setResult({ ...base, ok: 0, zip: '', error: (ex as Error).message })
+    }
+    setBatch(null)
+  }, [batch, setResult])
+
+  const stopBatch = useCallback(() => {
+    stopped.current = true
+    shots.current = []
+    setBatch(null)
+    setResult({ ok: 0, failed: [], zip: '', cancelled: true })
+  }, [setResult])
+
+  const closeBatch = useCallback(() => {
+    setBatchOpen(false)
+    setResult(null)
+  }, [setBatchOpen, setResult])
+
   if (!rep) return null
 
   const head: RmRow | null = region ? rep.regionTotals[region] ?? null : rep.total
@@ -108,6 +190,24 @@ export default function RmSection({ reports, part, dpTabs, onNeedDps }: {
   const cmpLabel = period === 'harian' ? 'vs H-1' : period === 'mingguan' ? 'vs minggu lalu' : ''
   const anyFilter = !!(q || region || status || sort !== 'sheet')
   const reset = () => { setQ(''); setRegion(''); setStatus(''); setSort('sheet') }
+  const periodName = RM_PERIODS.find((p) => p.id === period)?.label ?? ''
+
+  const startBatch = (keys: string[], send: boolean) => {
+    if (!period || !keys.length || batch) return
+    const pick = new Set(keys)
+    const rows = rep.rows.filter((r) => pick.has(r.key))
+    /* the folder says what is in it: the whole region set, one region, or a pick */
+    const regs = [...new Set(rows.map((r) => r.region))]
+    const what = rows.length === rep.rows.length ? 'Jawa-Bali'
+      : regs.length === 1 && rows.length === rep.rows.filter((r) => r.region === regs[0]).length ? regs[0]
+      : `${rows.length} RM`
+    shots.current = []
+    failed.current = []
+    stopped.current = false
+    setResult(null)
+    setOpenKey(null)
+    setBatch({ rows, i: 0, period, send, folder: clean(`Pencapaian RM ${what} ${periodName} ${rep.periodLabel}`) })
+  }
 
   return (
     <div className="dpsection rmsection">
@@ -174,6 +274,16 @@ export default function RmSection({ reports, part, dpTabs, onNeedDps }: {
               <span>Reset filter</span>
             </button>
           )}
+          <button
+            className="btn tiny act act-png rmbatch-btn"
+            onClick={() => { setResult(null); setBatchOpen(true) }}
+            title={region
+              ? `Pilih RM ${region} lalu simpan detail masing-masing sebagai PNG, satu folder dalam file ZIP`
+              : 'Pilih agen dan RM lalu simpan detail masing-masing sebagai PNG, satu folder dalam file ZIP'}
+          >
+            <BtnIcon name="image" />
+            <span>{region ? `Unduh RM ${region}` : 'Unduh semua RM'}</span>
+          </button>
         </div>
       </div>
 
@@ -281,7 +391,25 @@ export default function RmSection({ reports, part, dpTabs, onNeedDps }: {
         </div>
       )}
 
-      {openKey && period && (
+      {/* Behind the dialog's opaque cover while it runs: each picked RM's
+          pop-out, opened one at a time to be photographed. `offstage` keeps it
+          from taking focus or the keyboard away from the dialog. */}
+      {batch && (
+        <RmDetail
+          key={batch.rows[batch.i].key}
+          rowKey={batch.rows[batch.i].key} reports={reports} initialPeriod={batch.period}
+          dpTabs={dpTabs} onNeedDps={onNeedDps} onClose={stopBatch} onAutoShot={onShot} offstage
+        />
+      )}
+      {batchOpen && (
+        <RmBatchDialog
+          rows={inRegion} scope={region} inds={inds} periodName={periodName} periodLabel={rep.periodLabel}
+          progress={batch ? { i: batch.i, n: batch.rows.length, rm: batch.rows[batch.i].rm } : null}
+          result={result} onStart={startBatch} onStop={stopBatch} onClose={closeBatch}
+        />
+      )}
+
+      {openKey && period && !batch && (
         <RmDetail
           rowKey={openKey} reports={reports} initialPeriod={period}
           dpTabs={dpTabs} onNeedDps={onNeedDps} onClose={closeDetail}

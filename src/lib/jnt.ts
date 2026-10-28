@@ -2535,6 +2535,18 @@ const MAX_CAPTURE_PX = 32_767
 export async function exportPng(
   el: HTMLElement,
   filename: string,
+  /** see `capturePng` */
+  bodyClass = '',
+): Promise<void> {
+  saveBlob(await capturePng(el, bodyClass), filename)
+}
+
+/**
+ * The photograph alone, as a PNG blob — `exportPng` without the download, for
+ * callers that hand the picture somewhere else (the WhatsApp share sheet).
+ */
+export async function capturePng(
+  el: HTMLElement,
   /**
    * Extra body class applied for the duration of the shot, so a caller can
    * decide what belongs in *its* picture — `shoot-main` drops the DP/CP section
@@ -2543,7 +2555,7 @@ export async function exportPng(
    * included in the measurement rather than fighting it.
    */
   bodyClass = '',
-): Promise<void> {
+): Promise<Blob> {
   /* Loaded before anything is moved on the page: a failure here must leave the
      dashboard exactly as the user left it, not mid-photograph. The only way this
      rejects now is a chunk that is missing or stale — a deploy that landed while
@@ -2670,46 +2682,51 @@ export async function exportPng(
 
     const blob = await new Promise<Blob | null>((res) => canvas.toBlob(res, 'image/png'))
     if (!blob) throw new Error('Browser tidak dapat mengodekan gambar ini.')
-    const url = URL.createObjectURL(blob)
-
-    /*
-     * A picture that exists and never reaches the phone is the same failure as
-     * no picture, so the save is checked rather than assumed.
-     *
-     * `<a download>` is the good path and the only one that gets to name the
-     * file. It is also not universal: the in-app browsers people open a link
-     * from — WhatsApp, Instagram, Facebook — and older iOS Safari either ignore
-     * the attribute or refuse the click outright, and a browser that ignores it
-     * navigates away from the dashboard to the image instead of saving it.
-     *
-     * `'download' in a` is what separates the two, and it is a real feature test
-     * rather than a guess at which browser this is. Where the attribute is not
-     * supported the image is opened in a tab instead — long-press, "Simpan
-     * gambar" — and where even that is blocked the message says which button of
-     * the browser's own to press, because at that point nothing this code does
-     * can save the file for them.
-     */
-    const a = document.createElement('a')
-    if ('download' in a) {
-      a.href = url
-      a.download = filename
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-    } else if (!window.open(url, '_blank')) {
-      URL.revokeObjectURL(url)
-      throw new Error(
-        'Browser ini tidak mengizinkan unduhan otomatis. Izinkan pop-up untuk halaman ini, '
-        + 'atau buka dashboard di Chrome / Safari lalu coba lagi.',
-      )
-    }
-    /* Late enough for the download or the new tab to have taken its copy, early
-       enough that a session of exports does not hold every bitmap in memory. */
-    setTimeout(() => URL.revokeObjectURL(url), 60_000)
+    return blob
   } finally {
     document.body.classList.remove('shooting')
     if (bodyClass) document.body.classList.remove(bodyClass)
     setCapturing(false)
     window.scrollTo(prevX, prevY)
   }
+}
+
+/** Hand a finished file (a PNG, a ZIP of them) to the browser as a download. */
+export function saveBlob(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob)
+
+  /*
+   * A picture that exists and never reaches the phone is the same failure as
+   * no picture, so the save is checked rather than assumed.
+   *
+   * `<a download>` is the good path and the only one that gets to name the
+   * file. It is also not universal: the in-app browsers people open a link
+   * from — WhatsApp, Instagram, Facebook — and older iOS Safari either ignore
+   * the attribute or refuse the click outright, and a browser that ignores it
+   * navigates away from the dashboard to the image instead of saving it.
+   *
+   * `'download' in a` is what separates the two, and it is a real feature test
+   * rather than a guess at which browser this is. Where the attribute is not
+   * supported the image is opened in a tab instead — long-press, "Simpan
+   * gambar" — and where even that is blocked the message says which button of
+   * the browser's own to press, because at that point nothing this code does
+   * can save the file for them.
+   */
+  const a = document.createElement('a')
+  if ('download' in a) {
+    a.href = url
+    a.download = filename
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+  } else if (!window.open(url, '_blank')) {
+    URL.revokeObjectURL(url)
+    throw new Error(
+      'Browser ini tidak mengizinkan unduhan otomatis. Izinkan pop-up untuk halaman ini, '
+      + 'atau buka dashboard di Chrome / Safari lalu coba lagi.',
+    )
+  }
+  /* Late enough for the download or the new tab to have taken its copy, early
+     enough that a session of exports does not hold every bitmap in memory. */
+  setTimeout(() => URL.revokeObjectURL(url), 60_000)
 }
