@@ -50,6 +50,13 @@ function newestWorkbook(): { path: string; name: string } | null {
   return null
 }
 
+/** the WhatsApp routes, by path → the route's function without its session check */
+const WA_ROUTES: Record<string, string> = {
+  '/api/wa/link': 'linkCore',
+  '/api/wa/send': 'sendCore',
+  '/api/wa/logout': 'logoutCore',
+}
+
 const DEV_SESSION = { user: 'dev', role: 'team', agent: null, expiresAt: 0 }
 
 function devApi(): Plugin {
@@ -70,6 +77,51 @@ function devApi(): Plugin {
 
         if (path === '/api/session' || path === '/api/login') return send(DEV_SESSION)
         if (path === '/api/logout') return send({ ok: true })
+
+        /* WhatsApp: the real route code, minus the session check (there is no
+           sign-in here — see the note at the top). Run through Vite so the
+           TypeScript loads as is, and the QR stream is passed on line by line
+           rather than buffered, the way Vercel streams it. */
+        if (path in WA_ROUTES) {
+          if (req.method !== 'POST') return send({ error: 'Metode tidak diizinkan.' }, 405)
+          void (async () => {
+            try {
+              /* the login is sealed with SESSION_SECRET; a dev-only one when unset */
+              if ((process.env.SESSION_SECRET ?? '').length < 32) {
+                process.env.SESSION_SECRET = 'dev-only-secret-never-used-in-production-0000'
+              }
+              const mod = await server.ssrLoadModule(`${path}.ts`)
+              const chunks: Buffer[] = []
+              for await (const c of req) chunks.push(c as Buffer)
+              const headers = new Headers()
+              for (const [k, v] of Object.entries(req.headers)) {
+                if (v != null) headers.set(k, Array.isArray(v) ? v.join(', ') : v)
+              }
+              const request = new Request(`http://localhost${req.url}`, {
+                method: 'POST', headers, body: chunks.length ? Buffer.concat(chunks) : undefined,
+              })
+              const out: Response = path === '/api/wa/link'
+                ? mod.linkCore(DEV_SESSION.user)
+                : await mod[WA_ROUTES[path]](request, DEV_SESSION.user)
+              res.statusCode = out.status
+              out.headers.forEach((v, k) => res.setHeader(k, v))
+              if (out.body) {
+                const reader = out.body.getReader()
+                res.on('close', () => { if (!res.writableEnded) void reader.cancel() })
+                for (;;) {
+                  const { value, done } = await reader.read()
+                  if (done) break
+                  res.write(value)
+                }
+              }
+              res.end()
+            } catch (e) {
+              if (!res.headersSent) send({ error: (e as Error).message }, 500)
+              else res.end()
+            }
+          })()
+          return
+        }
 
         if (path === '/api/report') {
           const found = newestWorkbook()

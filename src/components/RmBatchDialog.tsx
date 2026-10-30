@@ -1,27 +1,29 @@
 /**
- * The "Unduh semua RM" pop-up: choose the RMs, then wait, then done.
+ * The "Unduh semua RM" pop-up: choose the RMs, then download them or send them
+ * to the agents' WhatsApp groups.
  *
- * Three faces of one dialog, decided by the page's state rather than held here:
+ * Its faces, in the order someone meets them:
  *
  *   pick  — every RM of the period, ticked, grouped by region with a tick box
  *           per region, and a search box. All of them is the default.
- *   run   — a loading animation and a count. The backdrop turns opaque here,
- *           because underneath it the page is opening each RM's detail and
- *           photographing it, and none of that is for the person to watch.
- *   done  — what was downloaded, what failed, and a close button. After
- *           "Unduh & Kirim ke Group", also each agent's send to its WhatsApp
- *           group as it happens.
+ *   link  — "Kirim ke Grup WhatsApp" only: a QR to scan with the phone that
+ *           will send, then which of the agents' groups that number is in.
+ *   run   — a loading animation while each RM's detail is photographed under
+ *           an opaque cover — machinery, not something to watch.
+ *   done  — what was downloaded, or each agent's send as it goes.
  *
- * The sending is wa-sender's (see ../../../wa-sender): a program on this
- * computer, logged in to WhatsApp. "Unduh & Kirim ke Group" exists only for an
- * agent that agents.json gives a group — an agent without one gets the ZIP and
- * nothing else, and with wa-sender not running the button is not there at all.
+ * WhatsApp is logged in for this dialog only (see lib/waLink.ts). Closing it
+ * logs the phone out again; so does leaving the page. A send that fails ends in
+ * an error pop-up that names each failure and can resend just those.
  */
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { scoreOf, verdictOf } from '../lib/rm'
 import type { RmIndicator, RmRow } from '../lib/rm'
-import { loadWaConfig, saveWaConfig, waAgents, waJob, waSendAgent, waStatus } from '../lib/waSender'
-import type { WaConfig, WaJob, WaStatus } from '../lib/waSender'
+import {
+  PART_BUDGET, WA_AGENTS, fmtWaNumber, jpegsToPdf, linkWhatsApp, logoutWhatsApp, packBySize, rmOfFile,
+  sendWaPart, toWaJpeg,
+} from '../lib/waLink'
+import type { WaLinked } from '../lib/waLink'
 import BtnIcon from './BtnIcon'
 
 export interface BatchProgress {
@@ -33,13 +35,31 @@ export interface BatchProgress {
 export interface BatchResult {
   ok: number
   failed: string[]
-  /** the ZIP's name; '' when nothing was saved */
+  /** the ZIP's name; '' when nothing was saved (or nothing was meant to be) */
   zip: string
   cancelled?: boolean
   error?: string
-  /** "Unduh & Kirim ke Group": the pictures per agent, for wa-sender */
+  /** "Kirim ke Grup WhatsApp": the pictures per agent */
   groups?: { agent: string; files: File[] }[]
 }
+
+/** one agent's send, as the page shows it */
+type AgentRun = {
+  status: 'wait' | 'prep' | 'run' | 'done'
+  total: number
+  sent: number
+  failed: { name: string; error: string }[]
+}
+
+type Link =
+  | { step: 'off' }
+  | { step: 'wait' }
+  | { step: 'qr'; qr: string }
+  | { step: 'linked'; info: WaLinked }
+  | { step: 'error'; error: string }
+
+/* how many destination chips show before "+N lainnya" */
+const CHIP_MAX = 4
 
 export default function RmBatchDialog({
   rows, scope, inds, periodName, periodLabel, progress, result, onStart, onStop, onClose,
@@ -57,75 +77,38 @@ export default function RmBatchDialog({
   onStop: () => void
   onClose: () => void
 }) {
-  const phase = result ? 'done' : progress ? 'run' : 'pick'
-
   /* the RMs switched off — empty means all, the default */
   const [off, setOff] = useState<ReadonlySet<string>>(() => new Set())
   const [q, setQ] = useState('')
   const boxRef = useRef<HTMLDivElement>(null)
+  const [showAllChips, setShowAllChips] = useState(false)
 
-  /*
-   * wa-sender: asked once when the dialog opens whether it is connected, and
-   * which agents agents.json gives a group to.
-   */
-  const [waCfg, setWaCfg] = useState<WaConfig>(loadWaConfig)
-  const [wa, setWa] = useState<{ checking: boolean; status: WaStatus | null; err: string }>(
-    { checking: true, status: null, err: '' })
-  const [waEdit, setWaEdit] = useState(false)
-  const waReady = wa.status?.phase === 'ready'
-  /* the agents with a WhatsApp group to send to */
-  const [mapped, setMapped] = useState<ReadonlySet<string>>(() => new Set())
-  /* the agents this run sends to — fixed at the press */
+  /* ---------------------------------------------------------- WhatsApp */
+
+  const [link, setLink] = useState<Link>({ step: 'off' })
+  /* the sealed login: memory only, replaced after every request */
+  const waState = useRef('')
+  const linkAbort = useRef<AbortController | null>(null)
+  const [sending, setSending] = useState(false)
   const [sendAgents, setSendAgents] = useState<ReadonlySet<string>>(() => new Set())
-  /* this run sends through wa-sender — decided at the press, not when it ends */
-  const [autoRun, setAutoRun] = useState(false)
-  const [autoJobs, setAutoJobs] = useState<Record<string, { job?: WaJob; err?: string }>>({})
-  const autoStarted = useRef(false)
+  const [runs, setRuns] = useState<Record<string, AgentRun>>({})
+  /* each agent's JPEGs and PDFs, made once and reused by a resend */
+  const payload = useRef<Record<string, { jpegs: File[]; pdfs: File[] }>>({})
+  const [errOpen, setErrOpen] = useState(false)
+  const started = useRef(false)
 
-  const checkWa = async (cfg: WaConfig) => {
-    try {
-      const status = await waStatus(cfg)
-      const list = status.phase === 'ready' ? await waAgents(cfg).catch(() => []) : []
-      setMapped(new Set(list.filter((a) => a.to?.length).map((a) => a.agent)))
-      setWa({ checking: false, status, err: status.phase === 'ready' ? '' : `WhatsApp ${status.phase}` })
-    } catch (ex) {
-      setWa({ checking: false, status: null, err: (ex as Error).message })
-    }
-  }
-  useEffect(() => { void checkWa(waCfg) }, [])  // eslint-disable-line react-hooks/exhaustive-deps
+  const phase = result ? 'done' : progress ? 'run' : link.step !== 'off' ? 'link' : 'pick'
 
-  const saveWa = () => {
-    saveWaConfig(waCfg)
-    setWaEdit(false)
-    setWa({ checking: true, status: null, err: '' })
-    void checkWa(waCfg)
-  }
-
-  /* each agent in turn: hand over its pictures, then follow the job to the end */
-  const runAuto = async (groups: { agent: string; files: File[] }[]) => {
-    for (const { agent, files } of groups) {
-      try {
-        let job = await waSendAgent(waCfg, agent, files,
-          `Pencapaian RM ${agent} · ${periodName} ${periodLabel} · ${files.length} RM`,
-          `Pencapaian RM ${agent} ${periodName} ${periodLabel}.pdf`.replace(/[\\/:*?"<>|&]+/g, ' '))
-        setAutoJobs((m) => ({ ...m, [agent]: { job } }))
-        while (job.status === 'queued' || job.status === 'sending') {
-          await new Promise((r) => setTimeout(r, 1500))
-          job = await waJob(waCfg, job.id)
-          setAutoJobs((m) => ({ ...m, [agent]: { job } }))
-        }
-      } catch (ex) {
-        setAutoJobs((m) => ({ ...m, [agent]: { err: (ex as Error).message } }))
-      }
-    }
-  }
-  /* only the agents that have a group; the rest were downloaded and that is all */
-  const autoGroups = (result?.groups ?? []).filter((g) => sendAgents.has(g.agent))
+  /* the phone is logged out when the dialog goes, however it goes */
   useEffect(() => {
-    if (!autoRun || !autoGroups.length || autoStarted.current) return
-    autoStarted.current = true
-    void runAuto(autoGroups)
-  }, [autoRun, result])  // eslint-disable-line react-hooks/exhaustive-deps
+    const leave = () => { if (waState.current) void logoutWhatsApp(waState.current) }
+    window.addEventListener('pagehide', leave)
+    return () => {
+      window.removeEventListener('pagehide', leave)
+      linkAbort.current?.abort()
+      leave()
+    }
+  }, [])
 
   const regions = useMemo(() => {
     const m = new Map<string, RmRow[]>()
@@ -139,13 +122,151 @@ export default function RmBatchDialog({
 
   /* the agents among the ticked RMs, and those of them that have a group */
   const pickedAgents = [...new Set(rows.filter((r) => !off.has(r.key)).map((r) => r.region))]
-  const sendable = waReady ? pickedAgents.filter((a) => mapped.has(a)) : []
-  const unmapped = pickedAgents.filter((a) => !mapped.has(a))
+  const sendable = pickedAgents.filter((a) => WA_AGENTS.has(a))
+  const unmapped = pickedAgents.filter((a) => !WA_AGENTS.has(a))
+  const chips = showAllChips ? sendable : sendable.slice(0, CHIP_MAX)
 
-  const begin = (send: boolean) => {
-    setAutoRun(send && sendable.length > 0)
-    setSendAgents(new Set(send ? sendable : []))
-    onStart(rows.filter((r) => !off.has(r.key)).map((r) => r.key), send)
+  /* after the scan: the ticked agents whose group this number is in, and not */
+  const linkedInfo = link.step === 'linked' ? link.info : null
+  const member = new Set(linkedInfo?.groups.filter((g) => g.name).map((g) => g.agent) ?? [])
+  const reachable = sendable.filter((a) => member.has(a))
+  const notMember = sendable.filter((a) => !member.has(a))
+
+  const download = () => {
+    setSending(false)
+    onStart(rows.filter((r) => !off.has(r.key)).map((r) => r.key), false)
+  }
+
+  const startLink = async () => {
+    linkAbort.current?.abort()
+    const ac = new AbortController()
+    linkAbort.current = ac
+    setLink({ step: 'wait' })
+    try {
+      const info = await linkWhatsApp((qr) => setLink({ step: 'qr', qr }), ac.signal)
+      waState.current = info.state
+      setLink({ step: 'linked', info })
+    } catch (ex) {
+      if (ac.signal.aborted) return
+      setLink({ step: 'error', error: (ex as Error).message })
+    }
+  }
+
+  const cancelLink = () => {
+    linkAbort.current?.abort()
+    if (waState.current) void logoutWhatsApp(waState.current)
+    waState.current = ''
+    setLink({ step: 'off' })
+  }
+
+  /* photograph only the RMs whose agent's group this number can post to */
+  const beginSend = (agents: string[]) => {
+    setSending(true)
+    setSendAgents(new Set(agents))
+    onStart(rows.filter((r) => !off.has(r.key) && agents.includes(r.region)).map((r) => r.key), true)
+  }
+
+  /* linked and every ticked agent's group is reachable: no reason to stop and ask */
+  useEffect(() => {
+    if (link.step === 'linked' && !sending && reachable.length && !notMember.length) beginSend(reachable)
+  }, [link.step])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const patchRun = (agent: string, p: Partial<AgentRun> | ((r: AgentRun) => Partial<AgentRun>)) =>
+    setRuns((m) => {
+      const cur = m[agent] ?? { status: 'wait', total: 0, sent: 0, failed: [] }
+      return { ...m, [agent]: { ...cur, ...(typeof p === 'function' ? p(cur) : p) } }
+    })
+
+  /**
+   * Each agent in turn: its pictures as JPEGs, sent as one album (two, when they
+   * do not fit one request), then the PDF. `only` narrows a resend to the files
+   * that failed.
+   */
+  const sendAll = async (groups: { agent: string; files: File[] }[], only?: Record<string, Set<string>>) => {
+    const caption = (agent: string, n: number) => `Pencapaian RM ${agent} · ${periodName} ${periodLabel} · ${n} RM`
+    let anyFailed = false
+    for (const { agent, files } of groups) {
+      patchRun(agent, { status: 'prep' })
+      let p = payload.current[agent]
+      try {
+        if (!p) {
+          const jpegs: File[] = []
+          for (const f of files) jpegs.push(await toWaJpeg(f))
+          /* one PDF when it fits a request, else one per run of pages */
+          const base = `Pencapaian RM ${agent} ${periodName} ${periodLabel}`.replace(/[\\/:*?"<>|&]+/g, ' ')
+          const whole = await jpegsToPdf(jpegs)
+          const pdfs = whole.size <= PART_BUDGET
+            ? [new File([whole], `${base}.pdf`, { type: 'application/pdf' })]
+            : await Promise.all(packBySize(jpegs, PART_BUDGET * 0.9).map(async (run, i, all) =>
+              new File([await jpegsToPdf(run)], `${base} (Bagian ${i + 1} dari ${all.length}).pdf`, { type: 'application/pdf' })))
+          p = { jpegs, pdfs }
+          payload.current[agent] = p
+          patchRun(agent, { total: jpegs.length + pdfs.length })
+        }
+      } catch (ex) {
+        patchRun(agent, { status: 'done', failed: [{ name: agent, error: (ex as Error).message }] })
+        anyFailed = true
+        continue
+      }
+
+      const want = only?.[agent]
+      const imgs = p.jpegs.filter((f) => !want || want.has(f.name))
+      const pdfs = p.pdfs.filter((f) => !want || want.has(f.name))
+      const head = caption(agent, p.jpegs.length)
+      const failed: { name: string; error: string }[] = []
+      patchRun(agent, { status: 'run' })
+
+      const part = async (kind: 'album' | 'pdf', batch: File[], caps: string[]) => {
+        try {
+          const r = await sendWaPart(waState.current, agent, kind, batch, caps)
+          waState.current = r.state
+          failed.push(...r.failed)
+          patchRun(agent, (cur) => ({ sent: cur.sent + r.sent.length }))
+        } catch (ex) {
+          failed.push(...batch.map((f) => ({ name: f.name, error: (ex as Error).message })))
+        }
+      }
+      for (const batch of packBySize(imgs)) {
+        await part('album', batch, batch.map((f) =>
+          f === p.jpegs[0] ? `${head}\n${rmOfFile(f.name)}` : rmOfFile(f.name)))
+      }
+      for (const pdf of pdfs) await part('pdf', [pdf], [head])
+
+      patchRun(agent, { status: 'done', failed })
+      if (failed.length) anyFailed = true
+    }
+    if (anyFailed) setErrOpen(true)
+  }
+
+  /* only the agents that have a group */
+  const sendGroups = (result?.groups ?? []).filter((g) => sendAgents.has(g.agent))
+  useEffect(() => {
+    if (!sending || !sendGroups.length || started.current) return
+    started.current = true
+    void sendAll(sendGroups)
+  }, [sending, result])  // eslint-disable-line react-hooks/exhaustive-deps
+
+  const failedGroups = sendGroups.filter((g) => (runs[g.agent]?.failed.length ?? 0) > 0)
+  const sendingNow = sendGroups.some((g) => runs[g.agent]?.status !== 'done')
+  const sentOk = sendGroups.filter((g) => runs[g.agent]?.status === 'done' && !runs[g.agent].failed.length).length
+
+  /* resend what did not arrive — a group that got eight of ten gets the other two */
+  const retryFailed = () => {
+    const only: Record<string, Set<string>> = {}
+    /* an agent whose pictures were never prepared is sent whole */
+    for (const g of failedGroups) {
+      if (payload.current[g.agent]) only[g.agent] = new Set(runs[g.agent].failed.map((f) => f.name))
+    }
+    setErrOpen(false)
+    for (const g of failedGroups) patchRun(g.agent, { status: 'wait', failed: [] })
+    void sendAll(failedGroups, only)
+  }
+
+  const close = () => {
+    linkAbort.current?.abort()
+    if (waState.current) void logoutWhatsApp(waState.current)
+    waState.current = ''
+    onClose()
   }
 
   const setMany = (keys: string[], on: boolean) => setOff((prev) => {
@@ -157,33 +278,37 @@ export default function RmBatchDialog({
     return next
   })
 
-  /* focus in on open, Escape closes — except mid-download, where only Batal stops it */
+  /* focus in on open, Escape closes — except while working, where only Batal stops it */
+  const busy = phase === 'run' || sendingNow
   useEffect(() => { boxRef.current?.focus() }, [phase])
   useEffect(() => {
     const key = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || phase === 'run') return
+      if (e.key !== 'Escape' || busy) return
       e.preventDefault()
-      onClose()
+      if (errOpen) setErrOpen(false)
+      else if (phase === 'link') cancelLink()
+      else close()
     }
     document.addEventListener('keydown', key)
     return () => document.removeEventListener('keydown', key)
-  }, [phase, onClose])
+  })
 
   const pct = progress ? Math.round((progress.i / progress.n) * 100) : 0
 
   return (
     <div
       className={`rmb-scrim${phase === 'run' ? ' covering' : ''}`}
-      onMouseDown={(e) => { if (e.target === e.currentTarget && phase !== 'run') onClose() }}
+      onMouseDown={(e) => { if (e.target === e.currentTarget && !busy && phase !== 'link') close() }}
     >
       <div className="rmb" role="dialog" aria-modal="true" aria-labelledby="rmb-title" ref={boxRef} tabIndex={-1}>
         <header className="rmb-head">
           <span className="rmb-titles">
-            <h2 id="rmb-title">Unduh Pencapaian RM</h2>
+            <h2 id="rmb-title">{sending || phase === 'link' ? 'Kirim Pencapaian RM' : 'Unduh Pencapaian RM'}</h2>
             <span className="rmb-sub">{scope || 'Semua agen'} · {periodName} · {periodLabel}</span>
           </span>
-          {phase !== 'run' && (
-            <button className="rmd-close" onClick={onClose} aria-label="Tutup" title="Tutup (Esc)">
+          {!busy && (
+            <button className="rmd-close" onClick={phase === 'link' ? cancelLink : close}
+                    aria-label="Tutup" title="Tutup (Esc)">
               <BtnIcon name="close" />
             </button>
           )}
@@ -250,62 +375,135 @@ export default function RmBatchDialog({
               )}
             </div>
 
-            <div className={`rmb-wa${waReady ? ' ok' : ''}`}>
-              <span className="rmb-wa-txt">
-                {wa.checking ? 'Memeriksa WhatsApp otomatis…'
-                  : !waReady ? <>WhatsApp otomatis tidak aktif ({wa.err || 'belum diatur'}) — hanya unduh.</>
-                  : !sendable.length ? <>
-                      WhatsApp terhubung · <b>{wa.status?.me}</b>. {scope || 'Agen yang dipilih'} belum punya grup
-                      WhatsApp — hanya unduh.
-                    </>
-                  : <>
-                      WhatsApp terhubung · <b>{wa.status?.me}</b> — dikirim ke grup <b>{sendable.join(', ')}</b>.
-                      {unmapped.length > 0 && <> {unmapped.length} agen lain belum punya grup, hanya diunduh.</>}
-                    </>}
-              </span>
-              <button type="button" className="rmb-wa-edit" onClick={() => setWaEdit(!waEdit)}>
-                {waEdit ? 'Tutup' : 'Atur'}
-              </button>
-              {waEdit && (
-                <div className="rmb-wa-form">
-                  <label>
-                    <span>Alamat wa-sender</span>
-                    <input type="text" value={waCfg.url} spellCheck={false}
-                           onChange={(e) => setWaCfg({ ...waCfg, url: e.target.value })} />
-                  </label>
-                  <label>
-                    <span>Token (dari wa-sender\config.json)</span>
-                    <input type="password" value={waCfg.token} spellCheck={false} autoComplete="off"
-                           onChange={(e) => setWaCfg({ ...waCfg, token: e.target.value.trim() })} />
-                  </label>
-                  <button type="button" className="rmb-btn primary" onClick={saveWa}>Simpan &amp; cek</button>
+            {/* WhatsApp: where it goes, and that it asks for a scan first */}
+            {sendable.length > 0 && (
+              <div className="rmb-wa ok">
+                <div className="rmb-wa-top">
+                  <span className="rmb-wa-dot" aria-hidden="true" />
+                  <span className="rmb-wa-who">
+                    <b>Kirim lewat WhatsApp</b>
+                    <span>scan QR saat mengirim · logout otomatis setelah selesai</span>
+                  </span>
                 </div>
-              )}
-            </div>
+                <div className="rmb-wa-dest">
+                  <span className="rmb-wa-lab">Grup tujuan · {sendable.length}</span>
+                  <span className="rmb-chips">
+                    {chips.map((a) => <span className="rmb-chip" key={a}>{a}</span>)}
+                    {sendable.length > CHIP_MAX && (
+                      <button type="button" className="rmb-chip more" onClick={() => setShowAllChips(!showAllChips)}>
+                        {showAllChips ? 'ringkas' : `+${sendable.length - CHIP_MAX} lainnya`}
+                      </button>
+                    )}
+                  </span>
+                  {unmapped.length > 0 && (
+                    <span className="rmb-wa-note">Tanpa grup, tidak dikirim: {unmapped.join(', ')}</span>
+                  )}
+                </div>
+              </div>
+            )}
 
             <footer className="rmb-foot">
-              <span className="rmb-note">Satu gambar PNG per RM, dalam satu folder di file ZIP.</span>
-              <button type="button" className="rmb-btn ghost" onClick={onClose}>Batal</button>
-              <button
-                type="button" className="rmb-btn ghost" disabled={!picked}
-                onClick={() => begin(false)}
-              >
+              <span className="rmb-note">Unduh: satu PNG per RM dalam ZIP. Kirim: album + PDF ke grup tiap agen.</span>
+              <button type="button" className="rmb-btn ghost" onClick={close}>Batal</button>
+              <button type="button" className="rmb-btn ghost" disabled={!picked} onClick={download}>
                 <BtnIcon name="image" />
                 Unduh {picked} RM
               </button>
               {/* only when at least one ticked agent has a group to receive it */}
               {sendable.length > 0 && (
-                <button
-                  type="button" className="rmb-btn send" disabled={!picked}
-                  onClick={() => begin(true)}
-                  title={`Unduh ZIP, lalu kirim album + PDF ke grup WhatsApp ${sendable.join(', ')}`}
-                >
+                <button type="button" className="rmb-btn send" onClick={startLink}
+                        title={`Scan QR WhatsApp, lalu kirim album + PDF ke grup ${sendable.join(', ')}`}>
                   <BtnIcon name="send" />
-                  Unduh &amp; Kirim ke Group
+                  Kirim ke Grup WhatsApp
                 </button>
               )}
             </footer>
           </>
+        )}
+
+        {phase === 'link' && (
+          <div className="rmb-run rmb-link">
+            {(link.step === 'wait' || link.step === 'qr') && (
+              <>
+                <div className="rmb-qrbox" aria-live="polite">
+                  {link.step === 'qr'
+                    ? <img src={link.qr} alt="QR untuk masuk WhatsApp" className="rmb-qr" />
+                    : <span className="rmb-ring small" aria-label="Menyiapkan QR" />}
+                </div>
+                <div className="rmb-runtxt">
+                  <b>Scan dengan WhatsApp untuk mengirim</b>
+                  <span>{link.step === 'qr' ? 'QR diperbarui otomatis ±20 detik sekali' : 'Menyiapkan QR…'}</span>
+                </div>
+                <ol className="rmb-steps">
+                  <li>Buka <b>WhatsApp</b> di HP yang akan dipakai mengirim.</li>
+                  <li>Ketuk <b>⋮ / Setelan → Perangkat tertaut → Tautkan perangkat</b>.</li>
+                  <li>Arahkan kamera ke QR ini.</li>
+                </ol>
+                <p className="rmb-hint">Nomor ini harus anggota grup agen. Logout otomatis saat pop-up ditutup.</p>
+                <button type="button" className="rmb-btn ghost" onClick={cancelLink}>Batal</button>
+              </>
+            )}
+
+            {link.step === 'linked' && (
+              <>
+                <div className="rmb-acct">
+                  <span className="rmb-avatar" aria-hidden="true">{(link.info.name || '?').trim().charAt(0).toUpperCase()}</span>
+                  <span className="rmb-acct-id">
+                    <b>{link.info.name || 'WhatsApp'}</b>
+                    <span>{fmtWaNumber(link.info.number)}</span>
+                  </span>
+                  <span className="rmb-acct-ok">Terhubung</span>
+                </div>
+                <ul className="rmb-grpcheck">
+                  {sendable.map((a) => {
+                    const g = link.info.groups.find((x) => x.agent === a)
+                    return (
+                      <li key={a} className={g?.name ? 'ok' : 'bad'}>
+                        <BtnIcon name={g?.name ? 'check' : 'close'} />
+                        <b>{a}</b>
+                        <span>{g?.name ?? 'nomor ini bukan anggota grupnya'}</span>
+                      </li>
+                    )
+                  })}
+                </ul>
+                {notMember.length > 0 && (
+                  <>
+                    <p className="rmb-hint">
+                      {reachable.length
+                        ? `${notMember.length} grup tidak bisa dikirimi dari nomor ini dan akan dilewati.`
+                        : 'Nomor ini bukan anggota grup mana pun yang dipilih. Tambahkan ke grupnya, atau scan dengan nomor lain.'}
+                    </p>
+                    <div className="rmb-done-actions">
+                      <button type="button" className="rmb-btn ghost" onClick={cancelLink}>Batal &amp; logout</button>
+                      {reachable.length > 0 && (
+                        <button type="button" className="rmb-btn send" onClick={() => beginSend(reachable)}>
+                          <BtnIcon name="send" />
+                          Kirim ke {reachable.length} grup
+                        </button>
+                      )}
+                    </div>
+                  </>
+                )}
+              </>
+            )}
+
+            {link.step === 'error' && (
+              <>
+                <div className="rmb-badge bad" aria-hidden="true"><BtnIcon name="close" /></div>
+                <div className="rmb-runtxt" role="alert">
+                  <b>WhatsApp gagal tertaut</b>
+                  <span>{link.error}</span>
+                </div>
+                <div className="rmb-done-actions">
+                  <button type="button" className="rmb-btn ghost" onClick={cancelLink}>Batal</button>
+                  <button type="button" className="rmb-btn send" onClick={startLink}>
+                    <BtnIcon name="retry" />
+                    Coba lagi
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         )}
 
         {phase === 'run' && progress && (
@@ -319,63 +517,110 @@ export default function RmBatchDialog({
               <span>{progress.rm}</span>
             </div>
             <div className="rmb-track" aria-hidden="true"><span style={{ width: `${pct}%` }} /></div>
-            <p className="rmb-hint">Jangan tutup halaman ini. File ZIP akan terunduh otomatis setelah selesai.</p>
+            <p className="rmb-hint">
+              {sending
+                ? 'Jangan tutup halaman ini. Setelah selesai, album + PDF langsung dikirim ke grup WhatsApp.'
+                : 'Jangan tutup halaman ini. File ZIP akan terunduh otomatis setelah selesai.'}
+            </p>
             <button type="button" className="rmb-btn ghost" onClick={onStop}>Batal</button>
           </div>
         )}
 
         {phase === 'done' && result && (
           <div className="rmb-run">
-            <div className={`rmb-badge ${result.cancelled || result.error || !result.ok ? 'bad' : 'ok'}`} aria-hidden="true">
-              <BtnIcon name={result.cancelled || result.error || !result.ok ? 'close' : 'check'} />
-            </div>
+            {(() => {
+              const bad = !!result.cancelled || !!result.error || !result.ok
+                || (sending && !sendingNow && failedGroups.length > 0)
+              return (
+                <div className={`rmb-badge ${sending && sendingNow ? 'busy' : bad ? 'bad' : 'ok'}`} aria-hidden="true">
+                  <BtnIcon name={sending && sendingNow ? 'spin' : bad ? 'close' : 'check'} />
+                </div>
+              )
+            })()}
             <div className="rmb-runtxt" role="status">
               {result.cancelled ? (
-                <b>Unduhan dibatalkan.</b>
+                <b>{sending ? 'Pengiriman dibatalkan.' : 'Unduhan dibatalkan.'}</b>
               ) : result.error ? (
-                <><b>Gagal membuat file ZIP.</b><span>{result.error}</span></>
-              ) : result.ok ? (
-                <><b>{result.ok} detail RM berhasil diunduh.</b><span>“{result.zip}”</span></>
-              ) : (
+                <><b>Gagal membuat file.</b><span>{result.error}</span></>
+              ) : !result.ok ? (
                 <b>Tidak ada gambar yang berhasil dibuat.</b>
+              ) : sending ? (
+                sendingNow
+                  ? <><b>Mengirim ke grup WhatsApp…</b><span>{sentOk} dari {sendGroups.length} grup selesai</span></>
+                  : failedGroups.length
+                    ? <><b>{sentOk} dari {sendGroups.length} grup terkirim.</b><span>{failedGroups.length} grup gagal.</span></>
+                    : <><b>Terkirim ke {sendGroups.length} grup WhatsApp.</b><span>{result.ok} RM · album + PDF</span></>
+              ) : (
+                <><b>{result.ok} detail RM berhasil diunduh.</b><span>“{result.zip}”</span></>
               )}
             </div>
             {result.failed.length > 0 && (
-              <p className="rmb-fail">{result.failed.length} gagal: {result.failed.join(', ')}</p>
+              <p className="rmb-fail">{result.failed.length} gambar gagal dibuat: {result.failed.join(', ')}</p>
             )}
-            {autoRun && autoGroups.length > 0 && (
+            {sending && sendGroups.length > 0 && (
               <div className="rmb-send">
-                <span className="rmb-sendhead">Mengirim ke grup WhatsApp tiap agen</span>
-                {autoGroups.map(({ agent, files }) => {
-                  const a = autoJobs[agent]
-                  const st = a?.err ? 'bad'
-                    : a?.job?.status === 'done' ? 'ok'
-                    : a?.job?.status === 'partial' || a?.job?.status === 'failed' ? 'bad' : 'run'
-                  const failedItems = a?.job?.items.filter((i) => i.status === 'failed') ?? []
+                {sendGroups.map(({ agent, files }) => {
+                  const a = runs[agent]
+                  const st = a?.status !== 'done' ? 'run' : a.failed.length ? 'bad' : 'ok'
                   return (
                     <div className={`rmb-autorow ${st}`} key={agent}>
                       <BtnIcon name={st === 'ok' ? 'check' : st === 'bad' ? 'close' : 'spin'} />
-                      <span className="rmb-sendname">Grup {agent}</span>
+                      <span className="rmb-sendname">{agent}</span>
                       <span className="rmb-sendn">
-                        {a?.err ? 'gagal'
-                          : a?.job ? `${a.job.sent} / ${a.job.total} terkirim · album + PDF`
-                            + (a.job.recipients > 1 ? ` · ${a.job.recipients} penerima` : '')
-                          : `menyiapkan album + PDF · ${files.length} RM`}
+                        {!a || a.status === 'wait' ? `menunggu · ${files.length} RM`
+                          : a.status === 'prep' ? 'menyiapkan album + PDF…'
+                          : `${a.sent} / ${a.total} terkirim`}
                       </span>
-                      {(a?.err || failedItems.length > 0) && (
-                        <span className="rmb-autoerr">
-                          {a?.err ?? failedItems.map((i) => `${i.name}: ${i.error ?? 'gagal'}`).join(' · ')}
-                        </span>
-                      )}
                     </div>
                   )
                 })}
               </div>
             )}
-            <button type="button" className="rmb-btn primary" onClick={onClose}>Tutup</button>
+            {sending && !sendingNow && <p className="rmb-hint">WhatsApp logout otomatis saat pop-up ini ditutup.</p>}
+            <div className="rmb-done-actions">
+              {sending && !sendingNow && failedGroups.length > 0 && (
+                <button type="button" className="rmb-btn ghost" onClick={() => setErrOpen(true)}>Lihat kesalahan</button>
+              )}
+              <button type="button" className="rmb-btn primary" disabled={sendingNow} onClick={close}>
+                {sendingNow ? 'Mengirim…' : 'Tutup'}
+              </button>
+            </div>
           </div>
         )}
       </div>
+
+      {/* -------- what went wrong, per agent -------- */}
+      {errOpen && failedGroups.length > 0 && (
+        <div className="rmb-err-scrim" onMouseDown={(e) => { if (e.target === e.currentTarget) setErrOpen(false) }}>
+          <div className="rmb-err" role="alertdialog" aria-modal="true" aria-labelledby="rmb-err-title">
+            <div className="rmb-err-icon" aria-hidden="true"><BtnIcon name="close" /></div>
+            <h3 id="rmb-err-title">
+              {failedGroups.length === sendGroups.length
+                ? 'Pengiriman WhatsApp gagal'
+                : `${failedGroups.length} dari ${sendGroups.length} grup gagal dikirim`}
+            </h3>
+            <ul className="rmb-err-list">
+              {failedGroups.map(({ agent }) => {
+                const a = runs[agent]
+                return (
+                  <li key={agent}>
+                    <b>{agent}</b>
+                    <span className="rmb-err-n">{a.failed.length} dari {a.total || a.failed.length} belum terkirim</span>
+                    <span className="rmb-err-why">{[...new Set(a.failed.map((f) => f.error))].join(' · ')}</span>
+                  </li>
+                )
+              })}
+            </ul>
+            <div className="rmb-err-actions">
+              <button type="button" className="rmb-btn ghost" onClick={() => setErrOpen(false)}>Tutup</button>
+              <button type="button" className="rmb-btn send" onClick={retryFailed}>
+                <BtnIcon name="retry" />
+                Kirim ulang {failedGroups.length} grup
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }

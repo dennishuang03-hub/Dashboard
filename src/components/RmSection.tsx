@@ -156,14 +156,15 @@ export default function RmSection({ reports, part, dpTabs, onNeedDps }: {
     const done = shots.current
     shots.current = []
     const zip = `${batch.folder}.zip`
-    /* one share per agent, in sheet order — each agent has its own group */
+    /* sending: the pictures per agent, in sheet order — each agent has its own
+       group — and no ZIP; downloading: the ZIP and nothing else */
     const groups = batch.send ? [...done.reduce((m, x) => {
       m.set(x.agent, [...(m.get(x.agent) ?? []), new File([x.data], x.file, { type: 'image/png' })])
       return m
     }, new Map<string, File[]>())].map(([agent, files]) => ({ agent, files })) : undefined
-    const base = { ok: done.length, failed: [...failed.current], zip: done.length ? zip : '', groups }
+    const base = { ok: done.length, failed: [...failed.current], zip: done.length && !batch.send ? zip : '', groups }
     try {
-      if (done.length) saveBlob(await zipStore(done), zip)
+      if (done.length && !batch.send) saveBlob(await zipStore(done), zip)
       setResult(base)
     } catch (ex) {
       setResult({ ...base, ok: 0, zip: '', error: (ex as Error).message })

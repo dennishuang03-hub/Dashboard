@@ -3657,15 +3657,111 @@ body.shoot-rmd .rmd-err{display:none !important}
   padding:30px 26px 24px;text-align:center;overflow-y:auto;min-height:0;
 }
 
-/* after "Unduh & Kirim ke Group": each agent's send, as it happens */
-.rmb-send{width:100%;display:flex;flex-direction:column;gap:6px;text-align:left}
-.rmb-sendhead{
-  display:flex;align-items:baseline;gap:8px;padding-bottom:4px;
-  font-size:12.5px;font-weight:600;color:var(--ink-3);line-height:1.4;
+/* ---- WhatsApp in the pick face: who sends, and to which groups ----
+   A card rather than a sentence: the account on one line, the destinations as
+   chips under it, and the gear that opens the WhatsApp page. */
+.rmb-wa{
+  margin:0 18px;padding:10px 12px;border-radius:12px;
+  border:1.5px solid var(--line);background:var(--card-2);
+  display:flex;flex-direction:column;gap:8px;
 }
-.rmb-sendhead b{margin-left:auto;flex:none;color:var(--ink-2);font-variant-numeric:tabular-nums}
+.rmb-wa.ok{border-color:rgba(37,211,102,.5);background:rgba(37,211,102,.06)}
+.rmb-wa-top{display:flex;align-items:center;gap:10px;min-width:0}
+.rmb-wa-dot{flex:none;width:10px;height:10px;border-radius:50%;background:var(--ink-3)}
+.rmb-wa.ok .rmb-wa-dot{background:#25D366;box-shadow:0 0 0 4px rgba(37,211,102,.2)}
+.rmb-wa.off .rmb-wa-dot{background:var(--amber)}
+.rmb-wa.busy .rmb-wa-dot{animation:rmb-pulse 1.2s ease-in-out infinite}
+@keyframes rmb-pulse{50%{opacity:.3}}
+.rmb-wa-who{flex:1;min-width:0;display:flex;align-items:baseline;flex-wrap:wrap;gap:2px 8px;line-height:1.35}
+.rmb-wa-who b{font-size:13.5px;font-weight:800;color:var(--ink)}
+.rmb-wa-who span{font-size:12.5px;font-weight:600;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.rmb-wa-dest{display:flex;align-items:center;flex-wrap:wrap;gap:6px 8px;padding-left:20px}
+.rmb-wa-lab{font-size:12px;font-weight:700;color:var(--ink-3)}
+.rmb-chips{display:flex;flex-wrap:wrap;gap:5px}
+.rmb-chip{
+  font-size:11.5px;font-weight:800;letter-spacing:.3px;padding:3px 8px;border-radius:99px;
+  background:var(--card);border:1px solid var(--line);color:var(--ink-2);font-family:inherit;line-height:1.3;
+}
+.rmb-chip.more{cursor:pointer;color:var(--jt-red-lit);border-style:dashed}
+.rmb-wa-note{flex:1 1 100%;font-size:12px;font-weight:600;color:var(--amber)}
+
+/* ---- the link face: the QR to scan, then whose WhatsApp it is and which groups it reaches ---- */
+.rmb-link{gap:12px}
+.rmb-qrbox{
+  width:252px;height:252px;display:grid;place-items:center;border-radius:14px;
+  background:#fff;border:1.5px solid var(--line);
+}
+.rmb-qr{width:240px;height:240px;image-rendering:pixelated}
+.rmb-ring.small{position:static;display:block;width:44px;height:44px;border-width:5px}
+.rmb-steps{margin:0;padding-left:20px;text-align:left;font-size:13px;line-height:1.6;align-self:stretch}
+.rmb-acct{
+  align-self:stretch;display:flex;align-items:center;gap:12px;padding:12px;border-radius:12px;
+  background:rgba(37,211,102,.07);border:1.5px solid rgba(37,211,102,.5);text-align:left;
+}
+.rmb-avatar{
+  flex:none;width:40px;height:40px;border-radius:50%;display:grid;place-items:center;
+  background:#25D366;color:#052813;font-size:17px;font-weight:800;
+}
+.rmb-acct-id{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px}
+.rmb-acct-id b{font-size:14.5px;font-weight:800;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rmb-acct-id span{font-size:12.5px;font-weight:600;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.rmb-acct-ok{flex:none;font-size:12px;font-weight:800;color:#1DA851}
+.rmb-grpcheck{
+  list-style:none;margin:0;padding:0;align-self:stretch;display:flex;flex-direction:column;gap:3px;
+  max-height:260px;overflow-y:auto;text-align:left;
+}
+.rmb-grpcheck li{
+  display:grid;grid-template-columns:18px 100px 1fr;align-items:center;gap:8px;
+  padding:6px 10px;border-radius:8px;font-size:13px;
+}
+.rmb-grpcheck li:nth-child(odd){background:var(--card-2)}
+.rmb-grpcheck li b{font-weight:800}
+.rmb-grpcheck li span{color:var(--ink-3);font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.rmb-grpcheck li.ok .bico{color:#1DA851}
+.rmb-grpcheck li.bad .bico,.rmb-grpcheck li.bad span{color:var(--jt-red-lit)}
+
+/* ---- the done face while sending: each agent's send, as it happens ---- */
+.rmb-send{width:100%;display:flex;flex-direction:column;gap:6px;text-align:left}
 .rmb-sendname{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.rmb-sendn{flex:none;font-size:12px;font-weight:600;color:var(--ink-3)}
+.rmb-sendn{flex:none;font-size:12px;font-weight:600;color:var(--ink-3);font-variant-numeric:tabular-nums}
+.rmb-autorow{
+  display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:10px;
+  border:1.5px solid var(--line);font-size:13.5px;font-weight:700;
+}
+.rmb-autorow .bico{flex:none}
+.rmb-autorow.run .bico{color:var(--ink-3);animation:bico-spin .75s linear infinite}
+.rmb-autorow.ok{border-color:rgba(37,211,102,.5);background:rgba(37,211,102,.06)}
+.rmb-autorow.ok .bico{color:#1DA851}
+.rmb-autorow.bad{border-color:var(--jt-red)}
+.rmb-autorow.bad .bico{color:var(--jt-red-lit)}
+.rmb-done-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+
+/* ---- the error pop-up over the dialog: what failed, per agent, and a resend ---- */
+.rmb-err-scrim{
+  position:fixed;inset:0;z-index:1200;display:grid;place-items:center;padding:24px;
+  background:rgba(0,0,0,.55);animation:rmd-fade .14s ease-out;
+}
+.rmb-err{
+  width:min(440px,100%);max-height:calc(100vh - 48px);overflow-y:auto;
+  background:var(--card);color:var(--ink);border:1.5px solid var(--jt-red);border-radius:16px;
+  box-shadow:0 24px 70px rgba(0,0,0,.5);padding:22px 22px 18px;text-align:center;
+  animation:rmd-rise .2s var(--ease-out-quint);
+}
+.rmb-err-icon{
+  width:52px;height:52px;margin:0 auto 10px;border-radius:50%;display:grid;place-items:center;
+  background:rgba(255,68,56,.14);color:var(--jt-red-lit);
+}
+.rmb-err-icon .bico{width:26px;height:26px}
+.rmb-err h3{margin:0 0 12px;font-size:17px;font-weight:800}
+.rmb-err-list{list-style:none;margin:0 0 16px;padding:0;display:flex;flex-direction:column;gap:6px;text-align:left}
+.rmb-err-list li{
+  display:flex;flex-wrap:wrap;align-items:baseline;gap:2px 8px;padding:9px 12px;border-radius:10px;
+  background:var(--card-2);border:1px solid var(--line);
+}
+.rmb-err-list b{font-size:13.5px;font-weight:800}
+.rmb-err-n{font-size:12px;font-weight:600;color:var(--ink-3)}
+.rmb-err-why{flex:1 1 100%;font-size:12.5px;font-weight:600;color:var(--jt-red-lit);overflow-wrap:anywhere}
+.rmb-err-actions{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
 .rmb-loader{position:relative;width:92px;height:92px;display:grid;place-items:center}
 .rmb-ring{
   position:absolute;inset:0;border-radius:50%;
@@ -3688,9 +3784,11 @@ body.shoot-rmd .rmd-err{display:none !important}
 .rmb-badge .bico{width:30px;height:30px}
 .rmb-badge.ok{background:rgba(46,213,115,.15);color:var(--green)}
 .rmb-badge.bad{background:rgba(255,68,56,.14);color:var(--jt-red-lit)}
+.rmb-badge.busy{background:var(--card-2);color:var(--ink-3)}
+.rmb-badge.busy .bico{animation:bico-spin .75s linear infinite}
 @media (prefers-reduced-motion:reduce){
   .rmb-ring{animation-duration:2.4s}
-  .rmb-scrim,.rmb,.rmb-badge{animation:none}
+  .rmb-scrim,.rmb,.rmb-badge,.rmb-err-scrim,.rmb-err,.rmb-wa.busy .rmb-wa-dot{animation:none}
 }
 @media (max-width:600px){
   .rmb-scrim{padding:0;align-items:stretch}

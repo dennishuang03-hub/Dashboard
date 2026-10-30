@@ -11,9 +11,11 @@
     "secrets": "node scripts/hash-password.mjs"
   },
   "dependencies": {
+    "@whiskeysockets/baileys": "^7.0.0-rc14",
     "html2canvas-pro": "^2.3.6",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
+    "qrcode": "^1.5.4",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "xlsx": "^0.18.5",
@@ -22,6 +24,7 @@
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@types/node": "^24.13.2",
+    "@types/qrcode": "^1.5.5",
     "@types/react": "^19.2.17",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^6.0.3",
