@@ -5,11 +5,14 @@
  *   Display 730 & 1200          Persentase 0730 & TTD 1200
  *   Display Ritase Keseluruhan  Persentase Keseluruhan TTD Berdasarkan Ritase
  *   Display Retur               Monitoring Retur Agent (lower is better)
+ *   Display TPTW                Laporan TPTW Retur, Normal & Keseluruhan
  *
  * They share one layout, which is what lets one parser and one page serve all
  * of them: a title in A1, a two-row header (row 2 names the column, row 3 dates
  * the ones that were merged across several days), a TOTAL row, a blank row, and
- * then one row per drop point — Agent, RM, Nama DP, figures.
+ * then one row per drop point — Agent, RM, Nama DP, figures. Display TPTW
+ * (from 3 November) adds one more header row on top: three sections, one per
+ * figure, each repeating the same columns — see `Spec.sectioned`.
  *
  * Columns are found by their header text rather than by letter. The three tabs
  * put the same kinds of figure in different places, and a template that gains a
@@ -21,7 +24,7 @@ import * as XLSX from 'xlsx'
 import { cellDate, cellText, latin } from './jnt'
 import type { DpKind, DpRow } from './jnt'
 
-export type DisplayId = 'absensi' | 'ttd730' | 'ritase' | 'retur'
+export type DisplayId = 'absensi' | 'ttd730' | 'ritase' | 'retur' | 'tptw'
 export type DisplayColKind = 'int' | 'pct' | 'delta'
 
 /** A header the sheet merges across several columns — a band over them. */
@@ -130,6 +133,8 @@ export function displayIdOf(sheetName: string): DisplayId | null {
   if (/absen/.test(n)) return 'absensi'
   if (/730|1200/.test(n)) return 'ttd730'
   if (/ritase/.test(n)) return 'ritase'
+  /* before Retur: the TPTW tab's sections include a "TPTW Retur" */
+  if (/tptw/.test(n)) return 'tptw'
   if (/retur/.test(n)) return 'retur'
   return null
 }
@@ -167,6 +172,60 @@ interface Spec {
   derive?: DeriveSpec[]
   kpis: DisplayKpi[]
   lowerBetter?: boolean
+  /**
+   * The header has a section row above the column row: a band merged across
+   * every column of one figure ("TPTW Retur", "TPTW Normal", "TPTW Keseluruhan"),
+   * under which the same column names repeat. The column row is then the one
+   * *below* the row naming "Nama DP", and in the table each section becomes the
+   * band over its columns.
+   */
+  sectioned?: boolean
+}
+
+/**
+ * One section of Display TPTW. All three carry the same columns in the same
+ * order, so the `k`-th section's copy of a column is found by occurrence: a
+ * heading written once per section is occurrence `k`; the H-1 and weekly
+ * counts, written twice per section, are `2k` and `2k + 1`; and "Kirim Tepat
+ * Waktu", written for the day, H-1 and H-2, starts at `3k`.
+ *
+ * The day's figure is the day's on-time count over "Seharusnya Kirim H-1" —
+ * the parcels due to be handed over that day.
+ */
+function tptwSection(k: number, p: string, band: string): ColSpec[] {
+  return [
+    { id: `${p}_due`, kind: 'int', find: { one: 'seharusnya kirim h-1', nth: k } },
+    { id: `${p}_ok`, kind: 'int', find: { one: 'kirim tepat waktu', nth: 3 * k } },
+    { id: `${p}_pct`, kind: 'pct', find: { grp: band, at: 0 } },
+    { id: `${p}_delta`, kind: 'delta', find: { one: 'perbandingan h-1', nth: k } },
+    { id: `${p}_t1`, kind: 'pct', find: { grp: band, at: 1 } },
+    { id: `${p}_t2`, kind: 'pct', find: { grp: band, at: 2 } },
+    { id: `${p}_mdue`, kind: 'int', find: { one: 'seharusnya kirim bulanan', nth: k } },
+    { id: `${p}_mok`, kind: 'int', find: { one: 'kirim tepat waktu bulanan', nth: k } },
+    { id: `${p}_mpct`, kind: 'pct', find: { one: 'persentase bulanan', nth: k } },
+    { id: `${p}_wpct`, kind: 'pct', find: { grp: 'persentase mingguan', nth: k, at: 0 } },
+    { id: `${p}_wprev`, kind: 'pct', find: { grp: 'persentase mingguan', nth: k, at: 1 } },
+    { id: `${p}_wdelta`, kind: 'delta', find: { one: 'perbandingan mingguan', nth: k } },
+    /* counts behind H-1 and the two weeks, for recomputing a subset */
+    { id: `${p}_pdue`, kind: 'int', find: { one: 'seharusnya kirim', nth: 2 * k } },
+    { id: `${p}_pok`, kind: 'int', find: { one: 'kirim tepat waktu', nth: 3 * k + 1 } },
+    { id: `${p}_wdue`, kind: 'int', find: { one: 'seharusnya kirim mingguan', nth: 2 * k } },
+    { id: `${p}_wok`, kind: 'int', find: { one: 'kirim tepat waktu mingguan', nth: 2 * k } },
+    { id: `${p}_wpdue`, kind: 'int', find: { one: 'seharusnya kirim mingguan', nth: 2 * k + 1 } },
+    { id: `${p}_wpok`, kind: 'int', find: { one: 'kirim tepat waktu mingguan', nth: 2 * k + 1 } },
+  ]
+}
+
+/** The headline figure of one TPTW section, from the columns `tptwSection` finds. */
+function tptwKpi(p: string, id: string, label: string, zh: string): DisplayKpi {
+  return {
+    id, label, zh,
+    day: `${p}_pct`, prev: `${p}_t1`, prev2: `${p}_t2`, delta: `${p}_delta`, month: `${p}_mpct`,
+    week: `${p}_wpct`, weekPrev: `${p}_wprev`, weekDelta: `${p}_wdelta`,
+    dayRatio: [`${p}_ok`, `${p}_due`], prevRatio: [`${p}_pok`, `${p}_pdue`],
+    monthRatio: [`${p}_mok`, `${p}_mdue`], weekRatio: [`${p}_wok`, `${p}_wdue`],
+    weekPrevRatio: [`${p}_wpok`, `${p}_wpdue`],
+  }
 }
 
 const SPECS: Record<DisplayId, Spec> = {
@@ -225,9 +284,13 @@ const SPECS: Record<DisplayId, Spec> = {
       { id: 't1200_2', kind: 'pct', find: { grp: 'ttd sebelum 1200', at: 2 } },
       { id: 'm_rit1', kind: 'int', find: { one: 'seharusnya ttd rit-1 bulanan' } },
       { id: 'm_0730n', kind: 'int', find: { one: 'persentase keluar gudang 0730 bulanan' } },
-      /* "Persentase Bulanan 0730" from 28 September; before that the two monthly
-         columns were both "Persentase Bulanan", told apart by position */
-      { id: 'm_0730', kind: 'pct', find: { one: 'persentase bulanan 0730', alt: { one: 'persentase bulanan', nth: 0 } } },
+      /* "Persentase Bulanan 0730" from 28 September, since written "… 730"; before
+         that the two monthly columns were both "Persentase Bulanan", told apart
+         by position */
+      {
+        id: 'm_0730', kind: 'pct',
+        find: { one: 'persentase bulanan 0730', alt: { one: 'persentase bulanan 730', alt: { one: 'persentase bulanan', nth: 0 } } },
+      },
       { id: 'm_1200n', kind: 'int', find: { one: 'ttd sebelum 1200 bulanan' } },
       { id: 'm_1200', kind: 'pct', find: { one: 'persentase bulanan 1200', alt: { one: 'persentase bulanan', nth: 1 } } },
       { id: 'w_1200', kind: 'pct', find: { grp: 'persentase mingguan ttd 1200', at: 0 } },
@@ -240,13 +303,23 @@ const SPECS: Record<DisplayId, Spec> = {
       { id: 'w_1200n', kind: 'int', find: { one: 'ttd sebelum 1200 mingguan', nth: 0 } },
       { id: 'wp_rit1', kind: 'int', find: { one: 'seharusnya ttd rit-1 mingguan', nth: 1 } },
       { id: 'wp_1200n', kind: 'int', find: { one: 'ttd sebelum 1200 mingguan', nth: 1 } },
+      /* The weekly 0730, from 3 November. This week's count is headed "Hitung
+         Deliv Mingguan 0730", last week's "Keluar Gudang 0730 Mingguan"; both
+         are over the same weekly Rit-1 due as the 1200 figure. */
+      { id: 'w_0730', kind: 'pct', find: { grp: 'persentase mingguan keluar gudang 0730', at: 0 } },
+      { id: 'w_0730p', kind: 'pct', find: { grp: 'persentase mingguan keluar gudang 0730', at: 1 } },
+      { id: 'w_0730d', kind: 'delta', find: { one: 'perbandingan mingguan', nth: 1 } },
+      { id: 'w_0730n', kind: 'int', find: { one: 'hitung deliv mingguan 0730' } },
+      { id: 'wp_0730n', kind: 'int', find: { one: 'keluar gudang 0730 mingguan' } },
     ],
     kpis: [
       {
         id: '0730', label: 'Keluar Gudang 07:30', zh: '0730出仓率',
         day: 'd_0730', prev: 't0730_1', prev2: 't0730_2', delta: 'd_0730d', month: 'm_0730',
+        week: 'w_0730', weekPrev: 'w_0730p', weekDelta: 'w_0730d',
         dayRatio: ['d_0730n', 'd_rit1'], prevRatio: ['p_0730n', 'p_rit1'],
-        monthRatio: ['m_0730n', 'm_rit1'],
+        monthRatio: ['m_0730n', 'm_rit1'], weekRatio: ['w_0730n', 'w_rit1'],
+        weekPrevRatio: ['wp_0730n', 'wp_rit1'],
       },
       {
         id: '1200', label: 'TTD Sebelum 12:00', zh: '1200签收率',
@@ -346,10 +419,29 @@ const SPECS: Record<DisplayId, Spec> = {
       weekPrevRatio: ['wp_ret', 'wp_deliv'],
     }],
   },
+
+  /* Three figures in one tab — the handover of returns, of normal parcels, and
+     of both together. Keseluruhan leads: it is the figure the RM tabs and the
+     summary tab carry as TPTW. */
+  tptw: {
+    label: 'TPTW',
+    zh: '交件及时率',
+    sectioned: true,
+    cols: [
+      ...tptwSection(0, 'r', 'tptw retur'),
+      ...tptwSection(1, 'n', 'tptw normal'),
+      ...tptwSection(2, 'a', 'tptw keseluruhan'),
+    ],
+    kpis: [
+      tptwKpi('a', 'all', 'TPTW Keseluruhan', '全量交件及时率'),
+      tptwKpi('n', 'normal', 'TPTW Normal', '正向交件准点率'),
+      tptwKpi('r', 'retur', 'TPTW Retur', '退件交件及时率'),
+    ],
+  },
 }
 
 /** Rail order, and the order the pages are numbered in. */
-export const DISPLAY_ORDER: DisplayId[] = ['absensi', 'ttd730', 'ritase', 'retur']
+export const DISPLAY_ORDER: DisplayId[] = ['absensi', 'ttd730', 'ritase', 'retur', 'tptw']
 
 /* ------------------------------------------------------------ helpers */
 
@@ -422,18 +514,27 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
 
   /* The header row is the one naming "Nama DP" — row 2 in every copy seen so
      far, found rather than assumed so an extra title line does not break it. */
-  let hr = -1
-  for (let r = range.s.r; r <= Math.min(range.e.r, 10) && hr < 0; r++) {
+  let top = -1
+  for (let r = range.s.r; r <= Math.min(range.e.r, 10) && top < 0; r++) {
     for (let c = range.s.c; c <= Math.min(range.e.c, 6); c++) {
-      if (/nama\s*dp/i.test(text(r, c))) { hr = r; break }
+      if (/nama\s*dp/i.test(text(r, c))) { top = r; break }
     }
   }
-  if (hr < 0) return null
+  if (top < 0) return null
 
   const merges = ws['!merges'] ?? []
+  /* A sectioned tab names its columns one row lower. The identity columns
+     (Agent, RM, Nama DP) are merged down from the section row, so their text
+     stays up there. */
+  const hr = spec.sectioned ? top + 1 : top
+  const sections = spec.sectioned
+    ? merges.filter((x) => x.s.r === top && x.e.r === top && x.e.c > x.s.c && text(top, x.s.c).trim())
+    : []
+  const sectionAt = (c: number) => sections.find((x) => x.s.c <= c && c <= x.e.c)
+  const headText = (c: number) => text(hr, c) || (hr !== top && !sectionAt(c) ? text(top, c) : '')
   const heads: Head[] = []
   for (let c = range.s.c; c <= range.e.c; c++) {
-    const raw = text(hr, c)
+    const raw = headText(c)
     if (!raw.trim()) continue
     const m = merges.find((x) => x.s.r === hr && x.e.r === hr && x.s.c === c)
     const span = m ? m.e.c - m.s.c + 1 : 1
@@ -529,7 +630,7 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
    * (JKT41W), the second the names — so when "Nama DP" appears twice the last
    * one is the name and the one before it is the code.
    */
-  const rawAt = (c: number) => text(hr, c)
+  const rawAt = (c: number) => headText(c)
   const nameHeads = heads.filter((h) => /nama\s*dp/i.test(rawAt(h.c)))
   const cDp = nameHeads.length ? nameHeads[nameHeads.length - 1].c : null
   const cCode = heads.find((h) => /kode\s*dp|网点代码|网点编码/i.test(rawAt(h.c)))?.c
@@ -570,8 +671,13 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
   const cols: DisplayCol[] = []
   const groups: DisplayGroup[] = []
   for (const h of heads) {
-    const raw = text(hr, h.c)
-    const group = h.span > 1 ? `g${h.c}` : ''
+    const raw = headText(h.c)
+    /* In a sectioned tab every column of a section sits under that section's
+       band, the one-column ones included — the section is what tells its
+       "Persentase Bulanan" from the other two. */
+    const sec = sectionAt(h.c)
+    const group = sec ? `s${sec.s.c}` : h.span > 1 ? `g${h.c}` : ''
+    const groupRaw = sec ? text(top, sec.s.c) : raw
     /* `w`, the text as Excel prints it: some of these are real dates, and their
        value is a serial number (46288) rather than "23/Sep". */
     const subs = Array.from({ length: h.span }, (_, i) => {
@@ -588,13 +694,14 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
       const c = h.c + i
       if (hidden.has(c) || skip.has(c)) continue
       if (group && !groups.some((g) => g.id === group)) {
-        groups.push({ id: group, label: latinOf(raw), zh: zhOf(raw) })
+        groups.push({ id: group, label: latinOf(groupRaw), zh: zhOf(groupRaw) })
       }
       const kind = kindAt(c, h.name)
+      const dated = h.span > 1
       cols.push({
         id: idAt.get(c) ?? `x${c}`,
-        label: group ? subs[i] || `Kolom ${i + 1}` : latinOf(raw),
-        zh: group ? undefined : zhOf(raw) || undefined,
+        label: dated ? subs[i] || `Kolom ${i + 1}` : latinOf(raw),
+        zh: dated ? undefined : zhOf(raw) || undefined,
         group,
         kind,
         scored: kind === 'pct',

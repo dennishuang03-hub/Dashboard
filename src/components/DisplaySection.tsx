@@ -1,6 +1,6 @@
 /**
- * One "Display" report — Absensi Tepat Waktu, 0730 & TTD 1200, or TTD All
- * Ritase — at drop-point level.
+ * One "Display" report — Absensi Tepat Waktu, 0730 & TTD 1200, TTD All Ritase,
+ * Retur, or TPTW — at drop-point level.
  *
  * Built from the same furniture as the DP/CP page (`.dphead`, `.dpstats`,
  * `.dpfilters`, `.dpgrid`), so the three sub-pages read as parts of that page
@@ -28,7 +28,7 @@ import Zh from './Zh'
 const TOP_N = 5
 /** Reports that drop the best-five panel and show the worst ten instead, split
  *  five and five across the two panels. */
-const WORST_ONLY: ReadonlySet<DisplayId> = new Set<DisplayId>(['absensi', 'ritase', 'retur'])
+const WORST_ONLY: ReadonlySet<DisplayId> = new Set<DisplayId>(['absensi', 'ritase', 'retur', 'tptw'])
 /** Reports with one worst card per headline figure instead of best / worst —
  *  0730 on the left, 1200 on the right. */
 const WORST_PER_KPI: ReadonlySet<DisplayId> = new Set<DisplayId>(['ttd730'])
@@ -38,7 +38,7 @@ const WORST_N = 10
  * sprinters (a site has tens); the others count parcels (a site has thousands),
  * where a handful due is a site barely running, not a result to rank.
  */
-const RANK_MIN_DUE: Record<DisplayId, number> = { absensi: 5, ttd730: 50, ritase: 50, retur: 50 }
+const RANK_MIN_DUE: Record<DisplayId, number> = { absensi: 5, ttd730: 50, ritase: 50, retur: 50, tptw: 50 }
 const PAGE = 40
 
 /**
@@ -145,8 +145,8 @@ export default function DisplaySection({
     return report.rows.filter((r) => r.agent.toUpperCase() === want)
   }, [report, allAgents, agentLabel])
 
-  /* The 0730 & 1200 tab has two headline figures; the one picked here drives the
-     status column, the rankings and the per-RM figure. */
+  /* The 0730 & 1200 tab has two headline figures, TPTW three; the one picked here
+     drives the status column, the rankings and the per-RM figure. */
   const [kpiId, setKpiId] = useState(report.kpis[0].id)
   const kpi: DisplayKpi = report.kpis.find((k) => k.id === kpiId) ?? report.kpis[0]
 

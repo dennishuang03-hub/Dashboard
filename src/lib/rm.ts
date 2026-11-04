@@ -110,8 +110,11 @@ const KNOWN: { id: string; re: RegExp; label: string; short: string; zh: string;
   { id: 'absensi', re: /absensi/, label: 'Absensi 06:30', short: 'Absensi 06:30', zh: '打卡准点率' },
   { id: 'k0730', re: /keluar\s*gudang|0730/, label: 'Keluar Gudang 07:30', short: 'Keluar 07:30', zh: '0730出仓率' },
   { id: 'ttd1200', re: /ttd\s*sebelum|1200/, label: 'TTD < 12:00', short: 'TTD < 12:00', zh: '1200前签收率' },
-  { id: 'ritase', re: /all\s*ritase|keseluruhan/, label: 'Persentase All Ritase', short: 'All Ritase', zh: '全天签收率' },
-  { id: 'retur', re: /retur/, label: 'Retur', short: 'Retur', zh: '退件率', lowerBetter: true },
+  /* "keseluruhan" alone is the old name of All Ritase — but not "TPTW Keseluruhan" */
+  { id: 'ritase', re: /all\s*ritase|^(?!.*tptw).*keseluruhan/, label: 'Persentase All Ritase', short: 'All Ritase', zh: '全天签收率' },
+  { id: 'retur', re: /^(?!.*tptw).*retur/, label: 'Retur', short: 'Retur', zh: '退件率', lowerBetter: true },
+  /* from 3 November */
+  { id: 'tptw', re: /tptw/, label: 'TPTW Keseluruhan', short: 'TPTW', zh: '全量交件及时率' },
 ]
 export const RETUR_ID = 'retur'
 
@@ -386,6 +389,7 @@ export const DP_SOURCE: Record<string, { tab: DisplayId; kpi: string }> = {
   ttd1200: { tab: 'ttd730', kpi: '1200' },
   ritase: { tab: 'ritase', kpi: 'ttd' },
   retur: { tab: 'retur', kpi: 'retur' },
+  tptw: { tab: 'tptw', kpi: 'all' },
 }
 
 /** One drop point under an RM, with a figure per indicator for one period. */
@@ -442,8 +446,8 @@ function periodCols(k: DisplayKpi, period: RmPeriod): [string | undefined, Ratio
 
 /**
  * Whether the Display tabs carry a per-DP figure for this indicator and period
- * at all — Keluar 07:30 has none for the week. Separate from a site simply
- * having nothing due, which is a blank in a column that exists.
+ * at all — Keluar 07:30 had none for the week before 3 November. Separate from
+ * a site simply having nothing due, which is a blank in a column that exists.
  */
 export function dpColumnOf(
   indId: string, period: RmPeriod, tabs: Partial<Record<DisplayId, DisplayReport>>,

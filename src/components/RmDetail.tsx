@@ -139,7 +139,7 @@ export default function RmDetail({
     [dpTabs, row, period],
   )
   /* an indicator the Display tabs carry no per-DP figure for in this period —
-     Keluar 07:30 has no weekly one */
+     Keluar 07:30 had no weekly one before 3 November */
   const noDp = useMemo(() => {
     const s = new Set<string>()
     if (!dpTabs) return s

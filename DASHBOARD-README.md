@@ -28,6 +28,7 @@ npm run dev
 | `src/lib/jnt.ts` | Parser + KPI model. Framework-free, reusable. |
 | `src/components/Charts.tsx` | Hand-rolled SVG line/bar/h-bar/sparkline. No chart library. |
 | `src/components/DpSection.tsx` | Drop point / collection point view. |
+| `src/lib/display.ts` | Parser for the per-DP `Display …` tabs (Absensi 630, 730 & 1200, Ritase Keseluruhan, Retur, TPTW). |
 | `src/lib/rm.ts` | Parser for the `RM Pencapaian Harian/Mingguan/Bulanan` tabs, plus Retur per RM from `Display Retur`. |
 | `src/components/RmSection.tsx` | Pencapaian RM — one card per regional manager, with search, region and period filters. |
 | `src/Dashboard.tsx` | All UI. |
