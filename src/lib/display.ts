@@ -80,8 +80,8 @@ export interface DisplayRow {
   rm: string
   /**
    * The site's supervisor. The Display tabs do not carry one — it comes from the
-   * `Fr&Ag` reference tab by way of the DP rows, see `attachDpInfo`. `''`
-   * when that tab has no row for the site.
+   * SPV column on `Display ALL DP` (the `Fr&Ag` tab in files before 5 November)
+   * by way of the DP rows, see `attachDpInfo`. `''` when no DP row names one.
    */
   spv: string
   /**
@@ -805,7 +805,7 @@ export function displayTabs(sheetNames: string[]): DisplayTab[] {
 
 /**
  * Fill in each Display row's supervisor and Jenis Layanan from the DP rows,
- * which already carry them (the supervisor from the `Fr&Ag` reference tab).
+ * which already carry them (the supervisor from `Display ALL DP`'s SPV column).
  *
  * Joined on agent plus site name first — exact — and on the site name alone
  * only when every agent using that name agrees. A guessed value on the wrong

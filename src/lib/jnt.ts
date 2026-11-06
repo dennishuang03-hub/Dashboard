@@ -966,10 +966,13 @@ function parseOneSheet(ws: XLSX.WorkSheet, sheetIdx: number): RawSheet {
   for (const k of kpis) {
     const ids = k.dateCols.map((d) => d.id)
     if (k.monthlyCol) ids.push(k.monthlyCol)
-    if (k.targetCol) ids.push(k.targetCol)
-    const vs: number[] = []
-    for (const r of rows) for (const id of ids) if (r.vals[id] != null) vs.push(Math.abs(r.vals[id]))
-    if (vs.length >= 3 && Math.max(...vs) <= 1.0000001) {
+    const vs: number[] = [], ts: number[] = []
+    for (const r of rows) for (const id of ids) if (r.vals[id] != null) vs.push(r.vals[id])
+    if (k.targetCol) {
+      for (const r of rows) if (r.vals[k.targetCol] != null) ts.push(r.vals[k.targetCol])
+      ids.push(k.targetCol)
+    }
+    if (looksLikeFractions(vs, ts)) {
       for (const r of [...rows, totalRow]) {
         if (!r) continue
         for (const id of ids) if (r.vals[id] != null) r.vals[id] *= 100
@@ -978,6 +981,24 @@ function parseOneSheet(ws: XLSX.WorkSheet, sheetIdx: number): RawSheet {
   }
 
   return { kpis, rows, totalRow }
+}
+
+/**
+ * Are these readings stored as fractions (0.914) rather than percentages (91.4)?
+ *
+ * The test used to be "every value is ≤ 1", and one real outlier broke it: the
+ * 5 November file has a single 112% Retur COD reading (WAINGAPU), which left the
+ * whole Retur column unscaled — every site read 0.04% against a 0.09% target.
+ * A fraction column can hold the odd reading over 100%; a percent column cannot
+ * hold almost nothing but readings under 1%. So the bulk decides (95%), and the
+ * targets, which are never over 100%, must all be ≤ 1 as well.
+ */
+function looksLikeFractions(values: number[], targets: number[]): boolean {
+  const all = [...values, ...targets]
+  if (all.length < 3) return false
+  if (targets.some((t) => Math.abs(t) > 1.0000001)) return false
+  const small = all.filter((v) => Math.abs(v) <= 1.0000001).length
+  return small >= all.length * 0.95
 }
 
 function normKey(s: string): string {
@@ -1500,11 +1521,17 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
   /* 1b — identity columns to its left. The site's own code ("网点代码 Kode DP",
      on "Display ALL DP" from 28 September) is a code column too, and must not
      be taken for the agent's. */
-  let agentCol = -1, codeCol = -1, dpCodeCol = -1
+  /* From 5 November the `Fr&Ag` tab is gone and its RM and SPV columns live
+     here, in the identity block left of the name ("RM", "SPV"). They are tested
+     before the code and agent patterns so neither of those can claim them, and
+     the RM before the SPV for the reason given in `parseBizModelSheet`. */
+  let agentCol = -1, codeCol = -1, dpCodeCol = -1, rmCol = -1, spvCol = -1
   for (let C = 0; C < dpCol; C++) {
     const s = txt(m[headerRow][C])
     if (!s) continue
     if (DP_CODE_HEADER_RE.test(s)) { if (dpCodeCol < 0) dpCodeCol = C }
+    else if (RM_HEADER_RE.test(s)) { if (rmCol < 0) rmCol = C }
+    else if (SPV_HEADER_RE.test(s)) { if (spvCol < 0) spvCol = C }
     else if (CODE_HEADER_RE.test(s)) { if (codeCol < 0) codeCol = C }
     else if (AGENT_HEADER_RE.test(s)) { if (agentCol < 0) agentCol = C }
   }
@@ -1551,7 +1578,8 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
      silently come back empty: nothing downstream can reconstruct it. */
   const svcCol = findValueCol(
     m, lastC, dataStart, SERVICE_HEADER_RE, isServiceWord,
-    (C) => C === dpCol || C === modelCol || C === agentCol || C === codeCol || C === dpCodeCol,
+    (C) => C === dpCol || C === modelCol || C === agentCol || C === codeCol || C === dpCodeCol
+      || C === rmCol || C === spvCol,
   )
 
   /* 2b — close every hole in the header block (see parseOneSheet, step 2b) */
@@ -1612,7 +1640,8 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
     const probeEnd = Math.min(m.length, dataStart + 60)
     let bestCol = -1, bestHits = 0
     for (let C = 0; C <= lastC; C++) {
-      if (cols[C] || C === dpCol || C === agentCol || C === codeCol || C === svcCol || C === dpCodeCol) continue
+      if (cols[C] || C === dpCol || C === agentCol || C === codeCol || C === svcCol || C === dpCodeCol
+        || C === rmCol || C === spvCol) continue
       let hits = 0, filled = 0
       for (let R = dataStart; R < probeEnd; R++) {
         const s = txt(m[R]?.[C] ?? null)
@@ -1675,11 +1704,11 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
       isCp: /^cp[\s_-]/i.test(name.trim()),
       bizModel: modelCol >= 0 ? bizModelOf(txt(m[R][modelCol])) : '',
       service: svcCol >= 0 ? serviceKindOf(txt(m[R][svcCol])) : '',
-      /* filled in from the Fr&Ag reference tab once every sheet has been read —
-         see the join in `parseWorkbook`. The site code is read here first when
-         the readings tab carries it, and the join only fills a blank. */
-      supervisor: '',
-      regionalManager: '',
+      /* Read off the row when this tab carries RM / SPV columns ("Display ALL
+         DP" from 5 November). Older files kept them on the `Fr&Ag` reference
+         tab instead; the join in `parseWorkbook` still fills a blank from it. */
+      supervisor: spvCol >= 0 ? txt(m[R][spvCol]).trim() : '',
+      regionalManager: rmCol >= 0 ? txt(m[R][rmCol]).trim() : '',
       dpCode: dpCodeCol >= 0 ? txt(m[R][dpCodeCol]).trim() : '',
       sheet: sheetName,
       vals,
@@ -1689,15 +1718,15 @@ function parseDpSheet(ws: XLSX.WorkSheet, sheetName: string): RawDpSheet {
 
   /* 5 — percent-scaling fallback (0.9140 stored without a % number-format) */
   for (const label of seenLabels) {
-    const vs: number[] = []
+    const vs: number[] = [], ts: number[] = []
     for (const r of rows) {
       const s = r.vals[label]
       if (!s) continue
-      for (const k of Object.keys(s.byDate)) vs.push(Math.abs(s.byDate[k]))
-      if (s.mtd != null) vs.push(Math.abs(s.mtd))
-      if (s.target != null) vs.push(Math.abs(s.target))
+      for (const k of Object.keys(s.byDate)) vs.push(s.byDate[k])
+      if (s.mtd != null) vs.push(s.mtd)
+      if (s.target != null) ts.push(s.target)
     }
-    if (vs.length >= 3 && Math.max(...vs) <= 1.0000001) {
+    if (looksLikeFractions(vs, ts)) {
       for (const r of rows) {
         const s = r.vals[label]
         if (!s) continue

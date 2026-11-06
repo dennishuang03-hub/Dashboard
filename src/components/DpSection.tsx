@@ -1129,7 +1129,7 @@ export default function DpSection({
               hint="Tidak beroperasi. Dikeluarkan dari peringkat." />
         {/* Only when there are any. A permanent "0 tanpa jenis layanan" card is
             noise on every normal day and says nothing; appearing at all is the
-            signal that the Fr&Ag or ALL DP DATA column needs a look. */}
+            signal that the Fungsi DP column on Display ALL DP needs a look. */}
         {counts.unknown > 0 && (
           <Stat n={counts.unknown} lab="Tanpa jenis layanan" zh="未填服务类型" tone="mute"
                 hint="Kolom Jenis Layanan kosong atau tidak dikenali di file. Tetap diperingkat agar tidak hilang dari grafik — periksa datanya." />
@@ -1689,10 +1689,10 @@ export default function DpSection({
 
       <div className="note">
         Nilai yang ditampilkan: {mode === 'mtd' ? 'pencapaian bulan ini' : dayLabel}.
-        {' '}<b>Jenis Layanan</b> diambil apa adanya dari kolom Jenis Layanan di file
-        (<i>ALL DP DATA</i>) — <b>Pickup Delivery</b>, <b>Delivery</b>, <b>Pickup</b>, atau
+        {' '}<b>Jenis Layanan</b> diambil apa adanya dari kolom Fungsi DP di sheet
+        {' '}<i>Display ALL DP</i> — <b>Pickup Delivery</b>, <b>Delivery</b>, <b>Pickup</b>, atau
         {' '}<b>Tutup</b> — bukan lagi ditebak dari angka hari itu. <b>RM</b> dan <b>Supervisor</b>
-        {' '}diambil dari sheet <i>Fr&amp;Ag</i>; tanda <b>—</b> berarti file tidak
+        {' '}diambil dari kolom RM dan SPV di sheet yang sama; tanda <b>—</b> berarti file tidak
         mencantumkannya.
         {' '}<b>Status</b> dihitung dari {SCORE_TOTAL} indikator — {UNSCORED_LABELS.join(', ')}
         {' '}(bertanda <b>*</b>) tetap ditampilkan tetapi tidak ikut dinilai:
