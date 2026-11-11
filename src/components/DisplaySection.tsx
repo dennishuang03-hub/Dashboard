@@ -444,11 +444,12 @@ export default function DisplaySection({
    *
    * The table still shows and scores them; only the rankings skip them.
    */
-  const minDue = RANK_MIN_DUE[report.id]
+  const minDueOf = (k: DisplayKpi) => k.minDue ?? RANK_MIN_DUE[report.id]
+  const minDue = minDueOf(kpi)
   const rankable = useMemo(
     () => active.filter((r) => isRankable(r.service) && dueOf(r) >= minDue),
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [active, kpi],
+    [active, kpi, minDue],
   )
   const unranked = active.length - rankable.length
 
@@ -487,8 +488,9 @@ export default function DisplaySection({
     return report.kpis.map((k) => {
       const due = (r: DisplayRow) => r.vals[k.dayRatio[1]] ?? 0
       const score = (r: DisplayRow) => r.vals[k.day] ?? 0
+      const kMin = minDueOf(k)
       const act = scoped.filter((r) => isActive(r, k) && r.vals[k.day] != null)
-      const rk = act.filter((r) => isRankable(r.service) && due(r) >= minDue)
+      const rk = act.filter((r) => isRankable(r.service) && due(r) >= kMin)
       const bars = [...rk]
         .sort((a, b) => (low ? -1 : 1) * (score(a) - score(b)) || due(b) - due(a))
         .slice(0, WORST_N)
@@ -498,7 +500,7 @@ export default function DisplaySection({
       const note = idle || unranked
         ? `${[
           idle ? `${idle} DP/CP bernilai 0` : '',
-          unranked ? `${unranked} DP/CP Tutup, Pickup, atau kurang dari ${minDue} paket` : '',
+          unranked ? `${unranked} DP/CP Tutup, Pickup, atau kurang dari ${kMin} paket` : '',
         ].filter(Boolean).join(' dan ')} tidak ikut diperingkat.`
         : ''
       return { k, bars, note }

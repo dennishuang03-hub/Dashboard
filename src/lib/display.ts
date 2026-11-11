@@ -71,6 +71,13 @@ export interface DisplayKpi {
   monthRatio?: Ratio
   weekRatio?: Ratio
   weekPrevRatio?: Ratio
+  /**
+   * Fewest due a site needs to enter the best / worst rankings on this figure,
+   * when it differs from the report's default. TPTW Retur needs one: returns
+   * run around 1% of normal volume (median about 66 per site), so the
+   * report-wide 200 left only a handful of sites rankable.
+   */
+  minDue?: number
 }
 
 export interface DisplayRow {
@@ -217,9 +224,9 @@ function tptwSection(k: number, p: string, band: string): ColSpec[] {
 }
 
 /** The headline figure of one TPTW section, from the columns `tptwSection` finds. */
-function tptwKpi(p: string, id: string, label: string, zh: string): DisplayKpi {
+function tptwKpi(p: string, id: string, label: string, zh: string, minDue?: number): DisplayKpi {
   return {
-    id, label, zh,
+    id, label, zh, minDue,
     day: `${p}_pct`, prev: `${p}_t1`, prev2: `${p}_t2`, delta: `${p}_delta`, month: `${p}_mpct`,
     week: `${p}_wpct`, weekPrev: `${p}_wprev`, weekDelta: `${p}_wdelta`,
     dayRatio: [`${p}_ok`, `${p}_due`], prevRatio: [`${p}_pok`, `${p}_pdue`],
@@ -435,7 +442,7 @@ const SPECS: Record<DisplayId, Spec> = {
     kpis: [
       tptwKpi('a', 'all', 'TPTW Keseluruhan', '全量交件及时率'),
       tptwKpi('n', 'normal', 'TPTW Normal', '正向交件准点率'),
-      tptwKpi('r', 'retur', 'TPTW Retur', '退件交件及时率'),
+      tptwKpi('r', 'retur', 'TPTW Retur', '退件交件及时率', 20),
     ],
   },
 }
