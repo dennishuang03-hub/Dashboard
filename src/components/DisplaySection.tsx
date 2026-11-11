@@ -36,9 +36,11 @@ const WORST_N = 10
 /**
  * Fewest due on the day for a site to be ranked best / worst. Absensi counts
  * sprinters (a site has tens); the others count parcels (a site has thousands),
- * where a handful due is a site barely running, not a result to rank.
+ * where a handful due is a site barely running, not a result to rank. Raised
+ * from 50 to 200 parcels on 11 November 2026: below that a few misses still
+ * swing the rate enough to put a barely-running site in the worst five.
  */
-const RANK_MIN_DUE: Record<DisplayId, number> = { absensi: 5, ttd730: 50, ritase: 50, retur: 50, tptw: 50 }
+const RANK_MIN_DUE: Record<DisplayId, number> = { absensi: 5, ttd730: 200, ritase: 200, retur: 200, tptw: 200 }
 const PAGE = 40
 
 /**
