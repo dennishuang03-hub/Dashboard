@@ -123,7 +123,7 @@ because `Persentase TTD` means different things in different groups:
 | 2 | 07:30 KELUAR GUDANG | Ritase Pertama | Persentase Keluar Gudang 0730 |
 | 3 | TTD PAKET JAM 12:00 | Ritase Pertama | Persentase TTD |
 | 4 | TTD RITASE 2 | Ritase Kedua | Persentase TTD Delivery Kedua |
-| 5 | TPTW (ON TIME) | Operational Harian | TPTW |
+| 5 | TPTW KESELURUHAN | Operational Harian | TPTW |
 | 6 | TTD FULL DAY | Operational Harian | Persentase TTD |
 | 7 | PICKUP NON-ECOMMERCE | Kualitas Non Platform | Pickup Non-Ecommerce |
 | 8 | RETUR COD NON-ECOMMERCE | Kualitas Non Platform | Retur COD Non-Ecommerce |
