@@ -316,13 +316,16 @@ export function attachRetur(rep: RmReport, retur: DisplayReport | null): RmRepor
 
   const key = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim()
   const byRm = new Map<string, DisplayRow[]>()
+  /* RM names join with every space dropped: the workbook writes the same RM
+     both "PUDJAWARDANA" and "PU DJAWARDANA" across tabs */
+  const rmKey = (s: string) => s.toUpperCase().replace(/\s+/g, '')
   const byRegion = new Map<string, DisplayRow[]>()
   for (const r of retur.rows) {
     const reg = key(r.agent)
     const a = byRegion.get(reg)
     if (a) a.push(r); else byRegion.set(reg, [r])
     if (!r.rm) continue
-    const rk = `${reg}|${key(r.rm)}`
+    const rk = `${reg}|${rmKey(r.rm)}`
     const b = byRm.get(rk)
     if (b) b.push(r); else byRm.set(rk, [r])
   }
@@ -349,7 +352,7 @@ export function attachRetur(rep: RmReport, retur: DisplayReport | null): RmRepor
       ...rep.indicators,
       { id: RETUR_ID, label: known.label, short: known.short, zh: known.zh, target: retur.target, lowerBetter: true },
     ]),
-    rows: rep.rows.map((r) => withRetur(r, fig(byRm.get(`${key(r.region)}|${key(r.rm)}`)))),
+    rows: rep.rows.map((r) => withRetur(r, fig(byRm.get(`${key(r.region)}|${rmKey(r.rm)}`)))),
     regionTotals,
     total: rep.total ? withRetur(rep.total, fig(retur.rows)) : null,
   }
@@ -412,8 +415,10 @@ export function rmDpLines(
   row: RmRow, period: RmPeriod, tabs: Partial<Record<DisplayId, DisplayReport>>,
 ): RmDpLine[] {
   const key = (s: string) => s.toUpperCase().replace(/\s+/g, ' ').trim()
+  /* spaces dropped, as in the Retur join: the same RM is spelled both ways */
+  const rmKey = (s: string) => s.toUpperCase().replace(/\s+/g, '')
   const region = key(row.region)
-  const rm = key(row.rm)
+  const rm = rmKey(row.rm)
   const lines = new Map<string, RmDpLine>()
 
   for (const [indId, src] of Object.entries(DP_SOURCE)) {
@@ -422,7 +427,7 @@ export function rmDpLines(
     if (!rep || !k) continue
     const [col, ratio] = periodCols(k, period)
     for (const r of rep.rows) {
-      if (key(r.agent) !== region || key(r.rm) !== rm) continue
+      if (key(r.agent) !== region || rmKey(r.rm) !== rm) continue
       const dk = key(r.dp)
       let line = lines.get(dk)
       if (!line) {

@@ -765,6 +765,7 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
     })
   }
   if (!rows.length) return null
+  canonRms(rows)
 
   return {
     id, sheet,
@@ -778,6 +779,40 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
     cols,
     kpis,
     rows,
+  }
+}
+
+/**
+ * One spelling per RM within an agent.
+ *
+ * The workbook sometimes spells the same RM two ways — on 11 November the
+ * Display tabs had "I MADE DWI PUDJAWARDANA" on seven sites and
+ * "I MADE DWI PU DJAWARDANA" on KEDOYA_UTARA. Grouping on the raw text split
+ * the RM into two groups in the table. Names that match once case and every
+ * space are dropped are taken as one RM, written the way most of their sites
+ * write it (ties: the first spelling met).
+ */
+function canonRms(rows: DisplayRow[]): void {
+  const squash = (r: DisplayRow) => `${r.agent}|${r.rm.toUpperCase().replace(/\s+/g, '')}`
+  const tally = new Map<string, Map<string, number>>()
+  for (const r of rows) {
+    if (!r.rm) continue
+    const k = squash(r)
+    let t = tally.get(k)
+    if (!t) tally.set(k, (t = new Map()))
+    t.set(r.rm, (t.get(r.rm) ?? 0) + 1)
+  }
+  const pick = new Map<string, string>()
+  for (const [k, t] of tally) {
+    if (t.size < 2) continue
+    let best = '', most = 0
+    for (const [name, n] of t) if (n > most) { best = name; most = n }
+    pick.set(k, best)
+  }
+  if (!pick.size) return
+  for (const r of rows) {
+    const name = r.rm && pick.get(squash(r))
+    if (name) r.rm = name
   }
 }
 
