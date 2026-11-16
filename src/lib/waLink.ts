@@ -25,6 +25,8 @@ export interface WaLinked {
   number: string
   groups: WaGroupCheck[]
   state: string
+  /** the same login cut down for logging out from a closing page */
+  exit: string
 }
 
 /** "6285110539089" → "+62 851-1053-9089" */
@@ -71,6 +73,7 @@ export interface PartResult {
   sent: string[]
   failed: { name: string; error: string }[]
   state: string
+  exit: string
 }
 
 /** One request: an album of pictures, or one or more PDFs, for one agent's group. */
@@ -87,16 +90,21 @@ export async function sendWaPart(
 }
 
 /**
- * Unlink the phone. `keepalive` so it still goes out when the page is closing;
- * best effort either way — the device can always be removed on the phone.
+ * Unlink the phone. Best effort — the device can always be removed on the phone.
+ *
+ * From a page that is closing, a request only goes out with `keepalive`, and
+ * the browser allows that at most 64 KB. The full login is already 80 KB, so
+ * that case sends `exit`, the login cut down to its credentials, instead.
  */
-export function logoutWhatsApp(state: string): Promise<void> {
+export function logoutWhatsApp(state: string, exit = ''): Promise<void> {
+  const closing = !!exit
+  const send = closing && state.length >= 60_000 ? exit : state
   return fetch('/api/wa/logout', {
     method: 'POST',
     credentials: 'same-origin',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ state }),
-    keepalive: state.length < 60_000,
+    body: JSON.stringify({ state: send }),
+    keepalive: send.length < 60_000,
   }).then(() => undefined, () => undefined)
 }
 
@@ -106,6 +114,20 @@ export function logoutWhatsApp(state: string): Promise<void> {
 const MAX_W = 1600
 /** each request's files stay under this — Vercel refuses a body over 4.5 MB, and the login rides along */
 export const PART_BUDGET = 3_600_000
+/** a PDF is split into parts no bigger than this, leaving room for a grown login */
+export const PDF_BUDGET = 2_500_000
+/** the whole request, kept a little under Vercel's 4.5 MB */
+const REQUEST_MAX = 4_300_000
+
+/**
+ * Room for files in the next request. The login travels with every request
+ * and grows as WhatsApp stores keys for each group's members — 80 KB at the
+ * scan, possibly over a megabyte after several groups — so a fixed budget
+ * that fit the first agent can push a later agent's request past the limit.
+ */
+export function roomFor(state: string): number {
+  return Math.max(300_000, Math.min(PART_BUDGET, REQUEST_MAX - state.length))
+}
 
 /** A PNG from the capture → a JPEG WhatsApp will not need to shrink further. */
 export async function toWaJpeg(png: File, quality = 0.85): Promise<File> {

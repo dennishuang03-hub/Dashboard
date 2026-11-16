@@ -20,8 +20,8 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { scoreOf, verdictOf } from '../lib/rm'
 import type { RmIndicator, RmRow } from '../lib/rm'
 import {
-  PART_BUDGET, WA_AGENTS, fmtWaNumber, jpegsToPdf, linkWhatsApp, logoutWhatsApp, packBySize, rmOfFile,
-  sendWaPart, toWaJpeg,
+  PDF_BUDGET, WA_AGENTS, fmtWaNumber, jpegsToPdf, linkWhatsApp, logoutWhatsApp, packBySize, rmOfFile,
+  roomFor, sendWaPart, toWaJpeg,
 } from '../lib/waLink'
 import type { WaLinked } from '../lib/waLink'
 import BtnIcon from './BtnIcon'
@@ -88,6 +88,8 @@ export default function RmBatchDialog({
   const [link, setLink] = useState<Link>({ step: 'off' })
   /* the sealed login: memory only, replaced after every request */
   const waState = useRef('')
+  /* the same login cut down for logging out as the page closes (see logoutWhatsApp) */
+  const waExit = useRef('')
   const linkAbort = useRef<AbortController | null>(null)
   const [sending, setSending] = useState(false)
   const [sendAgents, setSendAgents] = useState<ReadonlySet<string>>(() => new Set())
@@ -101,12 +103,12 @@ export default function RmBatchDialog({
 
   /* the phone is logged out when the dialog goes, however it goes */
   useEffect(() => {
-    const leave = () => { if (waState.current) void logoutWhatsApp(waState.current) }
+    const leave = () => { if (waState.current) void logoutWhatsApp(waState.current, waExit.current) }
     window.addEventListener('pagehide', leave)
     return () => {
       window.removeEventListener('pagehide', leave)
       linkAbort.current?.abort()
-      leave()
+      if (waState.current) void logoutWhatsApp(waState.current)
     }
   }, [])
 
@@ -145,6 +147,7 @@ export default function RmBatchDialog({
     try {
       const info = await linkWhatsApp((qr) => setLink({ step: 'qr', qr }), ac.signal)
       waState.current = info.state
+      waExit.current = info.exit
       setLink({ step: 'linked', info })
     } catch (ex) {
       if (ac.signal.aborted) return
@@ -156,6 +159,7 @@ export default function RmBatchDialog({
     linkAbort.current?.abort()
     if (waState.current) void logoutWhatsApp(waState.current)
     waState.current = ''
+    waExit.current = ''
     setLink({ step: 'off' })
   }
 
@@ -195,9 +199,9 @@ export default function RmBatchDialog({
           /* one PDF when it fits a request, else one per run of pages */
           const base = `Pencapaian RM ${agent} ${periodName} ${periodLabel}`.replace(/[\\/:*?"<>|&]+/g, ' ')
           const whole = await jpegsToPdf(jpegs)
-          const pdfs = whole.size <= PART_BUDGET
+          const pdfs = whole.size <= PDF_BUDGET
             ? [new File([whole], `${base}.pdf`, { type: 'application/pdf' })]
-            : await Promise.all(packBySize(jpegs, PART_BUDGET * 0.9).map(async (run, i, all) =>
+            : await Promise.all(packBySize(jpegs, PDF_BUDGET * 0.9).map(async (run, i, all) =>
               new File([await jpegsToPdf(run)], `${base} (Bagian ${i + 1} dari ${all.length}).pdf`, { type: 'application/pdf' })))
           p = { jpegs, pdfs }
           payload.current[agent] = p
@@ -220,13 +224,18 @@ export default function RmBatchDialog({
         try {
           const r = await sendWaPart(waState.current, agent, kind, batch, caps)
           waState.current = r.state
+          if (r.exit) waExit.current = r.exit
           failed.push(...r.failed)
           patchRun(agent, (cur) => ({ sent: cur.sent + r.sent.length }))
         } catch (ex) {
           failed.push(...batch.map((f) => ({ name: f.name, error: (ex as Error).message })))
         }
       }
-      for (const batch of packBySize(imgs)) {
+      /* each album sized to the room the login leaves at that moment — it grows
+         with every group sent to */
+      for (let rest = imgs; rest.length;) {
+        const [batch] = packBySize(rest, roomFor(waState.current))
+        rest = rest.slice(batch.length)
         await part('album', batch, batch.map((f) =>
           f === p.jpegs[0] ? `${head}\n${rmOfFile(f.name)}` : rmOfFile(f.name)))
       }
@@ -266,6 +275,7 @@ export default function RmBatchDialog({
     linkAbort.current?.abort()
     if (waState.current) void logoutWhatsApp(waState.current)
     waState.current = ''
+    waExit.current = ''
     onClose()
   }
 

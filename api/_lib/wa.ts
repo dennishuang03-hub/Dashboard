@@ -85,6 +85,16 @@ function seal(b: Bundle, user: string): string {
   return Buffer.concat([iv, c.getAuthTag(), body]).toString('base64url')
 }
 
+/**
+ * The login cut down to what logging out needs: the credentials, none of the
+ * keys. The full login is 80 KB the moment it is made and grows with every
+ * group sent to; a browser sends at most 64 KB from a page that is closing, so
+ * the page keeps this small one for that moment.
+ */
+function sealExit(b: Bundle, user: string): string {
+  return seal({ creds: b.creds, keys: {} }, user)
+}
+
 function unseal(s: string, user: string): Bundle {
   try {
     const raw = Buffer.from(s, 'base64url')
@@ -212,7 +222,11 @@ export function linkStream(user: string, toDataUrl: (qr: string) => Promise<stri
           agent, name: all[jid]?.subject ?? null,
         }))
         await sleep(1500)   // let the first round of key uploads land before the login is copied
-        write({ type: 'linked', name: sock.user?.name ?? '', number: numberOf(sock), groups, state: seal(auth.dump(), user) })
+        const b = auth.dump()
+        write({
+          type: 'linked', name: sock.user?.name ?? '', number: numberOf(sock), groups,
+          state: seal(b, user), exit: sealExit(b, user),
+        })
         sock.end(undefined)
       } catch (ex) {
         write({ type: 'error', error: (ex as Error).message })
@@ -237,6 +251,8 @@ export interface SendResult {
   sent: string[]
   failed: { name: string; error: string }[]
   state: string
+  /** the logout-only login; see `sealExit` */
+  exit: string
 }
 
 /**
@@ -290,7 +306,8 @@ export async function sendPart(user: string, form: FormData): Promise<SendResult
   } finally {
     sock.end(undefined)
   }
-  return { sent, failed, state: seal(auth.dump(), user) }
+  const b = auth.dump()
+  return { sent, failed, state: seal(b, user), exit: sealExit(b, user) }
 }
 
 /** Unlink this dashboard from the phone. A login that is already gone is fine. */
