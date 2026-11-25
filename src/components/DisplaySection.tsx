@@ -162,7 +162,11 @@ export default function DisplaySection({
     return low && c !== 'flat' ? (c === 'up' ? 'down' : 'up') : c
   }
 
-  const targetOf = (r: DisplayRow) => r.target ?? report.target ?? 90
+  /* A figure with its own Target column (TPTW: Retur, Normal, Keseluruhan) is
+     judged on that one; otherwise the tab's single target. */
+  const kpiTarget = (k: DisplayKpi) => k.target ?? report.target ?? 90
+  const targetOf = (r: DisplayRow, k: DisplayKpi = kpi) =>
+    (k.targetCol ? r.vals[k.targetCol] ?? k.target : null) ?? r.target ?? report.target ?? 90
   const statusOf = (r: DisplayRow): RowStatus => {
     if (!isActive(r, kpi)) return 'idle'
     const v = r.vals[kpi.day]
@@ -430,7 +434,7 @@ export default function DisplaySection({
     }
   }
 
-  const target = report.target ?? 90
+  const target = kpiTarget(kpi)
   const dueOf = (r: DisplayRow) => r.vals[kpi.dayRatio[1]] ?? 0
   const active = useMemo(() => scoped.filter((r) => isActive(r, kpi) && r.vals[kpi.day] != null), [scoped, kpi])
   /*
@@ -639,7 +643,8 @@ export default function DisplaySection({
       <div className={`dxcards${multi ? ' multi' : ''}`}>
         {report.kpis.map((k) => {
           const s = summary(k)
-          const ok = s.day != null && meets(s.day, target)
+          const kt = kpiTarget(k)
+          const ok = s.day != null && meets(s.day, kt)
           const cls = `dxcard ${s.day == null ? 'na' : ok ? 'ok' : 'bad'}${multi && k.id === kpi.id ? ' on' : ''}`
           const body = (
             <>
@@ -650,7 +655,7 @@ export default function DisplaySection({
                   {fmtPp(s.delta)}
                 </span>
               </span>
-              <span className="dxc-tgt">Target {GE} {fmtPct(target)}% · {dayLabel}</span>
+              <span className="dxc-tgt">Target {GE} {fmtPct(kt)}% · {dayLabel}</span>
               <span className="dxc-foot">
                 <span><em>H-1</em>{s.prev == null ? '—' : `${fmtPct(s.prev)}%`}</span>
                 <span><em>Bulanan</em>{s.month == null ? '—' : `${fmtPct(s.month)}%`}</span>
@@ -705,7 +710,7 @@ export default function DisplaySection({
       {perKpi ? (
         <div className="row-dp">
           {worstByKpi.map(({ k, bars, note }) => (
-            <WorstCard key={k.id} label={k.label} bars={bars} target={target} lowerBetter={low} note={note} />
+            <WorstCard key={k.id} label={k.label} bars={bars} target={kpiTarget(k)} lowerBetter={low} note={note} />
           ))}
         </div>
       ) : worstOnly ? (

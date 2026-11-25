@@ -78,6 +78,15 @@ export interface DisplayKpi {
    * report-wide 200 left only a handful of sites rankable.
    */
   minDue?: number
+  /**
+   * Column id of this figure's own Target column, for tabs that state a target
+   * per figure — Display TPTW has one in each section (Retur, Normal,
+   * Keseluruhan). Without it every figure would be judged on the tab's first
+   * Target column, which in TPTW is Retur's.
+   */
+  targetCol?: string
+  /** this figure's target as the TOTAL row states it, in percent (filled by the parse) */
+  target?: number | null
 }
 
 export interface DisplayRow {
@@ -202,6 +211,8 @@ interface Spec {
 function tptwSection(k: number, p: string, band: string): ColSpec[] {
   return [
     { id: `${p}_due`, kind: 'int', find: { one: 'seharusnya kirim h-1', nth: k } },
+    /* each section states its own target — Retur's need not be Normal's */
+    { id: `${p}_tgt`, kind: 'pct', find: { one: 'target', nth: k } },
     { id: `${p}_ok`, kind: 'int', find: { one: 'kirim tepat waktu', nth: 3 * k } },
     { id: `${p}_pct`, kind: 'pct', find: { grp: band, at: 0 } },
     { id: `${p}_delta`, kind: 'delta', find: { one: 'perbandingan h-1', nth: k } },
@@ -226,7 +237,7 @@ function tptwSection(k: number, p: string, band: string): ColSpec[] {
 /** The headline figure of one TPTW section, from the columns `tptwSection` finds. */
 function tptwKpi(p: string, id: string, label: string, zh: string, minDue?: number): DisplayKpi {
   return {
-    id, label, zh, minDue,
+    id, label, zh, minDue, targetCol: `${p}_tgt`,
     day: `${p}_pct`, prev: `${p}_t1`, prev2: `${p}_t2`, delta: `${p}_delta`, month: `${p}_mpct`,
     week: `${p}_wpct`, weekPrev: `${p}_wprev`, weekDelta: `${p}_wdelta`,
     dayRatio: [`${p}_ok`, `${p}_due`], prevRatio: [`${p}_pok`, `${p}_pdue`],
@@ -619,6 +630,7 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
       monthRatio: hasR(k.monthRatio) ? k.monthRatio : undefined,
       weekRatio: hasR(k.weekRatio) ? k.weekRatio : undefined,
       weekPrevRatio: hasR(k.weekPrevRatio) ? k.weekPrevRatio : undefined,
+      targetCol: k.targetCol && found(k.targetCol) ? k.targetCol : undefined,
     })
   }
   if (!kpis.length) return null
@@ -662,7 +674,9 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
   const lines = (raw: string) => raw.split(/\r?\n/).map((l) => l.trim()).filter(Boolean)
   const latinOf = (raw: string) => lines(raw).filter((l) => !HAS_CJK.test(l)).join(' ')
   const zhOf = (raw: string) => lines(raw).filter((l) => HAS_CJK.test(l)).join(' ')
-  const skip = new Set([cAgent, cRm, cDp, cCode, cTarget].filter((c): c is number => c != null))
+  /* every Target column stays out of the table, not only the first */
+  const targetCols = heads.filter((h) => h.name === 'target').map((h) => h.c)
+  const skip = new Set([cAgent, cRm, cDp, cCode, cTarget, ...targetCols].filter((c): c is number => c != null))
 
   /* How a column prints, from its number format in the first rows that have one. */
   const kindAt = (c: number, name: string): DisplayColKind => {
@@ -732,6 +746,7 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
   }
 
   let target: number | null = null
+  let totalRow = -1
   const rows: DisplayRow[] = []
   const seen = new Map<string, number>()
   for (let r = hr + 2; r <= range.e.r; r++) {
@@ -740,7 +755,10 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
     /* The TOTAL row carries no agent (the 0730 tab writes "AGENT40" where the
        name would be) — it is read only for the target it states. */
     if (!agentRaw) {
-      if (target == null && cTarget != null) target = num(at(r, cTarget), 'pct')
+      if (target == null && cTarget != null) {
+        target = num(at(r, cTarget), 'pct')
+        if (target != null) totalRow = r
+      }
       continue
     }
     if (!dp) continue
@@ -766,6 +784,14 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
   }
   if (!rows.length) return null
   canonRms(rows)
+  /* each figure's own target: its TOTAL row cell, else the first site that states one */
+  for (const k of kpis) {
+    if (!k.targetCol) continue
+    const c = colAt.get(k.targetCol)!
+    const tc = k.targetCol
+    k.target = (totalRow >= 0 ? num(at(totalRow, c), 'pct') : null)
+      ?? rows.find((r) => r.vals[tc] != null)?.vals[tc] ?? null
+  }
 
   return {
     id, sheet,
