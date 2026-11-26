@@ -6,13 +6,15 @@
  *   Display Ritase Keseluruhan  Persentase Keseluruhan TTD Berdasarkan Ritase
  *   Display Retur               Monitoring Retur Agent (lower is better)
  *   Display TPTW                Laporan TPTW Retur, Normal & Keseluruhan
+ *   Display OTPU                Laporan OTPU & OTFPU Pickup Platform (TikTok)
  *
  * They share one layout, which is what lets one parser and one page serve all
  * of them: a title in A1, a two-row header (row 2 names the column, row 3 dates
  * the ones that were merged across several days), a TOTAL row, a blank row, and
  * then one row per drop point — Agent, RM, Nama DP, figures. Display TPTW
  * (from 3 November) adds one more header row on top: three sections, one per
- * figure, each repeating the same columns — see `Spec.sectioned`.
+ * figure, each repeating the same columns — see `Spec.sectioned`. Display OTPU
+ * (from 25 November) has the same shape with two sections.
  *
  * Columns are found by their header text rather than by letter. The three tabs
  * put the same kinds of figure in different places, and a template that gains a
@@ -24,7 +26,7 @@ import * as XLSX from 'xlsx'
 import { cellDate, cellText, latin } from './jnt'
 import type { DpKind, DpRow } from './jnt'
 
-export type DisplayId = 'absensi' | 'ttd730' | 'ritase' | 'retur' | 'tptw'
+export type DisplayId = 'absensi' | 'ttd730' | 'ritase' | 'retur' | 'tptw' | 'otpu'
 export type DisplayColKind = 'int' | 'pct' | 'delta'
 
 /** A header the sheet merges across several columns — a band over them. */
@@ -40,6 +42,9 @@ export interface DisplayCol {
   kind: DisplayColKind
   /** a percentage judged against the row's target — shaded green/red */
   scored?: boolean
+  /** a column of a figure with no target (OTFPU): its changes are not coloured
+   *  good or bad either */
+  plain?: boolean
 }
 
 /** Two column ids whose sum-ratio is a percentage: numerator, denominator. */
@@ -87,6 +92,12 @@ export interface DisplayKpi {
   targetCol?: string
   /** this figure's target as the TOTAL row states it, in percent (filled by the parse) */
   target?: number | null
+  /**
+   * A figure the sheet reports without a target — OTFPU, whose Target column
+   * reads "-". Its card shows the figure and the trend but judges nothing, and
+   * it cannot be picked to drive the status column or the rankings.
+   */
+  info?: boolean
 }
 
 export interface DisplayRow {
@@ -128,6 +139,9 @@ export interface DisplayReport {
   target: number | null
   /** the headline is a rate to keep *under* the target (Retur), not over it */
   lowerBetter: boolean
+  /** a pickup figure (OTPU): delivery-only sites have nothing to rank on it,
+   *  pickup-only sites do — the reverse of every other tab */
+  pickup: boolean
   /** the table: the sheet's visible columns, in order, and the bands over them */
   groups: DisplayGroup[]
   cols: DisplayCol[]
@@ -151,6 +165,7 @@ export function displayIdOf(sheetName: string): DisplayId | null {
   if (/ritase/.test(n)) return 'ritase'
   /* before Retur: the TPTW tab's sections include a "TPTW Retur" */
   if (/tptw/.test(n)) return 'tptw'
+  if (/otpu/.test(n)) return 'otpu'
   if (/retur/.test(n)) return 'retur'
   return null
 }
@@ -188,6 +203,8 @@ interface Spec {
   derive?: DeriveSpec[]
   kpis: DisplayKpi[]
   lowerBetter?: boolean
+  /** see `DisplayReport.pickup` */
+  pickup?: boolean
   /**
    * The header has a section row above the column row: a band merged across
    * every column of one figure ("TPTW Retur", "TPTW Normal", "TPTW Keseluruhan"),
@@ -234,8 +251,40 @@ function tptwSection(k: number, p: string, band: string): ColSpec[] {
   ]
 }
 
-/** The headline figure of one TPTW section, from the columns `tptwSection` finds. */
-function tptwKpi(p: string, id: string, label: string, zh: string, minDue?: number): DisplayKpi {
+/**
+ * One section of Display OTPU, laid out like a TPTW section: the day's on-time
+ * count over "Total Order H-1". Its two sections name their counts differently
+ * ("Ontime Pickup", "Ontime Gagal Pickup"), so only the columns both share —
+ * Total Order, Target, Persentase, Perbandingan — are found by section
+ * occurrence `k`.
+ */
+function otpuSection(k: number, p: string, band: string, ok: string): ColSpec[] {
+  return [
+    { id: `${p}_due`, kind: 'int', find: { one: 'total order h-1', nth: k } },
+    { id: `${p}_tgt`, kind: 'pct', find: { one: 'target', nth: k } },
+    { id: `${p}_ok`, kind: 'int', find: { one: ok } },
+    { id: `${p}_pct`, kind: 'pct', find: { grp: band, at: 0 } },
+    { id: `${p}_delta`, kind: 'delta', find: { one: 'perbandingan h-1', nth: k } },
+    { id: `${p}_t1`, kind: 'pct', find: { grp: band, at: 1 } },
+    { id: `${p}_t2`, kind: 'pct', find: { grp: band, at: 2 } },
+    { id: `${p}_mdue`, kind: 'int', find: { one: 'total order bulanan', nth: k } },
+    { id: `${p}_mok`, kind: 'int', find: { one: `${ok} bulanan` } },
+    { id: `${p}_mpct`, kind: 'pct', find: { one: 'persentase bulanan', nth: k } },
+    { id: `${p}_wpct`, kind: 'pct', find: { grp: 'persentase mingguan', nth: k, at: 0 } },
+    { id: `${p}_wprev`, kind: 'pct', find: { grp: 'persentase mingguan', nth: k, at: 1 } },
+    { id: `${p}_wdelta`, kind: 'delta', find: { one: 'perbandingan mingguan', nth: k } },
+    { id: `${p}_pdue`, kind: 'int', find: { one: 'total order', nth: 2 * k } },
+    { id: `${p}_pok`, kind: 'int', find: { one: ok, nth: 1 } },
+    { id: `${p}_wdue`, kind: 'int', find: { one: 'total order mingguan', nth: 2 * k } },
+    { id: `${p}_wok`, kind: 'int', find: { one: `${ok} mingguan`, nth: 0 } },
+    { id: `${p}_wpdue`, kind: 'int', find: { one: 'total order mingguan', nth: 2 * k + 1 } },
+    { id: `${p}_wpok`, kind: 'int', find: { one: `${ok} mingguan`, nth: 1 } },
+  ]
+}
+
+/** The headline figure of one section, from the columns `tptwSection` or
+ *  `otpuSection` finds. */
+function sectionKpi(p: string, id: string, label: string, zh: string, minDue?: number): DisplayKpi {
   return {
     id, label, zh, minDue, targetCol: `${p}_tgt`,
     day: `${p}_pct`, prev: `${p}_t1`, prev2: `${p}_t2`, delta: `${p}_delta`, month: `${p}_mpct`,
@@ -451,15 +500,34 @@ const SPECS: Record<DisplayId, Spec> = {
       ...tptwSection(2, 'a', 'tptw keseluruhan'),
     ],
     kpis: [
-      tptwKpi('a', 'all', 'TPTW Keseluruhan', '全量交件及时率'),
-      tptwKpi('n', 'normal', 'TPTW Normal', '正向交件准点率'),
-      tptwKpi('r', 'retur', 'TPTW Retur', '退件交件及时率', 20),
+      sectionKpi('a', 'all', 'TPTW Keseluruhan', '全量交件及时率'),
+      sectionKpi('n', 'normal', 'TPTW Normal', '正向交件准点率'),
+      sectionKpi('r', 'retur', 'TPTW Retur', '退件交件及时率', 20),
+    ],
+  },
+
+  /* TikTok platform pickups. OTPU is the share of the day's orders picked up
+     on time, judged on its own Target column. OTFPU is the share whose failed
+     pickup was reported on time — the sheet gives it no target ("-"), so it is
+     shown, not judged. With the late-without-reason share the two make 100%. */
+  otpu: {
+    label: 'OTPU Platform',
+    zh: 'TT平台揽收及时率',
+    sectioned: true,
+    pickup: true,
+    cols: [
+      ...otpuSection(0, 'o', 'otpu%', 'ontime pickup'),
+      ...otpuSection(1, 'f', 'otfpu%', 'ontime gagal pickup'),
+    ],
+    kpis: [
+      sectionKpi('o', 'otpu', 'OTPU Pickup Platform', 'TT平台揽收成功及时率'),
+      { ...sectionKpi('f', 'otfpu', 'OTFPU (Ontime Gagal Pickup)', 'TT平台揽收失败及时率'), targetCol: undefined, info: true },
     ],
   },
 }
 
 /** Rail order, and the order the pages are numbered in. */
-export const DISPLAY_ORDER: DisplayId[] = ['absensi', 'ttd730', 'ritase', 'retur', 'tptw']
+export const DISPLAY_ORDER: DisplayId[] = ['absensi', 'ttd730', 'ritase', 'retur', 'tptw', 'otpu']
 
 /* ------------------------------------------------------------ helpers */
 
@@ -729,6 +797,11 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
       })
     }
   }
+  /* A figure with no target leaves every column of its section unjudged. */
+  const infoGroups = new Set(kpis.filter((k) => k.info).map((k) => cols.find((c) => c.id === k.day)?.group).filter(Boolean))
+  for (const col of cols) {
+    if (infoGroups.has(col.group)) { col.scored = false; col.plain = true }
+  }
 
   const readAt: [string, number, DisplayColKind][] = [
     ...[...colAt].map(([sid, c]): [string, number, DisplayColKind] => [sid, c, specKind.get(sid) ?? 'int']),
@@ -801,6 +874,7 @@ export function parseDisplaySheet(id: DisplayId, sheet: string, ws: XLSX.WorkShe
     date,
     target: target ?? rows.find((r) => r.target != null)?.target ?? null,
     lowerBetter: !!spec.lowerBetter,
+    pickup: !!spec.pickup,
     groups,
     cols,
     kpis,

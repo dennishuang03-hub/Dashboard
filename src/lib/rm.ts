@@ -115,6 +115,8 @@ const KNOWN: { id: string; re: RegExp; label: string; short: string; zh: string;
   { id: 'retur', re: /^(?!.*tptw).*retur/, label: 'Retur', short: 'Retur', zh: '退件率', lowerBetter: true },
   /* from 3 November */
   { id: 'tptw', re: /tptw/, label: 'TPTW Keseluruhan', short: 'TPTW', zh: '全量交件及时率' },
+  /* TikTok platform pickups, from 25 November */
+  { id: 'otpu', re: /otpu/, label: 'OTPU Pickup Platform', short: 'OTPU', zh: 'TT平台揽收成功及时率' },
 ]
 export const RETUR_ID = 'retur'
 
@@ -393,6 +395,7 @@ export const DP_SOURCE: Record<string, { tab: DisplayId; kpi: string }> = {
   ritase: { tab: 'ritase', kpi: 'ttd' },
   retur: { tab: 'retur', kpi: 'retur' },
   tptw: { tab: 'tptw', kpi: 'all' },
+  otpu: { tab: 'otpu', kpi: 'otpu' },
 }
 
 /** One drop point under an RM, with a figure per indicator for one period. */

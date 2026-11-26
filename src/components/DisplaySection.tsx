@@ -1,6 +1,6 @@
 /**
  * One "Display" report — Absensi Tepat Waktu, 0730 & TTD 1200, TTD All Ritase,
- * Retur, or TPTW — at drop-point level.
+ * Retur, TPTW, or OTPU Platform — at drop-point level.
  *
  * Built from the same furniture as the DP/CP page (`.dphead`, `.dpstats`,
  * `.dpfilters`, `.dpgrid`), so the three sub-pages read as parts of that page
@@ -28,7 +28,7 @@ import Zh from './Zh'
 const TOP_N = 5
 /** Reports that drop the best-five panel and show the worst ten instead, split
  *  five and five across the two panels. */
-const WORST_ONLY: ReadonlySet<DisplayId> = new Set<DisplayId>(['absensi', 'ritase', 'retur', 'tptw'])
+const WORST_ONLY: ReadonlySet<DisplayId> = new Set<DisplayId>(['absensi', 'ritase', 'retur', 'tptw', 'otpu'])
 /** Reports with one worst card per headline figure instead of best / worst —
  *  0730 on the left, 1200 on the right. */
 const WORST_PER_KPI: ReadonlySet<DisplayId> = new Set<DisplayId>(['ttd730'])
@@ -40,7 +40,7 @@ const WORST_N = 10
  * from 50 to 200 parcels on 11 November 2026: below that a few misses still
  * swing the rate enough to put a barely-running site in the worst five.
  */
-const RANK_MIN_DUE: Record<DisplayId, number> = { absensi: 5, ttd730: 200, ritase: 200, retur: 200, tptw: 200 }
+const RANK_MIN_DUE: Record<DisplayId, number> = { absensi: 5, ttd730: 200, ritase: 200, retur: 200, tptw: 200, otpu: 200 }
 const PAGE = 40
 
 /**
@@ -149,8 +149,11 @@ export default function DisplaySection({
 
   /* The 0730 & 1200 tab has two headline figures, TPTW three; the one picked here
      drives the status column, the rankings and the per-RM figure. */
-  const [kpiId, setKpiId] = useState(report.kpis[0].id)
-  const kpi: DisplayKpi = report.kpis.find((k) => k.id === kpiId) ?? report.kpis[0]
+  /* A figure without a target (OTFPU) is shown but never picked — there is
+     nothing to judge a site against. */
+  const pickable = report.kpis.some((k) => !k.info) ? report.kpis.filter((k) => !k.info) : report.kpis
+  const [kpiId, setKpiId] = useState(pickable[0].id)
+  const kpi: DisplayKpi = pickable.find((k) => k.id === kpiId) ?? pickable[0]
 
   /* Retur is a rate to keep under its target: lower is better, the target is
      a ceiling, and a rise on yesterday is bad news. */
@@ -442,16 +445,20 @@ export default function DisplaySection({
    *
    *   - Tutup and Pickup sites are out, the same rule as the DP section
    *     (`isRankable`): a pickup-only site's 0,00% on a delivery figure is not
-   *     a delivery result.
+   *     a delivery result. On a pickup figure (OTPU) it is the other way round:
+   *     Tutup and Delivery sites are out.
    *   - Sites with fewer than RANK_MIN_DUE due are out: a few missed parcels
    *     read 0,00% and would otherwise own the worst five.
    *
    * The table still shows and scores them; only the rankings skip them.
    */
+  const canRank = (r: DisplayRow) =>
+    report.pickup ? r.service !== 'delivery' && r.service !== 'closed' : isRankable(r.service)
+  const notRankedKinds = report.pickup ? 'Tutup, Delivery' : 'Tutup, Pickup'
   const minDueOf = (k: DisplayKpi) => k.minDue ?? RANK_MIN_DUE[report.id]
   const minDue = minDueOf(kpi)
   const rankable = useMemo(
-    () => active.filter((r) => isRankable(r.service) && dueOf(r) >= minDue),
+    () => active.filter((r) => canRank(r) && dueOf(r) >= minDue),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [active, kpi, minDue],
   )
@@ -494,7 +501,7 @@ export default function DisplaySection({
       const score = (r: DisplayRow) => r.vals[k.day] ?? 0
       const kMin = minDueOf(k)
       const act = scoped.filter((r) => isActive(r, k) && r.vals[k.day] != null)
-      const rk = act.filter((r) => isRankable(r.service) && due(r) >= kMin)
+      const rk = act.filter((r) => canRank(r) && due(r) >= kMin)
       const bars = [...rk]
         .sort((a, b) => (low ? -1 : 1) * (score(a) - score(b)) || due(b) - due(a))
         .slice(0, WORST_N)
@@ -504,7 +511,7 @@ export default function DisplaySection({
       const note = idle || unranked
         ? `${[
           idle ? `${idle} DP/CP bernilai 0` : '',
-          unranked ? `${unranked} DP/CP Tutup, Pickup, atau kurang dari ${kMin} paket` : '',
+          unranked ? `${unranked} DP/CP ${notRankedKinds}, atau kurang dari ${kMin} paket` : '',
         ].filter(Boolean).join(' dan ')} tidak ikut diperingkat.`
         : ''
       return { k, bars, note }
@@ -558,6 +565,7 @@ export default function DisplaySection({
   }
 
   const cellTone = (r: DisplayRow, c: DisplayCol, v: number): ExportTone => {
+    if (c.plain) return ''
     if (c.kind === 'delta') return v > 0.005 ? 'ok' : v < -0.005 ? 'bad' : ''
     if (!c.scored) return ''
     if (!isActive(r, kpi)) return 'mute'
@@ -609,13 +617,13 @@ export default function DisplaySection({
   /* --------------------------------------------------------------- render */
 
   const colCount = 2 + (agentCol ? 1 : 0) + (showSpv ? 1 : 0) + 1 + visCols.length
-  const multi = report.kpis.length > 1
+  const multi = pickable.length > 1
   const counts = filterOpts.counts
   const rankNote = counts.get('idle') || unranked ? (
     <div className="chartnote">
       {[
         counts.get('idle') ? `${counts.get('idle')} DP/CP bernilai 0` : '',
-        unranked ? `${unranked} DP/CP Tutup, Pickup, atau kurang dari ${minDue} ${report.id === 'absensi' ? 'orang' : 'paket'}` : '',
+        unranked ? `${unranked} DP/CP ${notRankedKinds}, atau kurang dari ${minDue} ${report.id === 'absensi' ? 'orang' : 'paket'}` : '',
       ].filter(Boolean).join(' dan ')} tidak ikut diperingkat.
     </div>
   ) : null
@@ -645,30 +653,33 @@ export default function DisplaySection({
           const s = summary(k)
           const kt = kpiTarget(k)
           const ok = s.day != null && meets(s.day, kt)
-          const cls = `dxcard ${s.day == null ? 'na' : ok ? 'ok' : 'bad'}${multi && k.id === kpi.id ? ' on' : ''}`
+          /* no target: the figure and its trend, in neutral colours */
+          const info = !!k.info
+          const tone = (v: number | null) => (info ? 'flat' : dCls(v))
+          const cls = `dxcard ${s.day == null || info ? 'na' : ok ? 'ok' : 'bad'}${multi && k.id === kpi.id ? ' on' : ''}`
           const body = (
             <>
               <span className="dxc-lab">{k.label}<Zh>{k.zh}</Zh></span>
               <span className="dxc-main">
                 <span className="dxc-val">{s.day == null ? '—' : `${fmtPct(s.day)}%`}</span>
-                <span className={`dxc-delta ${dCls(s.delta)}`} title="Dibanding hari sebelumnya, poin persentase">
+                <span className={`dxc-delta ${tone(s.delta)}`} title="Dibanding hari sebelumnya, poin persentase">
                   {fmtPp(s.delta)}
                 </span>
               </span>
-              <span className="dxc-tgt">Target {GE} {fmtPct(kt)}% · {dayLabel}</span>
+              <span className="dxc-tgt">{info ? 'Tanpa target' : `Target ${GE} ${fmtPct(kt)}%`} · {dayLabel}</span>
               <span className="dxc-foot">
                 <span><em>H-1</em>{s.prev == null ? '—' : `${fmtPct(s.prev)}%`}</span>
                 <span><em>Bulanan</em>{s.month == null ? '—' : `${fmtPct(s.month)}%`}</span>
                 {k.weekRatio && (
                   <span>
                     <em>Mingguan</em>{s.week == null ? '—' : `${fmtPct(s.week)}%`}
-                    {s.weekDelta != null && <i className={dCls(s.weekDelta)}> {fmtPp(s.weekDelta)}</i>}
+                    {s.weekDelta != null && <i className={tone(s.weekDelta)}> {fmtPp(s.weekDelta)}</i>}
                   </span>
                 )}
               </span>
             </>
           )
-          return multi ? (
+          return multi && !info ? (
             <button
               key={k.id} type="button" className={cls} onClick={() => setKpiId(k.id)}
               aria-pressed={k.id === kpi.id}
@@ -789,7 +800,7 @@ export default function DisplaySection({
                        options={filterOpts.status} off={stOff} onChange={setStOff} />
           {multi && (
             <div className="seg" role="group" aria-label="Indikator untuk status">
-              {report.kpis.map((k) => (
+              {pickable.map((k) => (
                 <button key={k.id} className={k.id === kpi.id ? 'on' : ''} onClick={() => setKpiId(k.id)}>
                   {k.label}
                 </button>
@@ -920,7 +931,7 @@ export default function DisplaySection({
                           if (c.kind === 'delta') {
                             return (
                               <td key={c.id} className={`num${seam}`}>
-                                {live ? <span className={dCls(v)}>{fmtPp(v)}</span> : <span className="muted">—</span>}
+                                {live ? <span className={c.plain ? 'flat' : dCls(v)}>{fmtPp(v)}</span> : <span className="muted">—</span>}
                               </td>
                             )
                           }
