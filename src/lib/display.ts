@@ -511,7 +511,7 @@ const SPECS: Record<DisplayId, Spec> = {
      pickup was reported on time — the sheet gives it no target ("-"), so it is
      shown, not judged. With the late-without-reason share the two make 100%. */
   otpu: {
-    label: 'OTPU Platform',
+    label: 'OTPU TikTok',
     zh: 'TT平台揽收及时率',
     sectioned: true,
     pickup: true,
@@ -520,7 +520,7 @@ const SPECS: Record<DisplayId, Spec> = {
       ...otpuSection(1, 'f', 'otfpu%', 'ontime gagal pickup'),
     ],
     kpis: [
-      sectionKpi('o', 'otpu', 'OTPU Pickup Platform', 'TT平台揽收成功及时率'),
+      sectionKpi('o', 'otpu', 'OTPU Pickup TikTok', 'TT平台揽收成功及时率'),
       { ...sectionKpi('f', 'otfpu', 'OTFPU (Ontime Gagal Pickup)', 'TT平台揽收失败及时率'), targetCol: undefined, info: true },
     ],
   },

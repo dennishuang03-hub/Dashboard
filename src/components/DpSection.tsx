@@ -24,7 +24,7 @@
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ClipboardEvent, KeyboardEvent } from 'react'
 import {
-  BIZ_MODEL_LABEL, BIZ_MODEL_TAG, CANONICAL_ORDER, CATEGORY_ZH, DP_KIND_LABEL, DP_KIND_ZH,
+  AGENT_ONLY_LABELS, BIZ_MODEL_LABEL, BIZ_MODEL_TAG, CANONICAL_ORDER, CATEGORY_ZH, DP_KIND_LABEL, DP_KIND_ZH,
   DP_STATUS_HINT, DP_STATUS_LABEL, DP_STATUS_RANGE, DP_STATUS_ZH, SCORE_TOTAL, SPRINTER_LABELS,
   UNSCORED_LABELS, agentFull, agentZh, dpKindClass, dpTargetFor, dpValue, exportPng, fmtDate,
   fmtDateFull, isRankable, isScored, isoDay, scoreStatusOf, sectionOf,
@@ -185,7 +185,8 @@ export default function DpSection({
      a single ranking chart over them is meaningful — plus whatever else the file
      turned out to contain */
   const catKpis = useMemo(
-    () => kpis.filter((k) => CANONICAL_ORDER.includes(k.label)),
+    /* not the agent-only ones (OTPU): Display ALL DP has no per-site reading for them */
+    () => kpis.filter((k) => CANONICAL_ORDER.includes(k.label) && !AGENT_ONLY_LABELS.includes(k.label)),
     [kpis],
   )
   const defaultCat = catKpis.find((k) => k.label === SPRINTER_LABELS[0]) ?? catKpis[0] ?? null

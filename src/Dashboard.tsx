@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import type { ReactNode } from 'react'
 import {
-  CATEGORY_ZH, KPI_SECTIONS, PALETTE, STATUS_COLOR, agentFull, agentZh, averageRows,
-  dayName, explain, fmtDate, fmtDateFull, iconFor, exportPng, isDisplaySheet, isIgnoredSheet, isoDay, kpiSeries,
+  CATEGORY_ZH, DP_ONLY_LABELS, KPI_SECTIONS, PALETTE, STATUS_COLOR, agentFull, agentZh, averageRows,
+  dayKey, dayName, explain, fmtDate, fmtDateFull, iconFor, exportPng, isDisplaySheet, isIgnoredSheet, isoDay, kpiSeries,
   parseWorkbook, pct, readSheetNames, readWorkbookSheets, resolveDpDate, statusOf, targetFor,
 } from './lib/jnt'
 import type { Explanation, Kpi, Model } from './lib/jnt'
@@ -10,6 +10,7 @@ import { LineChart, Sparkline } from './components/Charts'
 import type { AxisLabel } from './components/Charts'
 import BtnIcon from './components/BtnIcon'
 import DisplaySection from './components/DisplaySection'
+import type { DisplayHeadline } from './components/DisplaySection'
 import DpSection from './components/DpSection'
 import RmSection from './components/RmSection'
 import JntLogo from './components/JntLogo'
@@ -501,7 +502,53 @@ export default function Dashboard({
   }, [model, agentKey])
 
   // `tick` is the invalidation signal — Kpi objects are edited in place.
-  const kpis = useMemo(() => model?.kpis.filter((k) => k.enabled) ?? [], [model, tick])
+  const allKpis = useMemo(() => model?.kpis.filter((k) => k.enabled) ?? [], [model, tick])
+  /* the Data Agen page: everything but the DP-only categories (TTD RITASE 2,
+     whose card OTPU took); the DP page gets `allKpis` */
+  const kpis = useMemo(() => allKpis.filter((k) => !DP_ONLY_LABELS.includes(k.label)), [allKpis])
+
+  /*
+   * Some pages' headline cards follow the agent-level summary tabs — the same
+   * figures as the Data Agen cards — rather than the sum of their Display rows:
+   *
+   *   OTPU    "Pencapaian OTPU", which the workbook does not keep in step with
+   *           Display OTPU (BEKASI 89.60% against 93.79% on 26 November)
+   *   0730    "06.30, 07.30, & 12.00", a few hundredths off Display 730 & 1200
+   *           for JAKARTA and TANGERANG
+   *
+   * The table, rankings and RM figures below the cards stay on the DP/CP rows.
+   * Nothing is overridden when the tab is missing or has no figure for the day.
+   */
+  const dxHeadline = useMemo(() => {
+    const HEADLINE_SRC: Partial<Record<DisplayId, Record<string, string>>> = {
+      otpu: { otpu: 'OTPU TIKTOK', otfpu: 'OTFPU TIKTOK' },
+      ttd730: { '0730': '07:30 KELUAR GUDANG', '1200': 'TTD PAKET JAM 12:00' },
+    }
+    const src = dxReport ? HEADLINE_SRC[dxReport.id] : undefined
+    if (!model || !current || !src || !dxReport?.date) return undefined
+    /* all agents: only the tab's own Total row, never an average of agents */
+    if (agentKey === 'TOTAL' && current.rec !== model.totalRow) return undefined
+    const day = dxReport.date
+    const key = dayKey(day, 0)
+    const prevKey = dayKey(new Date(day.getFullYear(), day.getMonth(), day.getDate() - 1), 0)
+    const out: Record<string, DisplayHeadline> = {}
+    for (const [id, label] of Object.entries(src)) {
+      const k = model.kpis.find((x) => x.label === label)
+      if (!k) continue
+      const at = (dk: string) => {
+        const c = k.byDateKey[dk]
+        return c == null ? null : current.rec.vals[c] ?? null
+      }
+      const v = at(key)
+      if (v == null) continue
+      out[id] = {
+        day: v, prev: at(prevKey),
+        month: k.monthlyCol ? current.rec.vals[k.monthlyCol] ?? null : null,
+        sheet: k.sheets[0] ?? '',
+      }
+    }
+    return Object.keys(out).length ? out : undefined
+  }, [model, current, dxReport, agentKey])
 
   /**
    * The toolbar's picture, of whichever report the rail is pointing at.
@@ -916,7 +963,7 @@ export default function Dashboard({
           DpSection — so there is nothing to add around it here. */}
       {view === VIEW_DP && dpDay && (
         <DpSection
-          model={model} kpis={kpis} agentKey={agentKey}
+          model={model} kpis={allKpis} agentKey={agentKey}
           agentLabel={current.label} day={dpDay} wanted={dToday} onError={setErr}
         />
       )}
@@ -940,6 +987,7 @@ export default function Dashboard({
           agentKey={agentKey} agentLabel={current.label} onError={setErr}
           showSpv={dxShowSpv} onShowSpv={setDxShowSpv}
           showAgent={dxShowAgent} onShowAgent={setDxShowAgent}
+          headline={dxHeadline}
         />
       )}
 

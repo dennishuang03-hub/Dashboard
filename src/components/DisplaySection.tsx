@@ -1,6 +1,6 @@
 /**
  * One "Display" report — Absensi Tepat Waktu, 0730 & TTD 1200, TTD All Ritase,
- * Retur, TPTW, or OTPU Platform — at drop-point level.
+ * Retur, TPTW, or OTPU TikTok — at drop-point level.
  *
  * Built from the same furniture as the DP/CP page (`.dphead`, `.dpstats`,
  * `.dpfilters`, `.dpgrid`), so the three sub-pages read as parts of that page
@@ -117,8 +117,23 @@ function WorstCard({ label, bars, target, lowerBetter, note }: {
   )
 }
 
+/**
+ * A headline card's figures taken from an agent-level summary tab instead of
+ * being added up from the DP/CP rows. The OTPU page's two cards follow the
+ * "Pencapaian OTPU" tab, which does not agree with the sum of "Display OTPU";
+ * everything below the cards (table, rankings, per-agent chart) stays on the
+ * DP/CP rows.
+ */
+export interface DisplayHeadline {
+  day: number
+  prev: number | null
+  month: number | null
+  /** the tab the figures come from */
+  sheet: string
+}
+
 export default function DisplaySection({
-  report, part, agentKey, agentLabel, onError, showSpv, onShowSpv, showAgent, onShowAgent,
+  report, part, agentKey, agentLabel, onError, showSpv, onShowSpv, showAgent, onShowAgent, headline,
 }: {
   report: DisplayReport
   /** the badge on the band — "B1", "B2", "B3" */
@@ -133,6 +148,8 @@ export default function DisplaySection({
   /** the Agen column and the agent name beside each row, same arrangement */
   showAgent: boolean
   onShowAgent: (on: boolean) => void
+  /** by KPI id: cards whose day, H-1 and month come from a summary tab */
+  headline?: Record<string, DisplayHeadline>
 }) {
   const allAgents = !agentKey || agentKey === 'TOTAL'
   /* The agent names in the table: only in the all-agents view — one agent's
@@ -424,18 +441,21 @@ export default function DisplaySection({
   /* ------------------------------------------------------------ summaries */
 
   const summary = (k: DisplayKpi) => {
-    const day = ratioOf(scoped, k.dayRatio)
-    const prev = ratioOf(scoped, k.prevRatio)
+    const h = headline?.[k.id]
+    const day = h ? h.day : ratioOf(scoped, k.dayRatio)
+    const prev = h ? h.prev : ratioOf(scoped, k.prevRatio)
+    /* the summary tab has no weekly figure, so Mingguan stays on the DP/CP rows */
     const week = ratioOf(scoped, k.weekRatio)
     const weekPrev = ratioOf(scoped, k.weekPrevRatio)
     return {
       day, prev,
       delta: day != null && prev != null ? day - prev : null,
-      month: ratioOf(scoped, k.monthRatio),
+      month: h ? h.month : ratioOf(scoped, k.monthRatio),
       week,
       weekDelta: week != null && weekPrev != null ? week - weekPrev : null,
     }
   }
+  const headlineSheet = Object.values(headline ?? {})[0]?.sheet
 
   const target = kpiTarget(kpi)
   const dueOf = (r: DisplayRow) => r.vals[kpi.dayRatio[1]] ?? 0
@@ -643,6 +663,7 @@ export default function DisplaySection({
         </span>
         <span className="dpday">
           <em>sumber: sheet “{report.sheet}”</em>
+          {headlineSheet && <> · kartu ringkasan dari sheet “{headlineSheet}”</>}
         </span>
       </div>
 
@@ -671,7 +692,7 @@ export default function DisplaySection({
                 <span><em>H-1</em>{s.prev == null ? '—' : `${fmtPct(s.prev)}%`}</span>
                 <span><em>Bulanan</em>{s.month == null ? '—' : `${fmtPct(s.month)}%`}</span>
                 {k.weekRatio && (
-                  <span>
+                  <span title={headline?.[k.id] ? `Mingguan dihitung dari baris DP/CP sheet “${report.sheet}” — sheet “${headline[k.id].sheet}” tidak punya angka mingguan` : undefined}>
                     <em>Mingguan</em>{s.week == null ? '—' : `${fmtPct(s.week)}%`}
                     {s.weekDelta != null && <i className={tone(s.weekDelta)}> {fmtPp(s.weekDelta)}</i>}
                   </span>

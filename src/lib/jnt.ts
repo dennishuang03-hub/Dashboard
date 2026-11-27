@@ -431,12 +431,30 @@ const ALIASES: [RegExp, string][] = [
   [/签收|\bttd\b/i, 'TTD'],
 ]
 
+/**
+ * The "Pencapaian OTPU" tab (from 26 November 2026): TikTok platform pickups,
+ * three figures under one band, "Penilaian Kualitas Pickup Platform (OTPU &
+ * OTFPU)". Matched on the column's own name, before `ALIASES`, for two reasons:
+ * the band names all three (so the group text cannot tell them apart), and
+ * "pickup" / "揽收" in `ALIASES` would otherwise file all three as PICKUP
+ * NON-ECOMMERCE. Anything naming itself non-platform / non-ecommerce is left to
+ * `ALIASES`.
+ */
+const PLATFORM_ALIASES: [RegExp, string][] = [
+  [/otpu\s*\+\s*otfpu|成功\s*\+\s*失败/i, 'OTPU + OTFPU'],
+  [/otfpu|揽收失败/i, 'OTFPU TIKTOK'],
+  [/otpu|揽收成功/i, 'OTPU TIKTOK'],
+]
+const NON_PLATFORM_RE = /non[\s-]*(platform|e-?commerce)|非平台/i
+
 export interface KpiSection {
   id: string
   label: string
   zh: string
   /** canonical labels, in the order they should appear inside the section */
   labels: string[]
+  /** labels shown in this section on the Data per DP/CP page only, ahead of `labels` */
+  dpOnly?: string[]
 }
 
 /**
@@ -467,14 +485,30 @@ export const KPI_SECTIONS: KpiSection[] = [
     id: 'penyelesaian',
     label: 'Penyelesaian & Kualitas',
     zh: '签收与质量',
+    dpOnly: ['TTD RITASE 2'],
     labels: [
-      'TTD RITASE 2',
+      /* OTPU took TTD RITASE 2's card on 27 November 2026 — see DP_ONLY_LABELS */
+      'OTPU TIKTOK',
       'PERSENTASE TTD',
       'PICKUP NON-ECOMMERCE',
       'RETUR COD NON-ECOMMERCE',
     ],
   },
 ]
+
+/**
+ * Categories the Data per DP/CP page still shows but the Data Agen page does
+ * not. TTD RITASE 2 lost its Data Agen card to OTPU; the DP tab (Display ALL
+ * DP) still carries it per site, and that page keeps it as an unscored column.
+ */
+export const DP_ONLY_LABELS: readonly string[] = KPI_SECTIONS.flatMap((s) => s.dpOnly ?? [])
+
+/**
+ * Categories reported per agent only. OTPU comes from the "Pencapaian OTPU"
+ * summary tab; Display ALL DP has no OTPU column, so the DP page has nothing
+ * to show or score for it. (Per-site OTPU is on the Display OTPU page.)
+ */
+export const AGENT_ONLY_LABELS: readonly string[] = ['OTPU TIKTOK']
 
 /**
  * The categories that actually exist in the report, in display order. Anything
@@ -486,11 +520,11 @@ export const KPI_SECTIONS: KpiSection[] = [
  * where TPTW sits — leaving a card in one section and its table column in the
  * other.
  */
-export const CANONICAL_ORDER: string[] = KPI_SECTIONS.flatMap((s) => s.labels)
+export const CANONICAL_ORDER: string[] = KPI_SECTIONS.flatMap((s) => [...(s.dpOnly ?? []), ...s.labels])
 
 /** Which half a category belongs to; `null` for a column no section claims. */
 export function sectionOf(label: string): KpiSection | null {
-  return KPI_SECTIONS.find((s) => s.labels.includes(label)) ?? null
+  return KPI_SECTIONS.find((s) => s.labels.includes(label) || s.dpOnly?.includes(label)) ?? null
 }
 
 /**
@@ -503,6 +537,7 @@ export const CATEGORY_ZH: Record<string, string> = {
   '07:30 KELUAR GUDANG': '0730出仓率',
   'TTD PAKET JAM 12:00': '1200签收率',
   'TTD RITASE 2': '二派签收率',
+  'OTPU TIKTOK': '揽收成功及时率',
   'TPTW KESELURUHAN': '全量交件及时率',
   'PERSENTASE TTD': '全天签收率',
   'PICKUP NON-ECOMMERCE': '非平台揽收及时率',
@@ -570,8 +605,11 @@ export const UNSCORED_LABELS: readonly string[] = ['TTD RITASE 2']
 /** Does this category count towards `Sesuai target` and the Status column? */
 export const isScored = (label: string): boolean => !UNSCORED_LABELS.includes(label)
 
-/** The categories the scorecard is built from, in display order. */
-export const SCORE_LABELS: readonly string[] = CANONICAL_ORDER.filter(isScored)
+/** The categories the scorecard is built from, in display order — those a
+ *  drop point can have a reading for (not the agent-only ones). */
+export const SCORE_LABELS: readonly string[] = CANONICAL_ORDER.filter(
+  (l) => isScored(l) && !AGENT_ONLY_LABELS.includes(l),
+)
 
 /**
  * The denominator the Status bands are quoted against — seven today.
@@ -706,6 +744,7 @@ export const HIGHER_IS_BETTER = new Set([
   'TPTW KESELURUHAN',
   'PERSENTASE TTD',
   'PICKUP NON-ECOMMERCE',
+  'OTPU TIKTOK',
   'TTD',
 ])
 export const LOWER_IS_BETTER = new Set([
@@ -714,6 +753,9 @@ export const LOWER_IS_BETTER = new Set([
 
 export function shortLabel(name: string, group = ''): string {
   const combined = `${group} ${name}`
+  if (!NON_PLATFORM_RE.test(combined)) {
+    for (const [re, out] of PLATFORM_ALIASES) if (re.test(name)) return out
+  }
   for (const [re, out] of ALIASES) if (re.test(combined)) return out
   const l = latin(name).toUpperCase()
   return l.length > 34 ? `${l.slice(0, 33)}…` : (l || 'KPI')
